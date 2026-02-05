@@ -52,31 +52,74 @@
 
     <section class="panel hidden" id="billing-panel">
       <div class="panel-head">
-        <button class="primary small-btn" id="bill-new-btn" type="button">สร้างบิลใหม่</button>
+        <h3>บิลค่าไฟ / Billing</h3>
+        <div class="panel-actions">
+          <button class="primary small-btn" id="bill-new-btn" type="button">สร้างบิลใหม่</button>
+        </div>
       </div>
-      <div id="bill-data" class="bill-data hidden">
-        <div class="device-table-wrap bill-table-wrap">
-          <table class="device-table bill-table">
+      <div class="bill-meta-note" id="bill-schedule-info">
+        <div class="bill-pill-row">
+          <span class="pill schedule" id="bill-cycle-pill">สร้างอัตโนมัติทุกวันที่ 5</span>
+          <span class="pill schedule alt" id="bill-cutoff-pill">ตัดรอบวันที่ 5</span>
+          <button class="pill schedule ghost inline-delete" id="bill-schedule-remove" type="button">รีเซ็ต</button>
+        </div>
+        <p class="muted small" id="bill-schedule-desc">ระบบจะสร้างบิลอัตโนมัติทุกวันที่ 5 ของเดือน</p>
+      </div>
+
+      <div class="summary-grid" id="bill-summary">
+        <div class="card summary-card">
+          <div class="summary-header">
+            <h4>สรุปบิลล่าสุด</h4>
+            <span class="pill count" id="bill-total-count">0 ใบ</span>
+          </div>
+          <div class="kv"><span>ตัดรอบวันที่</span><strong id="bill-auto-day">5</strong></div>
+          <div class="kv"><span>รอบล่าสุด</span><strong id="bill-last-period">-</strong></div>
+          <div class="kv"><span>ยอดล่าสุด</span><strong id="bill-last-amount">-</strong></div>
+          <p class="muted small" id="bill-auto-note">กำหนดรอบบิลในหน้าสร้างบิลใหม่</p>
+        </div>
+      </div>
+
+      <div class="history-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th style="width: 90px;">ใบที่</th>
+              <th>สร้างจากมิเตอร์</th>
+              <th>ช่วงวันที่</th>
+              <th style="width: 130px;">อัตรา (฿/kWh)</th>
+              <th style="width: 140px;">หน่วยรวม (kWh)</th>
+              <th style="width: 140px;">ยอดรวม</th>
+              <th style="width: 140px;">การทำงาน</th>
+            </tr>
+          </thead>
+          <tbody id="bill-history-rows">
+            <tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel-sub hidden" id="bill-detail">
+        <div class="summary-header">
+          <h4 id="bill-detail-title">รายละเอียดการใช้ไฟรายวัน</h4>
+          <button class="ghost small-btn" id="bill-detail-close" type="button">ปิด</button>
+        </div>
+        <div class="device-table-wrap">
+          <table class="device-table">
             <thead>
               <tr>
-                <th>Meter</th>
-                <th>Serial</th>
-                <th>Solar ผลิตได้ (kWh)</th>
-                <th>ส่งเข้า กฟภ./กฟน. (kWh)</th>
-                <th>สุทธิใช้เอง (kWh)</th>
+                <th style="width: 140px;">วันที่</th>
+                <th>Solar In (kWh)</th>
+                <th>Self Use (kWh)</th>
+                <th>MDB In (kWh)</th>
+                <th>MDB Out (kWh)</th>
+                <th>หน่วยคิดบิล (kWh)</th>
               </tr>
             </thead>
-            <tbody id="bill-rows">
-              <tr><td class="empty" colspan="5">ยังไม่มีบิล</td></tr>
+            <tbody id="bill-detail-rows">
+              <tr><td class="empty" colspan="6">ยังไม่มีข้อมูลรายวัน</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="kv"><span>พลังงานสุทธิ (kWh)</span><strong id="bill-energy">-</strong></div>
-        <div class="kv"><span>ยอดเรียกเก็บ</span><strong id="bill-amount">-</strong></div>
-        <p class="muted small" id="bill-note"></p>
-      </div>
-
-      <div class="btn-row">
       </div>
     </section>
 
@@ -92,8 +135,18 @@
         </div>
         <div class="modal-body">
           <div class="field">
-            <label>เลือกมิเตอร์</label>
-            <div id="modal-meter-list" class="checkbox-list"></div>
+            <div class="field-head">
+              <div>
+                <label>เลือกมิเตอร์</label>
+                <p class="muted small">แตะที่การ์ดเพื่อเลือก/ยกเลิก</p>
+              </div>
+              <div class="field-actions">
+                <button class="chip-btn" id="meter-select-all" type="button">เลือกทั้งหมด</button>
+                <button class="chip-btn ghost" id="meter-clear" type="button">ล้าง</button>
+                <span class="pill count" id="meter-selected-count">0/0</span>
+              </div>
+            </div>
+            <div id="modal-meter-list" class="meter-card-grid"></div>
           </div>
           <div class="field grid-2">
             <div>
@@ -117,6 +170,20 @@
                 <option value="tou">TOU (Mock)</option>
               </select>
             </div>
+          </div>
+          <div class="field">
+            <label for="bill-calc">คำนวณหน่วยจาก</label>
+            <select id="bill-calc">
+              <option value="self_use">Self Use (Meter 1)</option>
+              <option value="mdb_net">MDB In - MDB Out (Meter 2)</option>
+              <option value="solar_in">Solar In (Meter 1)</option>
+              <option value="mdb_in">MDB In (Meter 2)</option>
+              <option value="mdb_out">MDB Out (Meter 2)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="bill-cutoff">ตัดรอบวันที่</label>
+            <select id="bill-cutoff"></select>
           </div>
         </div>
         <div class="modal-footer">

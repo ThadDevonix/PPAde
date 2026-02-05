@@ -409,11 +409,12 @@ tbody tr.selected {
 .history-wrap {
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: auto;
 }
 .history-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 760px;
 }
 .history-table th, .history-table td {
   padding: 10px 12px;
@@ -422,6 +423,38 @@ tbody tr.selected {
 }
 .history-table thead {
   background: #f7f9fb;
+}
+.history-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.badge.auto {
+  background: #ecfbf3;
+  border-color: #b5e5c5;
+  color: #0f9d58;
+}
+.badge.manual {
+  background: #eef3ff;
+  border-color: #c9d8ff;
+  color: #0f63d4;
+}
+.btn-danger {
+  background: #fff5f5;
+  color: #d94646;
+  border-color: #f2b8b5;
+}
+.btn-danger:hover {
+  background: #ffe8e8;
 }
 .bill-data.hidden {
   display: none;
@@ -439,6 +472,15 @@ tbody tr.selected {
   justify-content: space-between;
   gap: 8px;
 }
+.panel-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .small-btn {
   padding: 6px 10px;
   border-radius: 8px;
@@ -448,6 +490,43 @@ tbody tr.selected {
   display: flex;
   gap: 8px;
   margin: 8px 0;
+}
+.bill-meta-note {
+  margin: 6px 0 10px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+.bill-pill-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.panel-sub {
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+.pill.schedule {
+  background: #eef3ff;
+  color: #0f63d4;
+}
+.pill.schedule.alt {
+  background: #f1f5f9;
+  color: #475569;
+}
+.inline-delete {
+  border: 1px solid var(--border);
+  color: #d94646;
+  background: #fff5f5;
 }
 /* Modal */
 .modal {
@@ -513,6 +592,101 @@ tbody tr.selected {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+.field-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #f6f9ff;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.chip-btn.ghost {
+  background: transparent;
+}
+.pill.count {
+  background: #eef3ff;
+  color: #0f63d4;
+}
+.meter-card-grid {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.meter-card {
+  border: 1px solid var(--border);
+  background: #f9fbff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.meter-card input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.meter-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.meter-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.meter-name {
+  font-weight: 700;
+  color: var(--text);
+}
+.meter-sn {
+  font-size: 13px;
+  color: var(--muted);
+}
+.meter-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.meter-status.online {
+  background: #ecfbf3;
+  border-color: #b5e5c5;
+  color: #0f9d58;
+}
+.meter-status.offline {
+  background: #fff4f2;
+  border-color: #ffc9c2;
+  color: #d94646;
+}
+.meter-card.checked {
+  border-color: var(--accent);
+  background: #eef3ff;
+  box-shadow: 0 10px 28px rgba(22, 119, 255, 0.18);
 }
 
 /* Meter detail */
