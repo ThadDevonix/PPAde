@@ -1,0 +1,17 @@
+{
+  "name": "ppade",
+  "version": "0.1.0",
+  "description": "Minimal JavaScript starter project",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^9.10.0"
+  }
+}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav">
+      <div class="brand">PONIX</div>
+      <div class="divider"></div>
+      <div class="nav-links">
+        <a class="nav-link active" href="#">
+          <span class="home-icon" aria-hidden="true"></span>
+          Home
+        </a>
+        <a class="nav-link" href="#">
+          Billing
+        </a>
+        <a class="nav-link" href="#">
+          Reports
+        </a>
+      </div>
+    </nav>
+
+    <div class="filters">
+      <div class="filters-row">
+        <div>
+          <label for="plant">Plant name</label>
+          <input id="plant" type="text" placeholder="Plant name" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="reset">Reset</button>
+        <button id="search" class="primary">Search</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 80px;">Status</th>
+            <th style="width: 110px;">Plant Image</th>
+            <th>Plant Name</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td class="empty" colspan="3">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
