@@ -106,14 +106,7 @@
         <div class="device-table-wrap">
           <table class="device-table">
             <thead>
-              <tr>
-                <th style="width: 140px;">วันที่</th>
-                <th>Solar In (kWh)</th>
-                <th>Self Use (kWh)</th>
-                <th>MDB In (kWh)</th>
-                <th>MDB Out (kWh)</th>
-                <th>หน่วยคิดบิล (kWh)</th>
-              </tr>
+              <tr id="bill-detail-head"></tr>
             </thead>
             <tbody id="bill-detail-rows">
               <tr><td class="empty" colspan="6">ยังไม่มีข้อมูลรายวัน</td></tr>
@@ -180,6 +173,20 @@
               <option value="mdb_in">MDB In (Meter 2)</option>
               <option value="mdb_out">MDB Out (Meter 2)</option>
             </select>
+          </div>
+          <div class="field hidden" id="bill-columns-field">
+            <div class="field-head">
+              <div>
+                <label>คอลัมน์ที่ต้องการแสดง</label>
+                <p class="muted small">เลือกข้อมูลที่จะโชว์ในตารางรายวัน</p>
+              </div>
+              <div class="field-actions">
+                <button class="chip-btn" id="columns-select-all" type="button">เลือกทั้งหมด</button>
+                <button class="chip-btn ghost" id="columns-clear" type="button">ล้าง</button>
+                <span class="pill count" id="columns-selected-count">0/0 เลือก</span>
+              </div>
+            </div>
+            <div class="checkbox-list" id="bill-columns-list"></div>
           </div>
           <div class="field">
             <label for="bill-cutoff">ตัดรอบวันที่</label>

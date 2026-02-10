@@ -18,6 +18,7 @@ const deviceRowsEl = document.getElementById("device-rows");
 const billNewBtn = document.getElementById("bill-new-btn");
 const billHistoryRows = document.getElementById("bill-history-rows");
 const billDetail = document.getElementById("bill-detail");
+const billDetailHead = document.getElementById("bill-detail-head");
 const billDetailRows = document.getElementById("bill-detail-rows");
 const billDetailTitle = document.getElementById("bill-detail-title");
 const billDetailClose = document.getElementById("bill-detail-close");
@@ -46,6 +47,11 @@ const billEnd = document.getElementById("bill-end");
 const billRateInput = document.getElementById("bill-rate");
 const billType = document.getElementById("bill-type");
 const billCalc = document.getElementById("bill-calc");
+const billColumnsField = document.getElementById("bill-columns-field");
+const billColumnsList = document.getElementById("bill-columns-list");
+const columnsSelectAllBtn = document.getElementById("columns-select-all");
+const columnsClearBtn = document.getElementById("columns-clear");
+const columnsSelectedCount = document.getElementById("columns-selected-count");
 const billCutoff = document.getElementById("bill-cutoff");
 const metersBtn = document.getElementById("mode-meters");
 const billingBtn = document.getElementById("mode-billing");
@@ -60,6 +66,13 @@ const calcMethodLabels = {
   mdb_in: "MDB In (Meter 2)",
   mdb_out: "MDB Out (Meter 2)"
 };
+const detailColumnDefs = [
+  { key: "solar_in", label: "Solar In (kWh)" },
+  { key: "self_use", label: "Self Use (kWh)" },
+  { key: "mdb_in", label: "MDB In (kWh)" },
+  { key: "mdb_out", label: "MDB Out (kWh)" },
+  { key: "bill_units", label: "หน่วยคิดบิล (kWh)" }
+];
 
 let isModalOpen = false;
 let activeDetailId = null;
@@ -156,6 +169,20 @@ const seededRandom = (seed) => {
   };
 };
 
+const updateColumnSelectedCount = () => {
+  if (!columnsSelectedCount || !billColumnsList) return;
+  const total = billColumnsList.querySelectorAll('input[type="checkbox"]').length;
+  const selected = billColumnsList.querySelectorAll(
+    'input[type="checkbox"]:checked'
+  ).length;
+  columnsSelectedCount.textContent = `${selected}/${total} เลือก`;
+};
+const updateColumnVisibility = (selectedCount) => {
+  if (!billColumnsField) return;
+  const show = (Number(selectedCount) || 0) > 0;
+  billColumnsField.classList.toggle("hidden", !show);
+  if (show) updateColumnSelectedCount();
+};
 const updateSelectedCount = () => {
   if (!meterSelectedCount || !modalMeterList) return;
   const total = modalMeterList.querySelectorAll('input[type="checkbox"]').length;
@@ -163,6 +190,7 @@ const updateSelectedCount = () => {
     'input[type="checkbox"]:checked'
   ).length;
   meterSelectedCount.textContent = `${selected}/${total} เลือก`;
+  updateColumnVisibility(selected);
 };
 const applyMeterCardHandlers = () => {
   if (!modalMeterList) return;
@@ -176,6 +204,15 @@ const applyMeterCardHandlers = () => {
     });
   });
   updateSelectedCount();
+};
+const applyColumnHandlers = () => {
+  if (!billColumnsList) return;
+  billColumnsList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener("change", () => {
+      updateColumnSelectedCount();
+    });
+  });
+  updateColumnSelectedCount();
 };
 const closeModal = () => {
   billModal?.classList.add("hidden");
@@ -198,7 +235,8 @@ const defaultSchedule = {
   cutoffDay: 5,
   defaultRate: 4.2,
   rateType: "flat",
-  calcMethod: "self_use"
+  calcMethod: "self_use",
+  detailColumns: detailColumnDefs.map((col) => col.key)
 };
 let schedule = { ...defaultSchedule };
 let history = [];
@@ -374,6 +412,9 @@ const loadSchedule = () => {
   } catch {
     schedule = { ...defaultSchedule };
   }
+  if (!Array.isArray(schedule.detailColumns) || !schedule.detailColumns.length) {
+    schedule.detailColumns = [...defaultSchedule.detailColumns];
+  }
 };
 const saveSchedule = () => {
   localStorage.setItem(scheduleKey, JSON.stringify(schedule));
@@ -460,6 +501,49 @@ const getBillUnits = (row, method) => {
   return roundTo(Math.max(0, value), 1);
 };
 
+const getDetailColumns = (columns) => {
+  const list = Array.isArray(columns) ? columns : [];
+  const active = list.length ? list : defaultSchedule.detailColumns;
+  return detailColumnDefs.filter((col) => active.includes(col.key));
+};
+const renderDetailHeader = (columns) => {
+  if (!billDetailHead) return;
+  const headerCells = columns
+    .map((col) => `<th>${col.label}</th>`)
+    .join("");
+  billDetailHead.innerHTML = `<th style="width: 140px;">วันที่</th>${headerCells}`;
+  if (billDetailRows) {
+    const emptyCell = billDetailRows.querySelector("td.empty");
+    if (emptyCell) {
+      emptyCell.setAttribute("colspan", String(columns.length + 1));
+    }
+  }
+};
+const getSelectedDetailColumns = () => {
+  if (!billColumnsList) return [];
+  return Array.from(
+    billColumnsList.querySelectorAll('input[type="checkbox"]:checked')
+  ).map((el) => el.value);
+};
+const renderColumnSelector = (selectedKeys) => {
+  if (!billColumnsList) return;
+  const active = Array.isArray(selectedKeys) && selectedKeys.length
+    ? selectedKeys
+    : defaultSchedule.detailColumns;
+  billColumnsList.innerHTML = detailColumnDefs
+    .map((col) => {
+      const checked = active.includes(col.key) ? "checked" : "";
+      return `
+        <label>
+          <input type="checkbox" value="${col.key}" ${checked}>
+          <span>${col.label}</span>
+        </label>
+      `;
+    })
+    .join("");
+  applyColumnHandlers();
+};
+
 const createBill = ({
   periodStart,
   periodEnd,
@@ -467,10 +551,15 @@ const createBill = ({
   rate,
   rateType,
   calcMethod,
+  detailColumns,
   dailyRows,
   auto = false,
   source = "api"
 }) => {
+  const normalizedColumns =
+    Array.isArray(detailColumns) && detailColumns.length
+      ? detailColumns
+      : defaultSchedule.detailColumns;
   const daily = dailyRows.map((row) => ({
     ...row,
     bill_units: getBillUnits(row, calcMethod)
@@ -493,6 +582,7 @@ const createBill = ({
     amount,
     auto,
     calcMethod,
+    detailColumns: normalizedColumns,
     source,
     meters: meters.map((m) => ({ name: m.name, sn: m.sn })),
     daily
@@ -577,6 +667,8 @@ const showBillDetail = (id) => {
   if (!bill) return;
   activeDetailId = id;
   billDetailTitle.textContent = `ใบที่ ${bill.billNo} • ${bill.periodStart} - ${bill.periodEnd}`;
+  const columns = getDetailColumns(bill.detailColumns);
+  renderDetailHeader(columns);
   const totals = bill.daily.reduce(
     (acc, row) => {
       acc.solar_in += parseNumber(row.solar_in);
@@ -590,27 +682,24 @@ const showBillDetail = (id) => {
   );
 
   billDetailRows.innerHTML = bill.daily
-    .map(
-      (row) => `
-      <tr>
-        <td>${row.date}</td>
-        <td>${formatNumber(row.solar_in, 1)}</td>
-        <td>${formatNumber(row.self_use, 1)}</td>
-        <td>${formatNumber(row.mdb_in, 1)}</td>
-        <td>${formatNumber(row.mdb_out, 1)}</td>
-        <td>${formatNumber(row.bill_units, 1)}</td>
-      </tr>
-    `
-    )
+    .map((row) => {
+      const cells = columns
+        .map((col) => {
+          const value =
+            col.key === "bill_units" ? row.bill_units : row[col.key];
+          return `<td>${formatNumber(value, 1)}</td>`;
+        })
+        .join("");
+      return `<tr><td>${row.date}</td>${cells}</tr>`;
+    })
+    .join("");
+  const totalCells = columns
+    .map((col) => `<td><strong>${formatNumber(totals[col.key], 1)}</strong></td>`)
     .join("");
   billDetailRows.innerHTML += `
     <tr>
       <td><strong>รวม</strong></td>
-      <td><strong>${formatNumber(totals.solar_in, 1)}</strong></td>
-      <td><strong>${formatNumber(totals.self_use, 1)}</strong></td>
-      <td><strong>${formatNumber(totals.mdb_in, 1)}</strong></td>
-      <td><strong>${formatNumber(totals.mdb_out, 1)}</strong></td>
-      <td><strong>${formatNumber(totals.bill_units, 1)}</strong></td>
+      ${totalCells}
     </tr>
   `;
   billDetail.classList.remove("hidden");
@@ -653,6 +742,7 @@ const runAutoIfDue = async () => {
     rate: schedule.defaultRate,
     rateType: schedule.rateType,
     calcMethod: schedule.calcMethod || defaultSchedule.calcMethod,
+    detailColumns: schedule.detailColumns || defaultSchedule.detailColumns,
     auto: true,
     source,
     dailyRows: rows
@@ -684,6 +774,7 @@ const openModal = () => {
   if (billRateInput) billRateInput.value = schedule.defaultRate;
   if (billType && schedule.rateType) billType.value = schedule.rateType;
   if (billCalc && schedule.calcMethod) billCalc.value = schedule.calcMethod;
+  renderColumnSelector(schedule.detailColumns);
   applyMeterCardHandlers();
 };
 
@@ -715,6 +806,11 @@ const handleConfirm = async () => {
     schedule.defaultRate;
   const rateTypeVal = billType?.value || schedule.rateType;
   const calcMethod = billCalc?.value || schedule.calcMethod;
+  const detailColumns = getSelectedDetailColumns();
+  if (!detailColumns.length) {
+    alert("กรุณาเลือกอย่างน้อย 1 คอลัมน์ที่ต้องการแสดง");
+    return;
+  }
   const periodStart = formatDate(startDate);
   const periodEnd = formatDate(endDate);
 
@@ -734,6 +830,7 @@ const handleConfirm = async () => {
     rate: rateVal,
     rateType: rateTypeVal,
     calcMethod,
+    detailColumns,
     auto: false,
     source,
     dailyRows: rows
@@ -744,7 +841,8 @@ const handleConfirm = async () => {
     cutoffDay,
     defaultRate: rateVal,
     rateType: rateTypeVal,
-    calcMethod
+    calcMethod,
+    detailColumns
   };
   saveSchedule();
   updateScheduleInfo(cutoffDay);
@@ -792,6 +890,20 @@ meterClearBtn?.addEventListener("click", () => {
     if (card) card.classList.remove("checked");
   });
   updateSelectedCount();
+});
+columnsSelectAllBtn?.addEventListener("click", () => {
+  if (!billColumnsList) return;
+  billColumnsList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.checked = true;
+  });
+  updateColumnSelectedCount();
+});
+columnsClearBtn?.addEventListener("click", () => {
+  if (!billColumnsList) return;
+  billColumnsList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.checked = false;
+  });
+  updateColumnSelectedCount();
 });
 
 billDetailClose?.addEventListener("click", hideDetail);
@@ -870,6 +982,7 @@ loadHistory();
 
 const initBilling = async () => {
   updateScheduleInfo(schedule.cutoffDay);
+  renderDetailHeader(getDetailColumns(schedule.detailColumns));
   await runAutoIfDue();
   renderHistory();
   updateSummary();

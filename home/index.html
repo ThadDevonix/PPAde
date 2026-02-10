@@ -36,8 +36,11 @@
         </div>
       </div>
       <div class="actions">
-        <button id="reset">Reset</button>
-        <button id="search" class="primary">Search</button>
+        <button id="create-plant" class="primary">สร้าง Plant</button>
+        <div class="actions-right">
+          <button id="reset">Reset</button>
+          <button id="search" class="primary">Search</button>
+        </div>
       </div>
     </div>
 
@@ -48,12 +51,83 @@
             <th style="width: 80px;">Status</th>
             <th style="width: 110px;">Plant Image</th>
             <th>Plant Name</th>
+            <th style="width: 140px;">แก้ไข</th>
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td class="empty" colspan="3">กำลังโหลด...</td></tr>
+          <tr><td class="empty" colspan="4">กำลังโหลด...</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="plant-modal" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="plant-modal-title">สร้าง Plant</h3>
+        <button class="ghost icon-btn" id="plant-modal-close" aria-label="ปิด">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="plant-name-input">ตั้งชื่อ Plant</label>
+          <input type="text" id="plant-name-input" placeholder="เช่น โรงงาน A">
+        </div>
+          <div class="field">
+            <div class="field-head">
+              <div>
+                <label>เพิ่มมิเตอร์</label>
+                <p class="muted small">เพิ่มข้อมูลมิเตอร์ทีละรายการ</p>
+              </div>
+              <div class="field-actions">
+                <button class="chip-btn" id="meter-add-btn" type="button">เพิ่มมิเตอร์</button>
+              </div>
+            </div>
+            <div class="meter-list" id="meter-list"></div>
+            <div class="pager hidden" id="meter-pager"></div>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <button class="small-btn btn-danger hidden" id="plant-delete" type="button">ลบ Plant</button>
+        <button class="ghost small-btn" id="plant-cancel" type="button">ยกเลิก</button>
+        <button class="primary" id="plant-save" type="button">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="meter-modal" role="dialog" aria-modal="true">
+    <div class="modal-content small">
+      <div class="modal-header">
+        <h3 id="meter-modal-title">เพิ่มมิเตอร์</h3>
+        <button class="ghost icon-btn" id="meter-modal-close" aria-label="ปิด">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="meter-name-input">ตั้งชื่อมิเตอร์ <span class="req-star">*</span></label>
+          <input type="text" id="meter-name-input" placeholder="">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="meter-address-input">Address <span class="req-star">*</span></label>
+            <input type="text" id="meter-address-input" placeholder="" inputmode="numeric" pattern="[0-9]*">
+          </div>
+          <div class="field">
+            <label for="meter-station-input">Station <span class="req-star">*</span></label>
+            <input type="text" id="meter-station-input" placeholder="" inputmode="numeric" pattern="[0-9]*">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost small-btn" id="meter-add-cancel" type="button">ยกเลิก</button>
+        <button class="primary" id="meter-add-confirm" type="button">ตกลง</button>
+      </div>
     </div>
   </div>
 
