@@ -114,7 +114,54 @@
           </table>
         </div>
       </div>
+
+      <div class="panel-sub hidden" id="receipt-history">
+        <div class="summary-header">
+          <h4 id="receipt-title">ประวัติใบเสร็จ</h4>
+          <button class="ghost small-btn" id="receipt-close" type="button">ปิด</button>
+        </div>
+        <div class="history-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th style="width: 160px;">เดือน</th>
+                <th style="width: 110px;">จำนวนวัน</th>
+                <th style="width: 180px;">วันที่ออกใบเสร็จ</th>
+                <th style="width: 160px;">ดาวน์โหลด</th>
+                <th style="width: 170px;">ตัวอย่าง</th>
+              </tr>
+            </thead>
+            <tbody id="receipt-rows">
+              <tr><td class="empty" colspan="5">ยังไม่มีประวัติใบเสร็จ</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
+
+    <div class="modal hidden" id="receipt-preview-modal" role="dialog" aria-modal="true">
+      <div class="modal-content receipt-preview">
+        <div class="modal-header">
+          <div>
+            <h3>ตัวอย่างใบเสร็จ</h3>
+            <p class="muted small" id="receipt-preview-month"></p>
+          </div>
+          <div class="header-actions">
+            <button class="primary small-btn" id="receipt-preview-download" type="button">ดาวน์โหลด PDF</button>
+            <button class="ghost icon-btn" id="receipt-preview-close" aria-label="ปิด">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div id="receipt-preview-viewport" class="receipt-preview-viewport">
+            <div id="receipt-preview-content" class="receipt-preview-content"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="modal hidden" id="bill-modal" role="dialog" aria-modal="true">
       <div class="modal-content">

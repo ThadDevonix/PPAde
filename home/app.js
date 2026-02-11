@@ -1,84 +1,21 @@
-const defaultPlants = [
-  {
-    name: "โฟนิคส์ สํานักงานใหญ่ 10kW",
-    country: "Thailand",
-    deviceType: "Inverter",
-    deviceSn: "SN-TH-001",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-001-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-001-B", status: "online" }
-    ]
-  },
-  {
-    name: "โรงเรียนศรีษาบุตรสกุล 80kW อาคารหอประชุม",
-    country: "Thailand",
-    deviceType: "Inverter",
-    deviceSn: "SN-TH-002",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-002-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-002-B", status: "online" }
-    ]
-  },
-  {
-    name: "Narai Hill Golf Resort Country Club 50 kW",
-    country: "Thailand",
-    deviceType: "Meter",
-    deviceSn: "SN-TH-003",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-003-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-003-B", status: "online" }
-    ]
-  },
-  {
-    name: "บริษัทศรีน้องพาณิชย์ จ.กระบี่",
-    country: "Thailand",
-    deviceType: "Logger",
-    deviceSn: "SN-TH-004",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-004-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-004-B", status: "online" }
-    ]
-  },
-  {
-    name: "PEA โรงเรียนชาติเชียรแม่ป่าไผ่ 5kW+op+batt",
-    country: "Thailand",
-    deviceType: "Inverter",
-    deviceSn: "SN-TH-005",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-005-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-005-B", status: "online" }
-    ]
-  },
-  {
-    name: "PEA โรงเรียนพิจองซิง จ.แม่ฮาย 5kW+op+batt",
-    country: "Thailand",
-    deviceType: "Inverter",
-    deviceSn: "SN-TH-006",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-006-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-006-B", status: "online" }
-    ]
-  },
-  {
-    name: "PEA โรงเรียนเข้นหัวเวียง 5kW+op+batt",
-    country: "Thailand",
-    deviceType: "Logger",
-    deviceSn: "SN-TH-007",
-    status: "online",
-    devices: [
-      { name: "Meter A", sn: "SN-TH-007-A", status: "online" },
-      { name: "Meter B", sn: "SN-TH-007-B", status: "online" }
-    ]
-  }
-];
+const defaultPlants = [];
 
-const plantsStorageKey = "plantsDataV1";
+const plantsStorageKey = "plantsDataV2";
+const legacyPlantsStorageKey = "plantsDataV1";
+const legacySeedPlantNames = new Set([
+  "โฟนิคส์ สํานักงานใหญ่ 10kW",
+  "โรงเรียนศรีษาบุตรสกุล 80kW อาคารหอประชุม",
+  "Narai Hill Golf Resort Country Club 50 kW",
+  "บริษัทศรีน้องพาณิชย์ จ.กระบี่",
+  "PEA โรงเรียนชาติเชียรแม่ป่าไผ่ 5kW+op+batt",
+  "PEA โรงเรียนพิจองซิง จ.แม่ฮาย 5kW+op+batt",
+  "PEA โรงเรียนเข้นหัวเวียง 5kW+op+batt"
+]);
+const energyApiBase = "https://solarmdb.devonix.co.th/api/energy";
+const requestedPlantName = "CNX_PPA";
+const plantsLiveUrl = `${energyApiBase}?period=live&name=${encodeURIComponent(
+  requestedPlantName
+)}`;
 const generateId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -89,10 +26,20 @@ const normalizePlants = (list) =>
   list.map((plant) => (plant.id ? plant : { ...plant, id: generateId() }));
 const loadPlants = () => {
   try {
-    const saved = localStorage.getItem(plantsStorageKey);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
+    const savedV2 = localStorage.getItem(plantsStorageKey);
+    if (savedV2) {
+      const parsedV2 = JSON.parse(savedV2);
+      if (Array.isArray(parsedV2)) return parsedV2;
+    }
+    const savedV1 = localStorage.getItem(legacyPlantsStorageKey);
+    if (savedV1) {
+      const parsedV1 = JSON.parse(savedV1);
+      if (Array.isArray(parsedV1)) {
+        return parsedV1.filter((plant) => {
+          const name = typeof plant?.name === "string" ? plant.name.trim() : "";
+          return name && !legacySeedPlantNames.has(name);
+        });
+      }
     }
   } catch {
     // ignore parse errors
@@ -101,6 +48,204 @@ const loadPlants = () => {
 };
 const savePlants = () => {
   localStorage.setItem(plantsStorageKey, JSON.stringify(plants));
+};
+const readString = (...values) => {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const text = value.trim();
+      if (text) return text;
+    }
+  }
+  return "";
+};
+const normalizeKeyToken = (value) =>
+  String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const readStringByLooseKey = (value, keys) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const wanted = new Set(keys.map(normalizeKeyToken));
+  const entries = Object.entries(value);
+  for (const [key, raw] of entries) {
+    if (!wanted.has(normalizeKeyToken(key))) continue;
+    const text = readString(raw);
+    if (text) return text;
+  }
+  return "";
+};
+const getPlantName = (value) =>
+  readString(
+    value?.["Name (Location)"],
+    value?.["name (location)"],
+    value?.["Name(Location)"],
+    value?.["name(location)"],
+    value?.name,
+    value?.plant,
+    value?.plant_name,
+    value?.plantName,
+    value?.location,
+    value?.location_name,
+    value?.locationName,
+    value?.site,
+    value?.site_name,
+    value?.siteName,
+    value?.Name
+  ) ||
+  readStringByLooseKey(value, [
+    "name",
+    "plant",
+    "plant_name",
+    "plantName",
+    "site",
+    "site_name",
+    "siteName",
+    "location",
+    "location_name",
+    "locationName",
+    "Name (Location)"
+  ]);
+const normalizePlantNameKey = (value) => value.trim().toLowerCase();
+const normalizePlantStatus = (value) => {
+  if (typeof value === "boolean") return value ? "online" : "offline";
+  const text = readString(value).toLowerCase();
+  if (!text) return "online";
+  if (text.includes("off") || text.includes("down") || text.includes("error")) {
+    return "offline";
+  }
+  return "online";
+};
+const hasPayloadData = (value) => {
+  if (Array.isArray(value)) return value.some((item) => hasPayloadData(item));
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value);
+    if (!entries.length) return false;
+    return entries.some(([, item]) => hasPayloadData(item));
+  }
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  return false;
+};
+const extractApiRows = (payload) => {
+  if (!payload || typeof payload !== "object") return [];
+  const queue = [payload];
+  const rows = [];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+    const name = getPlantName(current);
+    if (name) {
+      rows.push(current);
+      continue;
+    }
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === "object") queue.push(value);
+    });
+  }
+  return rows;
+};
+const normalizeApiPlants = (payload) => {
+  const rows = extractApiRows(payload);
+  const byName = new Map();
+  rows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const name = getPlantName(row);
+    if (!name) return;
+    const key = normalizePlantNameKey(name);
+    const existing = byName.get(key);
+    const deviceSn = readString(
+      row.device_sn,
+      row.meter_sn,
+      row.sn,
+      row.serial,
+      row.station,
+      row.address
+    );
+    const status = normalizePlantStatus(
+      row.status ?? row.state ?? row.online ?? row.connection_status
+    );
+    if (existing) {
+      if (!existing.deviceSn && deviceSn) existing.deviceSn = deviceSn;
+      if (status === "online") existing.status = "online";
+      return;
+    }
+    byName.set(key, {
+      id: generateId(),
+      name,
+      country: "Thailand",
+      deviceType: "Meter",
+      deviceSn,
+      status,
+      devices: []
+    });
+  });
+  if (!byName.size && hasPayloadData(payload)) {
+    const fallbackName = requestedPlantName;
+    const fallbackKey = normalizePlantNameKey(fallbackName);
+    byName.set(fallbackKey, {
+      id: generateId(),
+      name: fallbackName,
+      country: "Thailand",
+      deviceType: "Meter",
+      deviceSn: "",
+      status: "online",
+      devices: []
+    });
+  }
+  return Array.from(byName.values());
+};
+const mergeApiPlantsWithLocal = (apiPlants, localPlants) => {
+  const localByName = new Map();
+  localPlants.forEach((plant) => {
+    const key = normalizePlantNameKey(plant.name || "");
+    if (key) localByName.set(key, plant);
+  });
+  const mergedApi = apiPlants.map((apiPlant) => {
+    const key = normalizePlantNameKey(apiPlant.name || "");
+    const local = localByName.get(key);
+    if (!local) return apiPlant;
+    localByName.delete(key);
+    return {
+      ...apiPlant,
+      id: local.id || apiPlant.id,
+      devices: Array.isArray(local.devices) ? local.devices : apiPlant.devices,
+      deviceSn: local.deviceSn || apiPlant.deviceSn || ""
+    };
+  });
+  return normalizePlants([...mergedApi, ...Array.from(localByName.values())]);
+};
+const fetchPlantsFromApi = async () => {
+  const response = await fetch(plantsLiveUrl, { method: "GET" });
+  if (!response.ok) throw new Error(`API error ${response.status}`);
+  const payload = await response.json();
+  return normalizeApiPlants(payload);
+};
+const hydratePlantsFromApi = async () => {
+  isHydratingPlants = true;
+  plantsLoadError = "";
+  if (!plants.length) render([]);
+  try {
+    const apiPlants = await fetchPlantsFromApi();
+    if (apiPlants.length) {
+      plants = mergeApiPlantsWithLocal(apiPlants, plants);
+      savePlants();
+    } else if (!plants.length) {
+      plantsLoadError = "API ตอบกลับแล้ว แต่ไม่พบฟิลด์ชื่อ Plant";
+    }
+  } catch (error) {
+    plantsLoadError = "โหลดข้อมูล Plant จาก API ไม่สำเร็จ";
+    console.warn("Failed to load plants from API", error);
+  } finally {
+    isHydratingPlants = false;
+  }
+  if (plants.length) {
+    applyFilters();
+    return;
+  }
+  render([]);
 };
 
 let plants = normalizePlants(loadPlants());
@@ -111,13 +256,20 @@ const inputs = {
   plant: document.getElementById("plant")
 };
 const createPlantBtn = document.getElementById("create-plant");
+const plantCountEl = document.getElementById("plant-count");
 const plantModal = document.getElementById("plant-modal");
 const plantModalTitle = document.getElementById("plant-modal-title");
 const plantModalClose = document.getElementById("plant-modal-close");
 const plantCancel = document.getElementById("plant-cancel");
 const plantDelete = document.getElementById("plant-delete");
+const plantStepLabel = document.getElementById("plant-step-label");
+const plantStepper = document.getElementById("plant-stepper");
+const plantStepFill = document.getElementById("plant-step-fill");
+const plantStepNext = document.getElementById("plant-step-next");
+const plantStepBack = document.getElementById("plant-step-back");
 const plantSave = document.getElementById("plant-save");
 const plantNameInput = document.getElementById("plant-name-input");
+const plantStepPanels = document.querySelectorAll(".plant-step");
 const meterAddBtn = document.getElementById("meter-add-btn");
 const meterModal = document.getElementById("meter-modal");
 const meterModalTitle = document.getElementById("meter-modal-title");
@@ -125,8 +277,9 @@ const meterModalClose = document.getElementById("meter-modal-close");
 const meterAddConfirm = document.getElementById("meter-add-confirm");
 const meterAddCancel = document.getElementById("meter-add-cancel");
 const meterNameInput = document.getElementById("meter-name-input");
-const meterAddressInput = document.getElementById("meter-address-input");
-const meterStationInput = document.getElementById("meter-station-input");
+const addressGroupAddBtn = document.getElementById("address-group-add-btn");
+const addressGroupList = document.getElementById("address-group-list");
+const addressGroupTemplate = document.getElementById("address-group-template");
 const meterList = document.getElementById("meter-list");
 const meterPager = document.getElementById("meter-pager");
 
@@ -135,11 +288,23 @@ let pendingMeters = [];
 let editingPlantId = null;
 let editingMeterIndex = null;
 let meterPage = 1;
+let plantStep = 1;
 const metersPerPage = 5;
 let isMeterModalOpen = false;
+let isHydratingPlants = false;
+let plantsLoadError = "";
 
 const render = (data) => {
+  if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
   if (!data.length) {
+    if (isHydratingPlants) {
+      rowsEl.innerHTML = '<tr><td class="empty" colspan="4">กำลังโหลดข้อมูล Plant...</td></tr>';
+      return;
+    }
+    if (plantsLoadError) {
+      rowsEl.innerHTML = `<tr><td class="empty" colspan="4">${plantsLoadError}</td></tr>`;
+      return;
+    }
     rowsEl.innerHTML = '<tr><td class="empty" colspan="4">ไม่พบข้อมูล</td></tr>';
     return;
   }
@@ -179,24 +344,108 @@ const render = (data) => {
   });
 };
 
-const resetMeterForm = () => {
-  if (meterNameInput) meterNameInput.value = "";
-  if (meterAddressInput) meterAddressInput.value = "";
-  if (meterStationInput) meterStationInput.value = "";
-  editingMeterIndex = null;
-  if (meterAddConfirm) meterAddConfirm.textContent = "ตกลง";
-  if (meterModalTitle) meterModalTitle.textContent = "เพิ่มมิเตอร์";
-  updateMeterRequiredStates();
-};
 const setFieldError = (input, hasError) => {
   const field = input?.closest(".field");
   if (!field) return;
   field.classList.toggle("has-error", hasError);
 };
+const normalizeAddressGroup = (group = {}) => ({
+  addressName: readString(group.addressName, group.address_name),
+  station: readString(group.station, group.sn),
+  address: readString(group.address)
+});
+const getAddressGroupsFromMeter = (meter = {}) => {
+  const groups = Array.isArray(meter.addressGroups)
+    ? meter.addressGroups
+        .map((group) => normalizeAddressGroup(group))
+        .filter((group) => group.addressName || group.station || group.address)
+    : [];
+  if (groups.length) return groups;
+  const legacy = normalizeAddressGroup(meter);
+  if (legacy.addressName || legacy.station || legacy.address) return [legacy];
+  return [];
+};
+const getAddressGroupItems = () =>
+  Array.from(addressGroupList?.querySelectorAll(".address-group-item") || []);
+const getAddressGroupsFromForm = () =>
+  getAddressGroupItems().map((item) => ({
+    addressName: readString(item.querySelector('input[data-field="addressName"]')?.value),
+    station: readString(item.querySelector('input[data-field="station"]')?.value),
+    address: readString(item.querySelector('input[data-field="address"]')?.value)
+  }));
+const updateAddressGroupIndices = () => {
+  const items = getAddressGroupItems();
+  items.forEach((item, idx) => {
+    const indexEl = item.querySelector(".address-group-index");
+    if (indexEl) indexEl.textContent = `ชุดที่ ${idx + 1}`;
+    const removeBtn = item.querySelector(".address-group-remove");
+    if (removeBtn) removeBtn.classList.toggle("hidden", items.length <= 1);
+  });
+};
+const bindAddressGroupItem = (item) => {
+  item.querySelectorAll('input[data-field]').forEach((input) => {
+    input.addEventListener("input", () => {
+      if (input.dataset.field === "station" || input.dataset.field === "address") {
+        const cleaned = input.value.replace(/\D+/g, "");
+        if (input.value !== cleaned) input.value = cleaned;
+      }
+      setFieldError(input, !input.value.trim());
+    });
+  });
+  item.querySelector(".address-group-remove")?.addEventListener("click", () => {
+    item.remove();
+    if (!getAddressGroupItems().length) {
+      appendAddressGroupItem();
+    }
+    updateAddressGroupIndices();
+    updateMeterRequiredStates();
+  });
+};
+const appendAddressGroupItem = (group = {}, { focus = false } = {}) => {
+  if (!addressGroupTemplate || !addressGroupList) return;
+  const clone = addressGroupTemplate.content.cloneNode(true);
+  const item = clone.querySelector(".address-group-item");
+  if (!item) return;
+  const normalized = normalizeAddressGroup(group);
+  const addressNameInput = item.querySelector('input[data-field="addressName"]');
+  const stationInput = item.querySelector('input[data-field="station"]');
+  const addressInput = item.querySelector('input[data-field="address"]');
+  if (addressNameInput) addressNameInput.value = normalized.addressName;
+  if (stationInput) stationInput.value = normalized.station;
+  if (addressInput) addressInput.value = normalized.address;
+  bindAddressGroupItem(item);
+  addressGroupList.appendChild(item);
+  updateAddressGroupIndices();
+  if (focus) addressNameInput?.focus();
+};
+const setAddressGroupsToForm = (groups = []) => {
+  if (!addressGroupList) return;
+  addressGroupList.innerHTML = "";
+  const normalized = (Array.isArray(groups) ? groups : [])
+    .map((group) => normalizeAddressGroup(group))
+    .filter((group) => group.addressName || group.station || group.address);
+  if (!normalized.length) normalized.push({ addressName: "", station: "", address: "" });
+  normalized.forEach((group) => appendAddressGroupItem(group));
+  updateMeterRequiredStates();
+};
+const resetMeterForm = () => {
+  if (meterNameInput) meterNameInput.value = "";
+  setAddressGroupsToForm();
+  editingMeterIndex = null;
+  if (meterAddConfirm) meterAddConfirm.textContent = "ตกลง";
+  if (meterModalTitle) meterModalTitle.textContent = "เพิ่มมิเตอร์";
+  updateMeterRequiredStates();
+};
 const updateMeterRequiredStates = () => {
   setFieldError(meterNameInput, !meterNameInput?.value.trim());
-  setFieldError(meterAddressInput, !meterAddressInput?.value.trim());
-  setFieldError(meterStationInput, !meterStationInput?.value.trim());
+  getAddressGroupItems().forEach((item) => {
+    const addressNameInput = item.querySelector('input[data-field="addressName"]');
+    const stationInput = item.querySelector('input[data-field="station"]');
+    const addressInput = item.querySelector('input[data-field="address"]');
+    setFieldError(addressNameInput, !addressNameInput?.value.trim());
+    setFieldError(stationInput, !stationInput?.value.trim());
+    setFieldError(addressInput, !addressInput?.value.trim());
+  });
 };
 const closeMeterModal = () => {
   meterModal?.classList.add("hidden");
@@ -204,6 +453,7 @@ const closeMeterModal = () => {
   resetMeterForm();
 };
 const openMeterModal = () => {
+  if (!getAddressGroupItems().length) setAddressGroupsToForm();
   meterModal?.classList.remove("hidden");
   isMeterModalOpen = true;
   updateMeterRequiredStates();
@@ -248,13 +498,21 @@ const renderMeterList = () => {
   const start = (meterPage - 1) * metersPerPage;
   const pageItems = pendingMeters.slice(start, start + metersPerPage);
   meterList.innerHTML = pageItems
-    .map(
-      (m, idx) => `
+    .map((m, idx) => {
+      const addressGroups = getAddressGroupsFromMeter(m);
+      const groupSummary = addressGroups.length
+        ? addressGroups
+            .map(
+              (group, groupIdx) =>
+                `<div class="meta">ชุด ${groupIdx + 1}: ${group.addressName || "-"} | Station: ${group.station || "-"} | เลข Address: ${group.address || "-"}</div>`
+            )
+            .join("")
+        : '<div class="meta">ยังไม่ได้เพิ่มชุด Address</div>';
+      return `
       <div class="meter-item">
         <div>
           <div class="title">${m.name}</div>
-          <div class="meta">Address: ${m.address || "-"}</div>
-          <div class="meta">Station: ${m.station || "-"}</div>
+          ${groupSummary}
         </div>
         <div class="meter-item-actions">
           <button class="meter-edit" type="button" data-action="edit" data-index="${start + idx}">แก้ไข</button>
@@ -262,7 +520,7 @@ const renderMeterList = () => {
         </div>
       </div>
     `
-    )
+    })
     .join("");
   meterList.querySelectorAll("button[data-action='delete']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -279,8 +537,7 @@ const renderMeterList = () => {
       if (!meter) return;
       editingMeterIndex = index;
       if (meterNameInput) meterNameInput.value = meter.name || "";
-      if (meterAddressInput) meterAddressInput.value = meter.address || "";
-      if (meterStationInput) meterStationInput.value = meter.station || "";
+      setAddressGroupsToForm(getAddressGroupsFromMeter(meter));
       if (meterAddConfirm) meterAddConfirm.textContent = "อัปเดต";
       if (meterModalTitle) meterModalTitle.textContent = "แก้ไขมิเตอร์";
       updateMeterRequiredStates();
@@ -289,6 +546,41 @@ const renderMeterList = () => {
   });
   renderMeterPager();
 };
+
+const getPlantNameValue = () => plantNameInput?.value.trim() ?? "";
+const canProceedToMeters = () => Boolean(getPlantNameValue());
+const updatePlantStepAvailability = () => {
+  const canGoStep2 = canProceedToMeters();
+  if (plantStepNext) plantStepNext.disabled = !canGoStep2;
+};
+const setPlantStep = (step, { force = false } = {}) => {
+  const target = Math.min(Math.max(step, 1), 2);
+  if (target === 2 && !canProceedToMeters() && !force) {
+    alert("กรุณาตั้งชื่อ Plant ก่อน");
+    return;
+  }
+  plantStep = target;
+  plantStepPanels.forEach((panel) => {
+    const panelStep = Number(panel.dataset.step);
+    panel.classList.toggle("hidden", panelStep !== plantStep);
+  });
+  if (plantStepLabel) plantStepLabel.textContent = `ขั้นตอนที่ ${plantStep}/2`;
+  if (plantStepper) plantStepper.dataset.step = String(plantStep);
+  if (plantStepFill) {
+    const progress = (plantStep / 2) * 100;
+    plantStepFill.style.width = `${progress}%`;
+  }
+  plantStepper?.querySelectorAll(".modal-step-item").forEach((item) => {
+    const itemStep = Number(item.dataset.step);
+    item.classList.toggle("active", itemStep === plantStep);
+    item.classList.toggle("done", itemStep < plantStep);
+  });
+  plantStepBack?.classList.toggle("hidden", plantStep !== 2);
+  plantSave?.classList.toggle("hidden", plantStep !== 2);
+  plantStepNext?.classList.toggle("hidden", plantStep !== 1);
+  updatePlantStepAvailability();
+};
+
 const openPlantModal = (mode = "create", plant = null) => {
   if (!plantModal) return;
   plantModal.classList.remove("hidden");
@@ -300,11 +592,17 @@ const openPlantModal = (mode = "create", plant = null) => {
     plantDelete?.classList.remove("hidden");
     if (plantNameInput) plantNameInput.value = plant.name || "";
     const meters = Array.isArray(plant.devices) ? plant.devices : [];
-    pendingMeters = meters.map((m) => ({
-      name: m.name || "",
-      address: m.address || "",
-      station: m.station || m.sn || ""
-    }));
+    pendingMeters = meters.map((m) => {
+      const addressGroups = getAddressGroupsFromMeter(m);
+      const firstGroup = addressGroups[0] || { addressName: "", station: "", address: "" };
+      return {
+        name: m.name || "",
+        address: firstGroup.address || "",
+        addressName: firstGroup.addressName || "",
+        station: firstGroup.station || m.sn || "",
+        addressGroups
+      };
+    });
   } else {
     editingPlantId = null;
     if (plantModalTitle) plantModalTitle.textContent = "สร้าง Plant";
@@ -313,6 +611,7 @@ const openPlantModal = (mode = "create", plant = null) => {
     pendingMeters = [];
   }
   renderMeterList();
+  setPlantStep(1, { force: true });
   closeMeterModal();
 };
 const closePlantModal = () => {
@@ -323,6 +622,7 @@ const closePlantModal = () => {
   editingPlantId = null;
   plantDelete?.classList.add("hidden");
   renderMeterList();
+  setPlantStep(1, { force: true });
   closeMeterModal();
 };
 
@@ -363,6 +663,8 @@ plantDelete?.addEventListener("click", () => {
   if (!editingPlantId) return;
   deletePlant(editingPlantId);
 });
+plantStepNext?.addEventListener("click", () => setPlantStep(2));
+plantStepBack?.addEventListener("click", () => setPlantStep(1, { force: true }));
 meterModalClose?.addEventListener("click", closeMeterModal);
 meterModal?.addEventListener("click", (e) => {
   if (e.target === meterModal) closeMeterModal();
@@ -373,36 +675,36 @@ meterAddBtn?.addEventListener("click", () => {
   openMeterModal();
 });
 meterAddCancel?.addEventListener("click", closeMeterModal);
-[
-  meterNameInput,
-  meterAddressInput,
-  meterStationInput
-].forEach((input) => {
-  input?.addEventListener("input", () => {
-    setFieldError(input, !input.value.trim());
-  });
+addressGroupAddBtn?.addEventListener("click", () => {
+  appendAddressGroupItem({}, { focus: true });
+  updateMeterRequiredStates();
 });
-const enforceNumeric = (input) => {
-  if (!input) return;
-  input.addEventListener("input", () => {
-    const cleaned = input.value.replace(/\D+/g, "");
-    if (input.value !== cleaned) input.value = cleaned;
-    setFieldError(input, !input.value.trim());
-  });
-};
-enforceNumeric(meterAddressInput);
-enforceNumeric(meterStationInput);
+plantNameInput?.addEventListener("input", () => {
+  updatePlantStepAvailability();
+});
+meterNameInput?.addEventListener("input", () => {
+  setFieldError(meterNameInput, !meterNameInput.value.trim());
+});
 meterAddConfirm?.addEventListener("click", () => {
   const name = meterNameInput?.value.trim();
-  const address = meterAddressInput?.value.trim();
-  const station = meterStationInput?.value.trim();
-  const hasError = !name || !address || !station;
+  const addressGroups = getAddressGroupsFromForm();
+  const hasAddressError =
+    !addressGroups.length ||
+    addressGroups.some((group) => !group.addressName || !group.station || !group.address);
+  const hasError = !name || hasAddressError;
   updateMeterRequiredStates();
   if (hasError) {
     alert("กรุณากรอกข้อมูลมิเตอร์ให้ครบ");
     return;
   }
-  const payload = { name, address, station };
+  const firstGroup = addressGroups[0] || { addressName: "", station: "", address: "" };
+  const payload = {
+    name,
+    address: firstGroup.address,
+    addressName: firstGroup.addressName,
+    station: firstGroup.station,
+    addressGroups
+  };
   if (editingMeterIndex !== null) {
     pendingMeters = pendingMeters.map((m, idx) =>
       idx === editingMeterIndex ? payload : m
@@ -425,13 +727,19 @@ plantSave?.addEventListener("click", () => {
     alert("กรุณาเพิ่มมิเตอร์อย่างน้อย 1 รายการ");
     return;
   }
-  const devices = pendingMeters.map((m, idx) => ({
-    name: m.name,
-    sn: m.station || m.address || `SN-${Date.now()}-${idx}`,
-    status: "online",
-    address: m.address,
-    station: m.station
-  }));
+  const devices = pendingMeters.map((m, idx) => {
+    const addressGroups = getAddressGroupsFromMeter(m);
+    const firstGroup = addressGroups[0] || normalizeAddressGroup(m);
+    return {
+      name: m.name,
+      sn: firstGroup.station || firstGroup.address || `SN-${Date.now()}-${idx}`,
+      status: "online",
+      address: firstGroup.address,
+      addressName: firstGroup.addressName,
+      station: firstGroup.station,
+      addressGroups
+    };
+  });
   if (editingPlantId) {
     const current = plants.find((p) => p.id === editingPlantId);
     if (!current) return;
@@ -474,4 +782,6 @@ document.addEventListener("keydown", (e) => {
   if (isPlantModalOpen) closePlantModal();
 });
 
-render(plants);
+if (plants.length) render(plants);
+updatePlantStepAvailability();
+hydratePlantsFromApi();

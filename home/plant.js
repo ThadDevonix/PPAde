@@ -22,6 +22,17 @@ const billDetailHead = document.getElementById("bill-detail-head");
 const billDetailRows = document.getElementById("bill-detail-rows");
 const billDetailTitle = document.getElementById("bill-detail-title");
 const billDetailClose = document.getElementById("bill-detail-close");
+const receiptHistory = document.getElementById("receipt-history");
+const receiptTitle = document.getElementById("receipt-title");
+const receiptRows = document.getElementById("receipt-rows");
+const receiptClose = document.getElementById("receipt-close");
+const receiptPreviewModal = document.getElementById("receipt-preview-modal");
+const receiptPreviewContent = document.getElementById("receipt-preview-content");
+const receiptPreviewClose = document.getElementById("receipt-preview-close");
+const receiptPreviewMonth = document.getElementById("receipt-preview-month");
+const receiptPreviewDownload = document.getElementById(
+  "receipt-preview-download"
+);
 const billTotalCount = document.getElementById("bill-total-count");
 const billLastPeriod = document.getElementById("bill-last-period");
 const billLastAmount = document.getElementById("bill-last-amount");
@@ -76,16 +87,48 @@ const detailColumnDefs = [
 
 let isModalOpen = false;
 let activeDetailId = null;
+let isReceiptPreviewOpen = false;
+let currentReceiptHtml = "";
+let currentReceiptTitle = "";
+let currentReceiptContext = null;
+let currentReceiptRowsPerPage = 32;
 
 const pad = (value) => String(value).padStart(2, "0");
 const formatDate = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const formatMonth = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+const thaiMonthShort = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค."
+];
 const parseDateInput = (value) => {
   if (!value) return null;
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day);
+};
+const formatThaiDateShort = (value) => {
+  const date = value instanceof Date ? value : parseDateInput(value);
+  if (!date) return value || "-";
+  return `${date.getDate()} ${thaiMonthShort[date.getMonth()]} ${date.getFullYear()}`;
+};
+const formatThaiMonthYear = (value) => {
+  const date = value instanceof Date ? value : parseDateInput(value);
+  if (!date) return "-";
+  return date.toLocaleDateString("th-TH", {
+    month: "long",
+    year: "numeric"
+  });
 };
 const normalizeDateValue = (value) => {
   if (!value) return null;
@@ -223,6 +266,195 @@ const hideDetail = () => {
   if (!billDetail) return;
   billDetail.classList.add("hidden");
   activeDetailId = null;
+};
+const hideReceiptHistory = () => {
+  receiptHistory?.classList.add("hidden");
+};
+const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
+  const monthStr = formatMonth(issueDate);
+  const dailyRows = [...(bill.daily || [])]
+    .filter((row) => row?.date)
+    .filter((row) => String(row.date).startsWith(monthStr))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map((row) => ({
+      date: row.date,
+      units: parseNumber(row.bill_units)
+    }));
+  const totalKwh = roundTo(
+    dailyRows.reduce((sum, row) => sum + row.units, 0),
+    1
+  );
+  const rate = parseNumber(bill.rate);
+  const calculatedAmount = roundTo(totalKwh * rate, 2);
+  const totalAmount = calculatedAmount;
+  const plantName = plant?.name || "PONIX";
+  const issueLabel = formatThaiDateShort(issueDate);
+  const periodLabel = formatThaiMonthYear(issueDate);
+  const summaryHtml = `
+    <div class="receipt-summary simple">
+      <div class="box">
+        <div class="row"><span>kWh รวม</span><span>${formatNumber(totalKwh, 1)} kWh</span></div>
+        <div class="row"><span>${formatNumber(totalKwh, 1)} × ${formatNumber(
+    rate,
+    2
+  )}</span><span>${formatNumber(calculatedAmount, 2)} บาท</span></div>
+        <div class="row total"><span>ยอดรวมบิลเดือนนี้</span><span>${formatNumber(totalAmount, 2)} บาท</span></div>
+      </div>
+    </div>
+  `;
+  const pageCount = Math.max(1, Math.ceil(dailyRows.length / rowsPerPage));
+  const buildRowsHtml = (rows) =>
+    rows
+      .map((row) => `
+        <tr>
+          <td class="date-cell">${formatThaiDateShort(row.date)}</td>
+          <td class="num-cell">${formatNumber(row.units, 1)}</td>
+        </tr>
+      `)
+      .join("");
+  const buildPage = (rows, pageIndex) => `
+    <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
+      <div class="receipt-logo"><span>P</span><span>ONIX</span></div>
+      <div class="receipt-title">
+        <h2>ใบเสร็จรับเงิน</h2>
+        <p>Receipt</p>
+      </div>
+      <div class="receipt-meta">
+        <div class="box">
+          <strong>ข้อมูลบริษัท</strong>
+          <div>บริษัท: ${plantName}</div>
+          <div>หมายเลขใบเสร็จ: ST-${String(bill.billNo).padStart(6, "0")}</div>
+        </div>
+        <div class="box">
+          <strong>รายละเอียดงวด</strong>
+          <div>เดือน: ${periodLabel}</div>
+          <div>วันที่ออกใบเสร็จ: ${issueLabel}</div>
+          <div>อัตรา: ${formatNumber(rate, 2)} บาท/kWh</div>
+        </div>
+      </div>
+      <div class="receipt-divider"></div>
+      <div class="receipt-table-area">
+        <table class="receipt-table receipt-usage-table">
+          <colgroup>
+            <col style="width:72%">
+            <col style="width:28%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="date-cell">วันที่</th>
+              <th class="num-cell">ใช้ไฟ (kWh)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${buildRowsHtml(rows)}
+          </tbody>
+        </table>
+      </div>
+      ${pageIndex === pageCount - 1 ? summaryHtml : ""}
+    </div>
+  `;
+  return Array.from({ length: pageCount }, (_, pageIndex) => {
+    const start = pageIndex * rowsPerPage;
+    const pageRows = dailyRows.slice(start, start + rowsPerPage);
+    return buildPage(pageRows, pageIndex);
+  }).join('<div class="page-break"></div>');
+};
+const openReceiptPreview = ({ bill, issueDate }) => {
+  if (!receiptPreviewModal || !receiptPreviewContent) return;
+  const periodText = formatThaiMonthYear(issueDate);
+  if (receiptPreviewMonth) {
+    receiptPreviewMonth.textContent = `เดือน ${periodText}`;
+  }
+  currentReceiptContext = { bill, issueDate };
+  currentReceiptRowsPerPage = 32;
+  currentReceiptHtml = buildReceiptHtml({
+    bill,
+    issueDate,
+    rowsPerPage: currentReceiptRowsPerPage
+  });
+  currentReceiptTitle = `Receipt Bill ${bill.billNo} ${formatMonth(issueDate)}`;
+  receiptPreviewContent.classList.add("web-view");
+  receiptPreviewContent.innerHTML = currentReceiptHtml;
+  receiptPreviewModal.classList.remove("hidden");
+  isReceiptPreviewOpen = true;
+  sizeReceiptSheet();
+  requestAnimationFrame(() => {
+    adjustReceiptPagination();
+  });
+};
+const sizeReceiptSheet = () => {
+  if (!receiptPreviewContent) return;
+  currentReceiptHtml = receiptPreviewContent.innerHTML;
+  adjustReceiptPagination();
+};
+const adjustReceiptPagination = () => {
+  if (!receiptPreviewContent || !currentReceiptContext) return;
+  const paper = receiptPreviewContent.querySelector(".receipt-paper");
+  if (!paper) return;
+  const tableArea = paper.querySelector(".receipt-table-area");
+  const thead = paper.querySelector(".receipt-table thead");
+  if (!tableArea || !thead) return;
+  const rowHRaw = getComputedStyle(paper).getPropertyValue("--row-h");
+  const rowH = Number.parseFloat(rowHRaw) || 12;
+  const tableAreaH = tableArea.clientHeight;
+  const headerH = thead.offsetHeight || 18;
+  const available = Math.max(0, tableAreaH - headerH);
+  const rowsPerPage = Math.max(1, Math.floor(available / rowH));
+  if (rowsPerPage === currentReceiptRowsPerPage) return;
+  currentReceiptRowsPerPage = rowsPerPage;
+  currentReceiptHtml = buildReceiptHtml({
+    ...currentReceiptContext,
+    rowsPerPage: currentReceiptRowsPerPage
+  });
+  receiptPreviewContent.innerHTML = currentReceiptHtml;
+};
+const openReceiptPrint = () => {
+  if (!currentReceiptHtml) return;
+  const win = window.open("", "_blank");
+  if (!win) return;
+  const styleHref = new URL("./style.css", window.location.href).href;
+  const fontHref =
+    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap";
+  win.document.write(`
+    <html>
+      <head>
+        <title>${currentReceiptTitle}</title>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="${fontHref}">
+        <link rel="stylesheet" href="${styleHref}">
+      </head>
+      <body class="pdf-view">${currentReceiptHtml}</body>
+    </html>
+  `);
+  win.document.close();
+  const triggerPrint = () => {
+    win.focus();
+    win.print();
+  };
+  if (win.document.readyState === "complete") {
+    requestAnimationFrame(triggerPrint);
+    return;
+  }
+  win.addEventListener(
+    "load",
+    () => {
+      setTimeout(triggerPrint, 100);
+    },
+    { once: true }
+  );
+};
+const closeReceiptPreview = () => {
+  receiptPreviewModal?.classList.add("hidden");
+  isReceiptPreviewOpen = false;
+  receiptPreviewContent?.classList.remove("web-view");
+  if (receiptPreviewContent) receiptPreviewContent.innerHTML = "";
+  currentReceiptHtml = "";
+  currentReceiptTitle = "";
+  currentReceiptContext = null;
+  currentReceiptRowsPerPage = 32;
 };
 const populateCutoffOptions = () => {
   if (!billCutoff) return;
@@ -501,6 +733,22 @@ const getBillUnits = (row, method) => {
   return roundTo(Math.max(0, value), 1);
 };
 
+const buildReceiptDates = (startStr, cutoffDay) => {
+  const start = parseDateInput(startStr);
+  if (!start) return [];
+  const today = new Date();
+  const months = listMonthsBetween(start, today);
+  const cutoff = Number(cutoffDay) || defaultSchedule.cutoffDay;
+  return months
+    .map((monthStr) => {
+      const [year, month] = monthStr.split("-").map(Number);
+      if (!year || !month) return null;
+      const day = clampDay(year, month - 1, cutoff);
+      return new Date(year, month - 1, day);
+    })
+    .filter((date) => date && date >= start && date <= today);
+};
+
 const getDetailColumns = (columns) => {
   const list = Array.isArray(columns) ? columns : [];
   const active = list.length ? list : defaultSchedule.detailColumns;
@@ -551,6 +799,7 @@ const createBill = ({
   rate,
   rateType,
   calcMethod,
+  cutoffDay,
   detailColumns,
   dailyRows,
   auto = false,
@@ -582,6 +831,7 @@ const createBill = ({
     amount,
     auto,
     calcMethod,
+    cutoffDay: cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns: normalizedColumns,
     source,
     meters: meters.map((m) => ({ name: m.name, sn: m.sn })),
@@ -620,6 +870,7 @@ const renderHistory = () => {
           <td>${formatCurrency(bill.amount)}</td>
           <td>
             <div class="history-actions">
+              <button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติใบเสร็จ</button>
               <button class="ghost small-btn" data-action="detail" data-id="${bill.id}" type="button">ดูรายวัน</button>
               <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>
             </div>
@@ -637,6 +888,14 @@ const renderHistory = () => {
       });
     }
   );
+  billHistoryRows.querySelectorAll("button[data-action='receipt']").forEach(
+    (btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        if (id) showReceiptHistory(id);
+      });
+    }
+  );
   billHistoryRows.querySelectorAll("button[data-action='delete']").forEach(
     (btn) => {
       btn.addEventListener("click", () => {
@@ -645,6 +904,68 @@ const renderHistory = () => {
       });
     }
   );
+};
+
+const showReceiptHistory = (id) => {
+  if (!receiptHistory || !receiptRows) return;
+  const bill = history.find((b) => b.id === id);
+  if (!bill) return;
+  hideDetail();
+  const cutoffDay =
+    bill.cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay;
+  const dates = buildReceiptDates(bill.periodStart, cutoffDay).sort(
+    (a, b) => b - a
+  );
+  if (receiptTitle) {
+    receiptTitle.textContent = `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`;
+  }
+  if (!dates.length) {
+    receiptRows.innerHTML =
+      '<tr><td class="empty" colspan="5">ยังไม่มีประวัติใบเสร็จ</td></tr>';
+  } else {
+    receiptRows.innerHTML = dates
+      .map((date, idx) => {
+        const year = date.getFullYear();
+        const monthIndex = date.getMonth();
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        return `
+        <tr>
+          <td>งวด ${dates.length - idx} • ${formatMonth(date)}</td>
+          <td>${daysInMonth} วัน</td>
+          <td>${formatDate(date)}</td>
+          <td>
+            <button class="small-btn" data-action="download" data-date="${formatDate(
+              date
+            )}">ดาวน์โหลด</button>
+          </td>
+          <td>
+            <button class="ghost small-btn" data-action="sample" data-date="${formatDate(
+              date
+            )}">ดูตัวอย่าง</button>
+          </td>
+        </tr>
+      `;
+      })
+      .join("");
+    receiptRows
+      .querySelectorAll("button[data-action='download']")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const date = btn.getAttribute("data-date");
+          alert(`ดาวน์โหลดใบเสร็จ เดือน ${date || ""}`);
+        });
+      });
+    receiptRows
+      .querySelectorAll("button[data-action='sample']")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
+          if (!issueDate) return;
+          openReceiptPreview({ bill, issueDate });
+        });
+      });
+  }
+  receiptHistory.classList.remove("hidden");
 };
 
 const updateSummary = () => {
@@ -665,6 +986,7 @@ const showBillDetail = (id) => {
   if (!billDetail || !billDetailRows) return;
   const bill = history.find((b) => b.id === id);
   if (!bill) return;
+  hideReceiptHistory();
   activeDetailId = id;
   billDetailTitle.textContent = `ใบที่ ${bill.billNo} • ${bill.periodStart} - ${bill.periodEnd}`;
   const columns = getDetailColumns(bill.detailColumns);
@@ -742,6 +1064,7 @@ const runAutoIfDue = async () => {
     rate: schedule.defaultRate,
     rateType: schedule.rateType,
     calcMethod: schedule.calcMethod || defaultSchedule.calcMethod,
+    cutoffDay,
     detailColumns: schedule.detailColumns || defaultSchedule.detailColumns,
     auto: true,
     source,
@@ -830,6 +1153,7 @@ const handleConfirm = async () => {
     rate: rateVal,
     rateType: rateTypeVal,
     calcMethod,
+    cutoffDay,
     detailColumns,
     auto: false,
     source,
@@ -866,7 +1190,12 @@ billModal?.addEventListener("click", (e) => {
   if (e.target === billModal) closeModal();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && isModalOpen) closeModal();
+  if (e.key !== "Escape") return;
+  if (isReceiptPreviewOpen) {
+    closeReceiptPreview();
+    return;
+  }
+  if (isModalOpen) closeModal();
 });
 
 billCutoff?.addEventListener("change", () => {
@@ -907,11 +1236,20 @@ columnsClearBtn?.addEventListener("click", () => {
 });
 
 billDetailClose?.addEventListener("click", hideDetail);
+receiptClose?.addEventListener("click", hideReceiptHistory);
+receiptPreviewClose?.addEventListener("click", closeReceiptPreview);
+receiptPreviewModal?.addEventListener("click", (e) => {
+  if (e.target === receiptPreviewModal) closeReceiptPreview();
+});
+receiptPreviewDownload?.addEventListener("click", () => {
+  openReceiptPrint();
+});
+window.addEventListener("resize", () => {
+  if (isReceiptPreviewOpen) sizeReceiptSheet();
+});
 
 // toggle meters/billing
-let billingMode = false;
 const setMode = (isBilling) => {
-  billingMode = isBilling;
   if (metersPanel && billingPanel) {
     metersPanel.classList.toggle("hidden", isBilling);
     billingPanel.classList.toggle("hidden", !isBilling);
@@ -921,6 +1259,8 @@ const setMode = (isBilling) => {
   if (!isBilling) {
     closeModal();
     hideDetail();
+    hideReceiptHistory();
+    closeReceiptPreview();
   }
 };
 

@@ -31,6 +31,26 @@
 
     <section class="panel">
       <h3>กราฟการวัด</h3>
+      <div class="meter-chart-controls">
+        <div class="period-switch" id="chart-period-switch">
+          <button class="period-btn" data-period="day" type="button">วัน</button>
+          <button class="period-btn active" data-period="month" type="button">เดือน</button>
+          <button class="period-btn" data-period="year" type="button">ปี</button>
+        </div>
+        <div class="field compact" id="chart-year-wrap">
+          <label for="chart-year">ปี</label>
+          <select id="chart-year"></select>
+        </div>
+        <div class="field compact" id="chart-month-wrap">
+          <label for="chart-month">เดือน</label>
+          <select id="chart-month"></select>
+        </div>
+        <div class="field compact" id="chart-day-wrap">
+          <label for="chart-day">วัน</label>
+          <select id="chart-day"></select>
+        </div>
+        <button class="primary small-btn" id="chart-load-btn" type="button">แสดงกราฟ</button>
+      </div>
       <div class="chart-box" id="chart-box">Graph placeholder</div>
       <div class="meter-meta">
         <div class="kv"><span>Plant</span><strong id="meta-plant">-</strong></div>

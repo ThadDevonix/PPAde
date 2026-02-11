@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "home");
+const upstreamEnergyApi = "https://solarmdb.devonix.co.th/api/energy";
 
 const mime = (filePath) => {
   const ext = path.extname(filePath).toLowerCase();
@@ -32,6 +33,19 @@ const mime = (filePath) => {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    if (url.pathname === "/api/energy") {
+      const upstreamUrl = `${upstreamEnergyApi}${url.search}`;
+      const upstreamRes = await fetch(upstreamUrl, { method: "GET" });
+      const body = await upstreamRes.text();
+      res.writeHead(upstreamRes.status, {
+        "Content-Type":
+          upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
+      });
+      res.end(body);
+      return;
+    }
+
     const relPath = url.pathname === "/" ? "/index.html" : url.pathname;
     const safePath = path.normalize(relPath).replace(/^(\.\.[\\/])+/, "");
     const filePath = path.join(publicDir, safePath);
@@ -39,7 +53,7 @@ const server = createServer(async (req, res) => {
 
     res.writeHead(200, { "Content-Type": mime(filePath) });
     res.end(data);
-  } catch (err) {
+  } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("ไม่พบไฟล์ที่ร้องขอ");
   }

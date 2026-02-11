@@ -1,0 +1,267 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 9901 >>
+stream
+0 0 0 rg
+0.25 0.70 0.45 rg
+BT /F2 36 Tf 1 0 0 1 255 800 Tm (P) Tj ET
+0.16 0.2 0.4 rg
+BT /F2 36 Tf 1 0 0 1 278 800 Tm (ONIX) Tj ET
+0 0 0 rg
+BT /F2 18 Tf 1 0 0 1 250 768 Tm (RECEIPT) Tj ET
+BT /F1 10 Tf 1 0 0 1 252 752 Tm (Electricity Usage) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 720 Tm (Company: PONIX Co., Ltd.) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 706 Tm (Address: 612 Example Rd., Nakhon Ratchasima, Thailand) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 692 Tm (Tax ID: 0305560003139) Tj ET
+BT /F1 9 Tf 1 0 0 1 380 720 Tm (Receipt No: ST-409694) Tj ET
+BT /F1 9 Tf 1 0 0 1 380 706 Tm (Period: 2025-01-01 to 2025-01-31) Tj ET
+BT /F1 9 Tf 1 0 0 1 380 692 Tm (Issued: 2025-02-05) Tj ET
+0.85 0.88 0.92 RG
+40 670 m 555 670 l S
+0.93 0.96 1 rg
+40 650 515 18 re f
+0.8 0.85 0.9 RG
+40 650 515 514 re S
+110 650 m 110 1164 l S
+190 650 m 190 1164 l S
+270 650 m 270 1164 l S
+350 650 m 350 1164 l S
+430 650 m 430 1164 l S
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 46 655 Tm (Date) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 116 655 Tm (Solar In) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 196 655 Tm (Self Use) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 276 655 Tm (MDB In) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 356 655 Tm (MDB Out) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 1 0 0 1 436 655 Tm (Bill Units) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 637 Tm (2025-01-01) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 637 Tm (121.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 637 Tm (111.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 637 Tm (25.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 637 Tm (8.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 637 Tm (101.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 621 Tm (2025-01-02) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 621 Tm (122.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 621 Tm (112.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 621 Tm (25.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 621 Tm (8.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 621 Tm (102.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 605 Tm (2025-01-03) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 605 Tm (123.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 605 Tm (113.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 605 Tm (25.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 605 Tm (8.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 605 Tm (103.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 589 Tm (2025-01-04) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 589 Tm (124.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 589 Tm (114.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 589 Tm (26.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 589 Tm (8.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 589 Tm (104.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 573 Tm (2025-01-05) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 573 Tm (126.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 573 Tm (115.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 573 Tm (26.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 573 Tm (9.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 573 Tm (105.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 557 Tm (2025-01-06) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 557 Tm (127.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 557 Tm (116.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 557 Tm (26.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 557 Tm (9.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 557 Tm (106.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 541 Tm (2025-01-07) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 541 Tm (128.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 541 Tm (117.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 541 Tm (27.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 541 Tm (9.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 541 Tm (107.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 525 Tm (2025-01-08) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 525 Tm (129.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 525 Tm (118.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 525 Tm (27.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 525 Tm (9.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 525 Tm (108.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 509 Tm (2025-01-09) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 509 Tm (130.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 509 Tm (119.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 509 Tm (27.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 509 Tm (9.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 509 Tm (109.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 493 Tm (2025-01-10) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 493 Tm (132.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 493 Tm (121.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 493 Tm (28.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 493 Tm (10.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 493 Tm (110.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 477 Tm (2025-01-11) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 477 Tm (133.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 477 Tm (122.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 477 Tm (28.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 477 Tm (10.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 477 Tm (111.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 461 Tm (2025-01-12) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 461 Tm (134.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 461 Tm (123.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 461 Tm (28.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 461 Tm (10.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 461 Tm (112.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 445 Tm (2025-01-13) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 445 Tm (135.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 445 Tm (124.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 445 Tm (28.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 445 Tm (10.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 445 Tm (113.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 429 Tm (2025-01-14) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 429 Tm (136.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 429 Tm (125.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 429 Tm (29.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 429 Tm (10.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 429 Tm (114.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 413 Tm (2025-01-15) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 413 Tm (138.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 413 Tm (126.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 413 Tm (29.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 413 Tm (11.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 413 Tm (115.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 397 Tm (2025-01-16) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 397 Tm (139.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 397 Tm (127.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 397 Tm (29.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 397 Tm (11.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 397 Tm (116.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 381 Tm (2025-01-17) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 381 Tm (140.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 381 Tm (128.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 381 Tm (30.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 381 Tm (11.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 381 Tm (117.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 365 Tm (2025-01-18) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 365 Tm (141.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 365 Tm (129.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 365 Tm (30.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 365 Tm (11.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 365 Tm (118.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 349 Tm (2025-01-19) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 349 Tm (142.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 349 Tm (130.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 349 Tm (30.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 349 Tm (11.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 349 Tm (119.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 333 Tm (2025-01-20) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 333 Tm (144.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 333 Tm (132.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 333 Tm (31.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 333 Tm (12.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 333 Tm (120.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 317 Tm (2025-01-21) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 317 Tm (145.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 317 Tm (133.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 317 Tm (31.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 317 Tm (12.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 317 Tm (121.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 301 Tm (2025-01-22) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 301 Tm (146.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 301 Tm (134.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 301 Tm (31.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 301 Tm (12.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 301 Tm (122.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 285 Tm (2025-01-23) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 285 Tm (147.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 285 Tm (135.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 285 Tm (31.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 285 Tm (12.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 285 Tm (123.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 269 Tm (2025-01-24) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 269 Tm (148.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 269 Tm (136.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 269 Tm (32.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 269 Tm (12.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 269 Tm (124.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 253 Tm (2025-01-25) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 253 Tm (150.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 253 Tm (137.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 253 Tm (32.5) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 253 Tm (13.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 253 Tm (125.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 237 Tm (2025-01-26) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 237 Tm (151.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 237 Tm (138.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 237 Tm (32.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 237 Tm (13.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 237 Tm (126.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 221 Tm (2025-01-27) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 221 Tm (152.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 221 Tm (139.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 221 Tm (33.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 221 Tm (13.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 221 Tm (127.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 205 Tm (2025-01-28) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 205 Tm (153.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 205 Tm (140.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 205 Tm (33.4) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 205 Tm (13.6) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 205 Tm (128.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 189 Tm (2025-01-29) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 189 Tm (154.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 189 Tm (141.9) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 189 Tm (33.7) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 189 Tm (13.8) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 189 Tm (129.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 173 Tm (2025-01-30) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 173 Tm (156.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 173 Tm (143.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 173 Tm (34.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 173 Tm (14.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 173 Tm (130.0) Tj ET
+BT /F1 8 Tf 1 0 0 1 46 157 Tm (2025-01-31) Tj ET
+BT /F1 8 Tf 1 0 0 1 116 157 Tm (157.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 196 157 Tm (144.1) Tj ET
+BT /F1 8 Tf 1 0 0 1 276 157 Tm (34.3) Tj ET
+BT /F1 8 Tf 1 0 0 1 356 157 Tm (14.2) Tj ET
+BT /F1 8 Tf 1 0 0 1 436 157 Tm (131.0) Tj ET
+0.95 0.97 1 rg
+355 130 200 34 re f
+0.8 0.85 0.9 RG
+355 130 200 34 re S
+0 0 0 rg
+BT /F2 10 Tf 1 0 0 1 365 142 Tm (Total kWh) Tj ET
+BT /F2 10 Tf 1 0 0 1 485 142 Tm (3,430.0) Tj ET
+0 0 0 rg
+BT /F1 8 Tf 1 0 0 1 40 60 Tm (This is a sample receipt for preview only.) Tj ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000321 00000 n 
+0000000396 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+10348
+%%EOF
