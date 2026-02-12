@@ -1232,7 +1232,7 @@ const setBillMode = (mode) => {
   if (billHistoryTitle) {
     billHistoryTitle.textContent = isAuto
       ? "ประวัติการสร้างบิลอัตโนมัติ"
-      : "ประวัติการสร้างบิลแบบกำหนดเอง";
+      : "ประวัติการสร้างบิลแบบกำหนดวัน";
   }
   billDateRangeField?.classList.toggle("hidden", isAuto);
   billAutoPreviewField?.classList.toggle("hidden", !isAuto);
@@ -1430,7 +1430,7 @@ const renderHistory = () => {
   const visibleHistory = getHistoryByCurrentMode();
   if (!visibleHistory.length) {
     const emptyLabel =
-      billMode === "auto" ? "ยังไม่มีบิลอัตโนมัติ" : "ยังไม่มีบิลกำหนดเอง";
+      billMode === "auto" ? "ยังไม่มีบิลอัตโนมัติ" : "ยังไม่มีบิลกำหนดวัน";
     billHistoryRows.innerHTML =
       `<tr><td class="empty" colspan="7">${emptyLabel}</td></tr>`;
     return;
@@ -1444,7 +1444,7 @@ const renderHistory = () => {
           : buildLegacyFormula(bill.calcMethod, meterPool);
       const displayMeters = getMetersFromFormula(displayFormula, meterPool);
       const meterText = displayMeters.map((m) => m.name).join(", ");
-      const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดเอง";
+      const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดวัน";
       const badgeClass = bill.auto ? "auto" : "manual";
       const manualIssueDate = getManualIssueDate(bill);
       const manualIssueDateStr = manualIssueDate
@@ -1543,7 +1543,7 @@ const showReceiptHistory = (id) => {
   if (receiptTitle) {
     receiptTitle.textContent = isAutoBill
       ? `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`
-      : `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดเอง)`;
+      : `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดวัน)`;
   }
   if (!dates.length) {
     receiptRows.innerHTML =
