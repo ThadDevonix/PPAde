@@ -359,22 +359,8 @@ const fetchDevicesFromApi = async () => {
   const payload = await response.json();
   return normalizeApiDevices(payload);
 };
-const getPlantDeviceNames = (plant) => {
-  const rawNames = Array.isArray(plant?.devices)
-    ? plant.devices
-        .map((device) =>
-          readString(device?.deviceName, device?.device_name, device?.name)
-        )
-        .filter(Boolean)
-    : [];
-  return Array.from(new Set(rawNames));
-};
-const getPlantDeviceSummaryText = (plant) => {
-  const names = getPlantDeviceNames(plant);
-  if (!names.length) return "Device: -";
-  if (names.length <= 2) return `Device: ${names.join(", ")}`;
-  return `Device: ${names.slice(0, 2).join(", ")} +${names.length - 2}`;
-};
+const getPlantMeterCount = (plant) =>
+  Array.isArray(plant?.devices) ? plant.devices.length : 0;
 const matchesPlantIdentity = (apiPlant, plant) => {
   const apiId = Number(apiPlant?.apiId);
   const plantApiId = Number(plant?.apiId);
@@ -621,14 +607,14 @@ const render = (data) => {
   if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
   if (!data.length) {
     if (isHydratingPlants) {
-      rowsEl.innerHTML = '<tr><td class="empty" colspan="4">กำลังโหลดข้อมูล Plant...</td></tr>';
+      rowsEl.innerHTML = '<tr><td class="empty" colspan="5">กำลังโหลดข้อมูล Plant...</td></tr>';
       return;
     }
     if (plantsLoadError) {
-      rowsEl.innerHTML = `<tr><td class="empty" colspan="4">${plantsLoadError}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td class="empty" colspan="5">${plantsLoadError}</td></tr>`;
       return;
     }
-    rowsEl.innerHTML = '<tr><td class="empty" colspan="4">ไม่พบข้อมูล</td></tr>';
+    rowsEl.innerHTML = '<tr><td class="empty" colspan="5">ไม่พบข้อมูล</td></tr>';
     return;
   }
 
@@ -638,7 +624,9 @@ const render = (data) => {
       <td><div class="img-ph" aria-label="ภาพโรงไฟฟ้า (placeholder)"></div></td>
       <td>
         <div class="name">${escapeHtml(item.name)}</div>
-        <div class="sub">${escapeHtml(getPlantDeviceSummaryText(item))}</div>
+      </td>
+      <td>
+        <div class="meter-count-badge">${escapeHtml(String(getPlantMeterCount(item)))}</div>
       </td>
       <td>
         <div class="history-actions">
@@ -648,7 +636,7 @@ const render = (data) => {
     </tr>
   `).join("");
 
-  rowsEl.querySelectorAll("tr").forEach((tr) => {
+  rowsEl.querySelectorAll("tr[data-index]").forEach((tr) => {
     tr.addEventListener("click", () => {
       const idx = Number(tr.dataset.index);
       const plant = data[idx];

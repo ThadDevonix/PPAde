@@ -296,6 +296,10 @@ th {
   color: var(--muted);
   font-weight: 600;
 }
+th:nth-child(4),
+td:nth-child(4) {
+  text-align: center;
+}
 tbody tr:nth-child(even) {
   background: var(--row-alt);
 }
@@ -333,6 +337,23 @@ tbody tr.selected {
   color: var(--muted);
   font-size: 13px;
   margin-top: 3px;
+}
+.meter-count-badge {
+  display: inline-flex;
+  min-width: 52px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  color: #0f63d4;
+  background: linear-gradient(135deg, #e8f1ff, #f5f9ff);
+  border: 1px solid #cfe0ff;
+  box-shadow: 0 8px 18px rgba(15, 99, 212, 0.15);
 }
 .empty {
   text-align: center;
