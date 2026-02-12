@@ -60,8 +60,6 @@ let selectedPeriod = "month";
 const selectedMeterId = Number(meterData?.id);
 
 const pad2 = (value) => String(value).padStart(2, "0");
-const formatDateKey = (date) =>
-  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 const normalizeDateKey = (value) => {
   if (!value) return "";
   const text = String(value).trim();
@@ -70,6 +68,7 @@ const normalizeDateKey = (value) => {
 };
 const normalizeKeyToken = (value) =>
   String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const normalizeIdentityToken = (value) => String(value || "").trim().toLowerCase();
 const readLooseValue = (row, keys) => {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
   const wanted = new Set(keys.map(normalizeKeyToken));
@@ -98,12 +97,82 @@ const selectedEnergyName = readText(
   plantData?.site_code,
   plantData?.name
 ) || fallbackPlantName;
+const selectedMeterNameKey = normalizeIdentityToken(
+  readText(meterData?.name, meterData?.deviceName, meterData?.device_name)
+);
+const selectedMeterSnKey = normalizeIdentityToken(
+  readText(
+    meterData?.sn,
+    meterData?.serial,
+    meterData?.device_sn,
+    meterData?.modbus_address_in,
+    meterData?.modbusAddressIn
+  )
+);
+const inferMeterTypeKey = (nameKey, snKey) => {
+  const raw = `${nameKey || ""} ${snKey || ""}`.trim().toLowerCase();
+  if (!raw) return "";
+  if (
+    raw.includes("solar") ||
+    raw.includes("inverter") ||
+    raw.includes("panel") ||
+    raw.includes("pv")
+  ) {
+    return "solarpanel";
+  }
+  if (raw.includes("mdb") || raw.includes("meter")) return "meter";
+  return "";
+};
+const selectedMeterTypeKey =
+  normalizeKeyToken(
+  readText(meterData?.deviceType, meterData?.device_type, meterData?.type)
+  ) || inferMeterTypeKey(selectedMeterNameKey, selectedMeterSnKey);
+const chartTimeZone =
+  readText(
+    meterData?.timezone,
+    meterData?.timeZone,
+    plantData?.timezone,
+    plantData?.timeZone
+  ) || "Asia/Bangkok";
 const formatMetric = (value) =>
   parseNumber(value).toLocaleString("th-TH", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
   });
 const formatTotalKwh = (value) => `${formatMetric(value)} kWh`;
+const datePartFormatterCache = new Map();
+const getDatePartFormatter = (timeZone = chartTimeZone) => {
+  const zone = readText(timeZone) || "Asia/Bangkok";
+  const cacheKey = zone;
+  const cached = datePartFormatterCache.get(cacheKey);
+  if (cached) return cached;
+  let formatter;
+  try {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+  } catch {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+  }
+  datePartFormatterCache.set(cacheKey, formatter);
+  return formatter;
+};
 const toDate = (value) => {
   if (!value && value !== 0) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -115,6 +184,136 @@ const toDate = (value) => {
   }
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
+};
+const getDatePartsInTimeZone = (value, timeZone = chartTimeZone) => {
+  const date = value instanceof Date ? value : toDate(value);
+  if (!date) return null;
+  try {
+    const parts = getDatePartFormatter(timeZone).formatToParts(date);
+    const byType = {};
+    parts.forEach((part) => {
+      if (part?.type && part.type !== "literal") byType[part.type] = part.value;
+    });
+    const year = Number(byType.year);
+    const month = Number(byType.month);
+    const day = Number(byType.day);
+    const hour = Number(byType.hour);
+    const minute = Number(byType.minute);
+    const second = Number(byType.second);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    return {
+      year,
+      month,
+      day,
+      hour: Number.isFinite(hour) ? hour : 0,
+      minute: Number.isFinite(minute) ? minute : 0,
+      second: Number.isFinite(second) ? second : 0
+    };
+  } catch {
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+      hour: date.getHours(),
+      minute: date.getMinutes(),
+      second: date.getSeconds()
+    };
+  }
+};
+const formatDateKey = (value, timeZone = chartTimeZone) => {
+  const parts = getDatePartsInTimeZone(value, timeZone);
+  if (!parts) return "";
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
+};
+const parseDateKeyParts = (value) => {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+};
+const summarizeMonthFromRows = (rows) => {
+  const parsed = (Array.isArray(rows) ? rows : [])
+    .map((row) => parseDateKeyParts(row?.dateKey))
+    .filter(Boolean);
+  if (!parsed.length) return "";
+  const first = parsed[0];
+  const last = parsed[parsed.length - 1];
+  const sameMonth = parsed.every((item) => item.year === first.year && item.month === first.month);
+  if (sameMonth) return `${first.year}-${pad2(first.month)}`;
+  return `${first.year}-${pad2(first.month)} ถึง ${last.year}-${pad2(last.month)}`;
+};
+const summarizeCreatedAtRange = (rows, timeZone = chartTimeZone) => {
+  const dates = (Array.isArray(rows) ? rows : [])
+    .map((row) =>
+      toDate(
+        readLooseValue(row, ["created_at", "createdAt", "datetime", "timestamp", "ts", "time"])
+      )
+    )
+    .filter(Boolean)
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (!dates.length) return "";
+  const first = formatDateKey(dates[0], timeZone);
+  const last = formatDateKey(dates[dates.length - 1], timeZone);
+  if (!first || !last) return "";
+  if (first === last) return first;
+  return `${first} ถึง ${last}`;
+};
+const rowMatchesSelectedMeter = (row, wantedDeviceId) => {
+  const rowDeviceId = Number(
+    readLooseValue(row, ["device_id", "deviceId", "meter_id", "meterId"])
+  );
+  if (
+    Number.isFinite(wantedDeviceId) &&
+    wantedDeviceId > 0 &&
+    Number.isFinite(rowDeviceId)
+  ) {
+    return rowDeviceId === wantedDeviceId;
+  }
+  const rowDeviceName = normalizeIdentityToken(
+    readLooseValue(row, ["device_name", "deviceName", "meter_name", "meterName", "name"])
+  );
+  const rowDeviceSn = normalizeIdentityToken(
+    readLooseValue(
+      row,
+      ["device_sn", "deviceSn", "sn", "serial", "modbus_address_in", "modbusAddressIn"]
+    )
+  );
+  if (selectedMeterNameKey && rowDeviceName) {
+    if (
+      rowDeviceName === selectedMeterNameKey ||
+      rowDeviceName.includes(selectedMeterNameKey) ||
+      selectedMeterNameKey.includes(rowDeviceName)
+    ) {
+      return true;
+    }
+  }
+  if (selectedMeterSnKey && rowDeviceSn) {
+    if (
+      rowDeviceSn === selectedMeterSnKey ||
+      rowDeviceSn.includes(selectedMeterSnKey) ||
+      selectedMeterSnKey.includes(rowDeviceSn)
+    ) {
+      return true;
+    }
+  }
+  const rowDeviceTypeKey = normalizeKeyToken(
+    readLooseValue(row, ["device_type", "deviceType", "type"])
+  );
+  if (selectedMeterTypeKey && rowDeviceTypeKey) {
+    return rowDeviceTypeKey === selectedMeterTypeKey;
+  }
+  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) {
+    const hasIdentityHints = Boolean(
+      selectedMeterNameKey || selectedMeterSnKey || selectedMeterTypeKey
+    );
+    return !hasIdentityHints;
+  }
+  return true;
 };
 const resolveRowDateKey = (row) => {
   const explicit = normalizeDateKey(readLooseValue(row, ["date", "day"]));
@@ -129,18 +328,29 @@ const resolveRowDateKey = (row) => {
       "createdAt"
     ])
   );
-  return stamp ? formatDateKey(stamp) : "";
+  return stamp ? formatDateKey(stamp, chartTimeZone) : "";
 };
 const formatAxisLabel = ({ dateKey, stampMs }, period, idx) => {
-  const date = stampMs ? new Date(stampMs) : toDate(dateKey);
-  if (date && period === "day") {
-    return date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  const keyParts = parseDateKeyParts(dateKey);
+  if (period === "day") {
+    const date = stampMs ? new Date(stampMs) : toDate(dateKey);
+    if (date) {
+      const parts = getDatePartsInTimeZone(date, chartTimeZone);
+      if (parts) return `${pad2(parts.hour)}:${pad2(parts.minute)}`;
+    }
+    return dateKey || `#${idx + 1}`;
   }
-  if (date && period === "month") {
-    return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}`;
+  if (period === "month") {
+    if (keyParts) return `${pad2(keyParts.day)}/${pad2(keyParts.month)}`;
+    const parts = getDatePartsInTimeZone(stampMs, chartTimeZone);
+    if (parts) return `${pad2(parts.day)}/${pad2(parts.month)}`;
+    return dateKey || `#${idx + 1}`;
   }
-  if (date && period === "year") {
-    return `${pad2(date.getDate())} ${thaiMonthShort[date.getMonth()]}`;
+  if (period === "year") {
+    if (keyParts) return `${pad2(keyParts.day)} ${thaiMonthShort[keyParts.month - 1]}`;
+    const parts = getDatePartsInTimeZone(stampMs, chartTimeZone);
+    if (parts) return `${pad2(parts.day)} ${thaiMonthShort[parts.month - 1]}`;
+    return dateKey || `#${idx + 1}`;
   }
   return dateKey || `#${idx + 1}`;
 };
@@ -150,6 +360,11 @@ const rowHasSeries = (row) =>
   !Array.isArray(row) &&
   (readLooseValue(row, ["solar_in", "solarIn", "solar in"]) !== undefined ||
     readLooseValue(row, ["self_use", "selfUse", "self use"]) !== undefined);
+const rowHasEnergyTotal = (row) =>
+  row &&
+  typeof row === "object" &&
+  !Array.isArray(row) &&
+  readLooseValue(row, ["energy_total", "energyTotal"]) !== undefined;
 const extractSeriesRows = (payload) => {
   if (!payload || typeof payload !== "object") return [];
   const queue = [payload];
@@ -167,6 +382,105 @@ const extractSeriesRows = (payload) => {
     });
   }
   return rows;
+};
+const extractEnergyRows = (payload) => {
+  if (!payload || typeof payload !== "object") return [];
+  const queue = [payload];
+  const rows = [];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+    if (rowHasEnergyTotal(current)) rows.push(current);
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === "object") queue.push(value);
+    });
+  }
+  return rows;
+};
+const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
+  const targetYear = Number(year);
+  const targetMonth = Number(month);
+  const wantedDeviceId = Number(deviceId);
+  const normalized = rows
+    .map((row, idx) => {
+      const stamp = toDate(
+        readLooseValue(row, [
+          "created_at",
+          "createdAt",
+          "datetime",
+          "timestamp",
+          "ts",
+          "time"
+        ])
+      );
+      const energyTotal = parseNumber(
+        readLooseValue(row, ["energy_total", "energyTotal", "total", "value"])
+      );
+      const stampParts = getDatePartsInTimeZone(stamp, chartTimeZone);
+      if (!stamp || !Number.isFinite(energyTotal)) return null;
+      if (!stampParts) return null;
+      if (Number.isFinite(targetYear) && stampParts.year !== targetYear) return null;
+      if (Number.isFinite(targetMonth) && stampParts.month !== targetMonth) return null;
+      if (!rowMatchesSelectedMeter(row, wantedDeviceId)) {
+        return null;
+      }
+      return {
+        idx,
+        stampMs: stamp.getTime(),
+        dateKey: formatDateKey(stamp, chartTimeZone),
+        energyTotal
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.stampMs - b.stampMs);
+
+  const perDay = new Map();
+  normalized.forEach((row) => {
+    const current = perDay.get(row.dateKey);
+    if (!current) {
+      perDay.set(row.dateKey, {
+        dateKey: row.dateKey,
+        stampMs: row.stampMs,
+        min: row.energyTotal,
+        max: row.energyTotal
+      });
+      return;
+    }
+    current.stampMs = Math.max(current.stampMs, row.stampMs);
+    current.min = Math.min(current.min, row.energyTotal);
+    current.max = Math.max(current.max, row.energyTotal);
+  });
+
+  return Array.from(perDay.values())
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+    .map((row, idx) => ({
+      idx,
+      stampMs: row.stampMs,
+      dateKey: row.dateKey,
+      label: formatAxisLabel({ dateKey: row.dateKey, stampMs: row.stampMs }, "month", idx),
+      energyKwh: Math.max(0, row.max - row.min)
+    }));
+};
+const getPreviousMonth = () => {
+  const nowParts = getDatePartsInTimeZone(new Date(), chartTimeZone);
+  if (!nowParts) {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return {
+      year: prev.getFullYear(),
+      month: prev.getMonth() + 1
+    };
+  }
+  const prevMonth = nowParts.month === 1 ? 12 : nowParts.month - 1;
+  const prevYear = nowParts.month === 1 ? nowParts.year - 1 : nowParts.year;
+  return {
+    year: prevYear,
+    month: prevMonth
+  };
 };
 const normalizeChartRows = (rows, { period = "month", limit = 120 } = {}) => {
   const normalized = rows.map((row, idx) => {
@@ -231,8 +545,104 @@ const buildDots = (series, xAt, yAt, color) =>
         `<circle cx="${xAt(idx)}" cy="${yAt(value)}" r="3.6" fill="${color}" stroke="#ffffff" stroke-width="1.4"></circle>`
     )
     .join("");
-const renderChart = (rows) => {
+const renderChart = (rows, options = {}) => {
   if (!chartBox) return;
+  const isMonthlyEnergyMode =
+    options.mode === "month-energy" ||
+    rows.some((row) => Number.isFinite(Number(row?.energyKwh)));
+  if (isMonthlyEnergyMode) {
+    const energySeries = rows.map((row) => parseNumber(row.energyKwh));
+    const totalEnergy = energySeries.reduce((sum, value) => sum + value, 0);
+    const emptyMessage = readText(options.emptyMessage) || "ไม่พบข้อมูลเดือนที่เลือก";
+    const totalLabel = readText(options.totalLabel) || "รวมพลังงาน";
+    const latestLabel = readText(options.latestLabel) || "ล่าสุดต่อวัน";
+    const ariaLabel =
+      readText(options.ariaLabel) || "กราฟพลังงานรายวันจาก energy_total ของเดือนที่เลือก";
+    if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(totalEnergy);
+    if (!rows.length) {
+      chartBox.textContent = emptyMessage;
+      return;
+    }
+
+    let min = Math.min(...energySeries);
+    let max = Math.max(...energySeries);
+    if (min === max) {
+      min -= 1;
+      max += 1;
+    }
+    const labels = rows.map((row) => row.label);
+    const width = 920;
+    const height = 300;
+    const padLeft = 52;
+    const padRight = 18;
+    const padTop = 16;
+    const padBottom = 46;
+    const innerWidth = width - padLeft - padRight;
+    const innerHeight = height - padTop - padBottom;
+    const xAt = (index) =>
+      padLeft +
+      (labels.length <= 1 ? innerWidth / 2 : (index * innerWidth) / (labels.length - 1));
+    const yAt = (value) => padTop + ((max - value) * innerHeight) / (max - min);
+
+    const ticks = 4;
+    const yTicks = Array.from({ length: ticks + 1 }, (_, idx) => {
+      const ratio = idx / ticks;
+      const value = max - (max - min) * ratio;
+      const y = padTop + ratio * innerHeight;
+      return { y, value };
+    });
+    const maxXLabels = 7;
+    const xStep = Math.max(1, Math.ceil(labels.length / maxXLabels));
+    const xTicks = labels
+      .map((label, idx) => ({ label, idx }))
+      .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+
+    const energyColor = "#0f63d4";
+    const energyPath = buildPath(energySeries, xAt, yAt);
+    const energyDots = buildDots(energySeries, xAt, yAt, energyColor);
+    const latest = energySeries[energySeries.length - 1] || 0;
+
+    chartBox.innerHTML = `
+      <div class="meter-chart">
+        <div class="meter-chart-legend">
+          <span><i style="background:${energyColor}"></i>Monthly Energy (kWh)</span>
+        </div>
+        <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" role="img" aria-label="${escapeText(
+          ariaLabel
+        )}">
+          <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+          ${yTicks
+            .map(
+              ({ y, value }) => `
+              <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="#dbe4f5" stroke-width="1"></line>
+              <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatMetric(
+                value
+              )}</text>
+            `
+            )
+            .join("")}
+          <line x1="${padLeft}" y1="${height - padBottom}" x2="${width - padRight}" y2="${height - padBottom}" stroke="#93a6c8" stroke-width="1.2"></line>
+          ${xTicks
+            .map(
+              ({ label, idx }) => `
+              <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="11" fill="#6b7280">${escapeText(
+                label
+              )}</text>
+            `
+            )
+            .join("")}
+          <path d="${energyPath}" fill="none" stroke="${energyColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          ${energyDots}
+        </svg>
+        <div class="meter-chart-summary">
+          <span>${escapeText(totalLabel)}: <strong>${formatMetric(totalEnergy)}</strong></span>
+          <span>${escapeText(latestLabel)}: <strong>${formatMetric(latest)}</strong></span>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(
     rows.reduce(
       (sum, row) => sum + parseNumber(row?.solarIn) + parseNumber(row?.selfUse),
@@ -354,6 +764,52 @@ const fetchMonthRows = async (year, month) => {
   const payload = await requestPayload(query);
   return extractSeriesRows(payload);
 };
+const fetchMonthEnergyRows = async (year, month) => {
+  const siteId = Number(meterData?.siteId ?? meterData?.site_id ?? plantData?.apiId);
+  const siteParams = Number.isFinite(siteId) && siteId > 0
+    ? [`&site_id=${encodeURIComponent(siteId)}`, ""]
+    : [""];
+  const deviceParams =
+    Number.isFinite(selectedMeterId) && selectedMeterId > 0
+      ? [`&device_id=${encodeURIComponent(selectedMeterId)}`, ""]
+      : [""];
+  const queryCandidates = [];
+  siteParams.forEach((siteParam) => {
+    deviceParams.forEach((deviceParam) => {
+      queryCandidates.push(`period=month&month=${year}-${pad2(month)}${deviceParam}${siteParam}`);
+      queryCandidates.push(
+        `period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
+          month
+        )}${deviceParam}${siteParam}`
+      );
+      queryCandidates.push(
+        `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${year}-${pad2(
+          month
+        )}${deviceParam}${siteParam}`
+      );
+    });
+  });
+  const errors = [];
+  const uniqueQueries = [...new Set(queryCandidates)];
+  for (let b = 0; b < energyApiCandidates.length; b += 1) {
+    const base = energyApiCandidates[b];
+    for (let i = 0; i < uniqueQueries.length; i += 1) {
+      const query = uniqueQueries[i];
+      const url = `${base}?${query}`;
+      try {
+        const response = await fetch(url, { method: "GET" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const rows = extractEnergyRows(payload);
+        if (rows.length) return rows;
+      } catch (error) {
+        errors.push(`${url}: ${error?.message || "unknown error"}`);
+      }
+    }
+  }
+  if (errors.length) throw new Error(errors.slice(0, 8).join(" | "));
+  return [];
+};
 const getSelectedYear = () => Number(yearSelect?.value || new Date().getFullYear());
 const getSelectedMonth = () => Number(monthSelect?.value || new Date().getMonth() + 1);
 const getSelectedDay = () => Number(daySelect?.value || new Date().getDate());
@@ -387,6 +843,7 @@ const loadChartBySelection = async () => {
 
   try {
     let rows = [];
+    let chartOptions = {};
 
     if (selectedPeriod === "year") {
       const raw = [];
@@ -406,8 +863,47 @@ const loadChartBySelection = async () => {
     }
 
     if (selectedPeriod === "month") {
-      const raw = await fetchMonthRows(year, month);
-      rows = normalizeChartRows(raw, { period: "month", limit: 62 });
+      const targetYear = year;
+      const targetMonth = month;
+      const targetMonthLabel = `${targetYear}-${pad2(targetMonth)}`;
+      const raw = await fetchMonthEnergyRows(targetYear, targetMonth);
+      rows = normalizeMonthlyEnergyRows(raw, {
+        year: targetYear,
+        month: targetMonth,
+        deviceId: selectedMeterId
+      });
+      let summaryLabel = `รวมเดือน ${targetMonthLabel}`;
+      let ariaLabel = `กราฟพลังงานรายวันจาก energy_total ของเดือน ${targetMonthLabel}`;
+      let emptyMessage = `ไม่พบข้อมูลเดือน ${targetMonthLabel}`;
+      if (!rows.length && raw.length) {
+        const fallbackRows = normalizeMonthlyEnergyRows(raw, {
+          deviceId: selectedMeterId
+        });
+        if (fallbackRows.length) {
+          rows = fallbackRows;
+          const fallbackMonth = summarizeMonthFromRows(fallbackRows);
+          if (fallbackMonth) {
+            summaryLabel = `รวมเดือน ${fallbackMonth}`;
+            ariaLabel = `กราฟพลังงานรายวันจาก energy_total ของเดือน ${fallbackMonth}`;
+          } else {
+            summaryLabel = "รวมช่วงข้อมูลล่าสุด";
+            ariaLabel = "กราฟพลังงานรายวันจาก energy_total (ช่วงข้อมูลล่าสุด)";
+          }
+          emptyMessage = "ไม่พบข้อมูลของมิเตอร์ที่เลือก";
+        } else {
+          const range = summarizeCreatedAtRange(raw, chartTimeZone);
+          emptyMessage = range
+            ? `API มีข้อมูลช่วง ${range} แต่ยังไม่ตรงมิเตอร์ที่เลือก`
+            : "API มีข้อมูล แต่ยังไม่ตรงมิเตอร์ที่เลือก";
+        }
+      }
+      chartOptions = {
+        mode: "month-energy",
+        totalLabel: summaryLabel,
+        latestLabel: "ล่าสุดต่อวัน",
+        emptyMessage,
+        ariaLabel
+      };
     }
 
     if (selectedPeriod === "day") {
@@ -417,7 +913,7 @@ const loadChartBySelection = async () => {
       rows = normalizeChartRows(filtered, { period: "day", limit: 144 });
     }
 
-    renderChart(rows);
+    renderChart(rows, chartOptions);
   } catch (error) {
     chartBox.textContent = `โหลดกราฟไม่สำเร็จ (${error.message})`;
     if (totalKwhValue) totalKwhValue.textContent = "-";
@@ -426,24 +922,30 @@ const loadChartBySelection = async () => {
 };
 const initDateControls = () => {
   if (!yearSelect || !monthSelect || !daySelect) return;
-  const now = new Date();
-  const year = now.getFullYear();
+  const nowParts = getDatePartsInTimeZone(new Date(), chartTimeZone);
+  const currentYear = Number.isFinite(nowParts?.year)
+    ? nowParts.year
+    : new Date().getFullYear();
+  const currentDay = Number.isFinite(nowParts?.day)
+    ? nowParts.day
+    : new Date().getDate();
+  const prevMonth = getPreviousMonth();
 
   yearSelect.innerHTML = Array.from({ length: 8 }, (_, idx) => {
-    const value = year - 4 + idx;
+    const value = currentYear - 4 + idx;
     return `<option value="${value}">${value}</option>`;
   }).join("");
-  yearSelect.value = String(year);
+  yearSelect.value = String(prevMonth.year);
 
   monthSelect.innerHTML = thaiMonthShort
     .map(
       (label, idx) => `<option value="${idx + 1}">${idx + 1} - ${label}</option>`
     )
     .join("");
-  monthSelect.value = String(now.getMonth() + 1);
+  monthSelect.value = String(prevMonth.month);
 
   updateDayOptions();
-  daySelect.value = String(now.getDate());
+  daySelect.value = String(currentDay);
 };
 
 if (!meterData) {

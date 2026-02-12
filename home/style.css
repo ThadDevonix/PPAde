@@ -528,10 +528,37 @@ tbody tr.selected {
 #receipt-history .history-table tbody td:nth-child(5) {
   text-align: center;
 }
+#bill-queue-panel .history-table tbody td:nth-child(1),
+#bill-queue-panel .history-table tbody td:nth-child(2),
+#bill-queue-panel .history-table tbody td:nth-child(4),
+#bill-queue-panel .history-table tbody td:nth-child(5) {
+  text-align: center;
+}
+#bill-queue-panel .history-table tbody td:nth-child(3) {
+  text-align: left;
+}
 .history-actions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.queue-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.queue-status.ready {
+  color: #166534;
+  background: #edfdf2;
+  border-color: #b7e4c7;
 }
 .badge {
   display: inline-flex;
@@ -722,6 +749,10 @@ tbody tr.selected {
 }
 .receipt-usage-table .num-cell {
   text-align: right;
+}
+.receipt-usage-table .op-cell {
+  text-align: center;
+  font-weight: 700;
 }
 .receipt-usage-table th,
 .receipt-usage-table td {
@@ -1202,6 +1233,22 @@ tbody tr.selected {
 }
 #bill-modal .modal-content {
   width: min(980px, 96vw);
+}
+#auto-round-modal .modal-content {
+  width: min(980px, 96vw);
+}
+#auto-round-modal .history-table {
+  min-width: 820px;
+}
+#auto-round-modal .history-table tbody td:nth-child(1),
+#auto-round-modal .history-table tbody td:nth-child(3),
+#auto-round-modal .history-table tbody td:nth-child(4),
+#auto-round-modal .history-table tbody td:nth-child(5),
+#auto-round-modal .history-table tbody td:nth-child(6) {
+  text-align: center;
+}
+#auto-round-modal .history-table tbody td:nth-child(2) {
+  text-align: left;
 }
 #bill-auto-preview-field {
   margin-top: -2px;

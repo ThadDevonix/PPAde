@@ -16,11 +16,22 @@ const deviceRowsEl = document.getElementById("device-rows");
 
 // Billing elements
 const billNewBtn = document.getElementById("bill-new-btn");
+const billQueuePanel = document.getElementById("bill-queue-panel");
+const billQueueTitle = document.getElementById("bill-queue-title");
+const billQueueRows = document.getElementById("bill-queue-rows");
+const billHistoryPanel = document.getElementById("bill-history-panel");
 const billHistoryRows = document.getElementById("bill-history-rows");
 const receiptHistory = document.getElementById("receipt-history");
 const receiptTitle = document.getElementById("receipt-title");
 const receiptRows = document.getElementById("receipt-rows");
 const receiptClose = document.getElementById("receipt-close");
+const autoRoundModal = document.getElementById("auto-round-modal");
+const autoRoundModalTitle = document.getElementById("auto-round-modal-title");
+const autoRoundModalRows = document.getElementById("auto-round-modal-rows");
+const autoRoundModalClose = document.getElementById("auto-round-modal-close");
+const autoRoundModalCloseFooter = document.getElementById(
+  "auto-round-modal-close-footer"
+);
 const receiptPreviewModal = document.getElementById("receipt-preview-modal");
 const receiptPreviewContent = document.getElementById("receipt-preview-content");
 const receiptPreviewClose = document.getElementById("receipt-preview-close");
@@ -132,6 +143,19 @@ let billMode = "manual";
 const pad = (value) => String(value).padStart(2, "0");
 const formatDate = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const formatDateTime = (value) => {
+  const numericValue = Number(value);
+  const date =
+    value instanceof Date
+      ? value
+      : Number.isFinite(numericValue) && numericValue > 0
+        ? new Date(numericValue)
+        : null;
+  if (!date || Number.isNaN(date.getTime())) return "-";
+  return `${formatDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds()
+  )}`;
+};
 const formatMonth = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
 const thaiMonthShort = [
   "ม.ค.",
@@ -741,14 +765,52 @@ const hideReceiptHistory = () => {
   receiptHistory?.classList.add("hidden");
 };
 const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
-  const monthStr = formatMonth(issueDate);
+  const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
+  const formulaTerms = Array.isArray(bill?.calcFormula) && bill.calcFormula.length
+    ? normalizeCalcFormula(bill.calcFormula, meterPool, false)
+    : normalizeCalcFormula(
+      buildLegacyFormula(bill?.calcMethod || defaultSchedule.calcMethod, meterPool),
+      meterPool,
+      false
+    );
+  const leftTerm = formulaTerms[0] || null;
+  const rightTerm = formulaTerms[1] || null;
+  const showFormulaColumns = Boolean(leftTerm && rightTerm);
+  const resolveMeterLabel = (term) => {
+    if (!term) return "Meter";
+    const termKey = String(term.meterKey || "").trim();
+    const termName = String(term.meterName || "").trim();
+    const matchedMeter = meterPool.find((meter) => {
+      const meterKey = getMeterKey(meter);
+      if (termKey && meterKey && meterKey === termKey) return true;
+      if (termName && meter?.name === termName) return true;
+      return false;
+    });
+    if (matchedMeter) return getMeterLabel(matchedMeter);
+    return termName || termKey || "Meter";
+  };
+  const getTermDetail = (term, fallbackLabel) => {
+    if (!term) return fallbackLabel;
+    const fieldLabel = formulaFieldLabelMap[term.field] || term.field || fallbackLabel;
+    return `${fieldLabel}: ${resolveMeterLabel(term)}`;
+  };
+  const getTermHeaderLabel = (term, fallbackLabel) => {
+    if (!term) return fallbackLabel;
+    const fieldLabel = formulaFieldLabelMap[term.field] || term.field || fallbackLabel;
+    const meterLabel = resolveMeterLabel(term).replace(/\s*\(SN:[^)]+\)\s*$/, "");
+    return `${fieldLabel} (${meterLabel})`;
+  };
+  const formulaLabel = formulaTerms.length
+    ? formatFormulaLabel(formulaTerms, meterPool)
+    : "-";
   const dailyRows = [...(bill.daily || [])]
     .filter((row) => row?.date)
-    .filter((row) => String(row.date).startsWith(monthStr))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
     .map((row) => ({
       date: row.date,
-      units: parseNumber(row.bill_units)
+      units: parseNumber(row.bill_units),
+      leftValue: showFormulaColumns && leftTerm ? getFormulaTermValue(row, leftTerm) : null,
+      rightValue: showFormulaColumns && rightTerm ? getFormulaTermValue(row, rightTerm) : null
     }));
   const totalKwh = roundTo(
     dailyRows.reduce((sum, row) => sum + row.units, 0),
@@ -759,7 +821,12 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   const totalAmount = calculatedAmount;
   const plantName = plant?.name || "PONIX";
   const issueLabel = formatThaiDateShort(issueDate);
-  const periodLabel = formatThaiMonthYear(issueDate);
+  const periodLabel =
+    bill?.periodStart && bill?.periodEnd
+      ? `${formatThaiDateShort(bill.periodStart)} - ${formatThaiDateShort(
+        bill.periodEnd
+      )}`
+      : formatThaiMonthYear(issueDate);
   const summaryHtml = `
     <div class="receipt-summary simple">
       <div class="box">
@@ -768,7 +835,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
     rate,
     2
   )}</span><span>${formatNumber(calculatedAmount, 2)} บาท</span></div>
-        <div class="row total"><span>ยอดรวมบิลเดือนนี้</span><span>${formatNumber(totalAmount, 2)} บาท</span></div>
+        <div class="row total"><span>ยอดรวมบิลงวดนี้</span><span>${formatNumber(totalAmount, 2)} บาท</span></div>
       </div>
     </div>
   `;
@@ -778,10 +845,44 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
       .map((row) => `
         <tr>
           <td class="date-cell">${formatThaiDateShort(row.date)}</td>
+          ${showFormulaColumns
+      ? `<td class="num-cell">${formatNumber(row.leftValue, 1)}</td>
+             <td class="op-cell">${escapeHtml(formulaOperator)}</td>
+             <td class="num-cell">${formatNumber(row.rightValue, 1)}</td>`
+      : ""}
           <td class="num-cell">${formatNumber(row.units, 1)}</td>
         </tr>
       `)
       .join("");
+  const termOneDetail = getTermDetail(leftTerm, "ค่า 1");
+  const termTwoDetail = getTermDetail(rightTerm, "ค่า 2");
+  const termOneHeader = getTermHeaderLabel(leftTerm, "ค่า 1");
+  const termTwoHeader = getTermHeaderLabel(rightTerm, "ค่า 2");
+  const formulaOperator =
+    showFormulaColumns && formulaOperators.includes(rightTerm?.operator)
+      ? rightTerm.operator
+      : "-";
+  const colgroupHtml = showFormulaColumns
+    ? `<colgroup>
+            <col style="width:30%">
+            <col style="width:21%">
+            <col style="width:7%">
+            <col style="width:21%">
+            <col style="width:21%">
+          </colgroup>`
+    : `<colgroup>
+            <col style="width:72%">
+            <col style="width:28%">
+          </colgroup>`;
+  const formulaHeadHtml = showFormulaColumns
+    ? `<th class="num-cell" title="${escapeHtml(termOneDetail)}">${escapeHtml(
+      termOneHeader
+    )}</th>
+               <th class="op-cell" title="เครื่องหมาย">${escapeHtml(formulaOperator)}</th>
+               <th class="num-cell" title="${escapeHtml(termTwoDetail)}">${escapeHtml(
+      termTwoHeader
+    )}</th>`
+    : "";
   const buildPage = (rows, pageIndex) => `
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
       <div class="receipt-logo"><span>P</span><span>ONIX</span></div>
@@ -797,21 +898,20 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         </div>
         <div class="box">
           <strong>รายละเอียดงวด</strong>
-          <div>เดือน: ${periodLabel}</div>
+          <div>ช่วงบิล: ${periodLabel}</div>
           <div>วันที่ออกใบเสร็จ: ${issueLabel}</div>
           <div>อัตรา: ${formatNumber(rate, 2)} บาท/kWh</div>
+          <div>สูตรคำนวณ: ${escapeHtml(formulaLabel)}</div>
         </div>
       </div>
       <div class="receipt-divider"></div>
       <div class="receipt-table-area">
         <table class="receipt-table receipt-usage-table">
-          <colgroup>
-            <col style="width:72%">
-            <col style="width:28%">
-          </colgroup>
+          ${colgroupHtml}
           <thead>
             <tr>
               <th class="date-cell">วันที่</th>
+              ${formulaHeadHtml}
               <th class="num-cell">ใช้ไฟ (kWh)</th>
             </tr>
           </thead>
@@ -831,9 +931,12 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
 };
 const openReceiptPreview = ({ bill, issueDate }) => {
   if (!receiptPreviewModal || !receiptPreviewContent) return;
-  const periodText = formatThaiMonthYear(issueDate);
+  const periodText =
+    bill?.periodStart && bill?.periodEnd
+      ? `${bill.periodStart} - ${bill.periodEnd}`
+      : formatThaiMonthYear(issueDate);
   if (receiptPreviewMonth) {
-    receiptPreviewMonth.textContent = `เดือน ${periodText}`;
+    receiptPreviewMonth.textContent = `ช่วงบิล ${periodText}`;
   }
   currentReceiptContext = { bill, issueDate };
   currentReceiptRowsPerPage = 32;
@@ -933,14 +1036,18 @@ const populateCutoffOptions = () => {
     .join("");
 };
 
-const defaultSchedule = {
-  cutoffDay: 5,
+const buildDefaultScheduleFields = () => ({
   defaultRate: 4.2,
   rateType: "flat",
   calcMethod: "self_use",
   calcFormula: [],
   calcLabel: defaultCalcLabel,
   detailColumns: detailColumnDefs.map((col) => col.key)
+});
+const defaultSchedule = {
+  cutoffDay: 5,
+  ...buildDefaultScheduleFields(),
+  autoSchedules: []
 };
 let schedule = { ...defaultSchedule };
 let history = [];
@@ -949,15 +1056,90 @@ let meterProfiles = [];
 let historyKey = "billingHistory";
 let scheduleKey = "billingSchedule";
 let sequenceKey = "billingSequence";
+let mockScenarioKey = "billingMockScenario";
 
+const normalizeDetailColumns = (columns) => {
+  if (!Array.isArray(columns) || !columns.length) {
+    return [...defaultSchedule.detailColumns];
+  }
+  const allowed = new Set(detailColumnDefs.map((col) => col.key));
+  const normalized = columns.filter((key) => allowed.has(key));
+  return normalized.length ? normalized : [...defaultSchedule.detailColumns];
+};
+const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
+  const fallbackFields = {
+    defaultRate: fallback?.defaultRate ?? defaultSchedule.defaultRate,
+    rateType: fallback?.rateType ?? defaultSchedule.rateType,
+    calcMethod: fallback?.calcMethod ?? defaultSchedule.calcMethod,
+    calcFormula: Array.isArray(fallback?.calcFormula) ? fallback.calcFormula : [],
+    calcLabel:
+      typeof fallback?.calcLabel === "string" && fallback.calcLabel.trim()
+        ? fallback.calcLabel.trim()
+        : defaultCalcLabel,
+    detailColumns: normalizeDetailColumns(fallback?.detailColumns)
+  };
+  const cutoffDay = Math.max(
+    1,
+    Math.min(31, Number(raw?.cutoffDay) || Number(fallback?.cutoffDay) || defaultSchedule.cutoffDay)
+  );
+  const rate = parseFloat(`${raw?.defaultRate ?? fallbackFields.defaultRate}`);
+  const rawUpdatedAt = Number(raw?.updatedAt ?? fallback?.updatedAt);
+  const updatedAt =
+    Number.isFinite(rawUpdatedAt) && rawUpdatedAt > 0 ? rawUpdatedAt : null;
+  return {
+    cutoffDay,
+    defaultRate: Number.isFinite(rate) ? roundTo(rate, 2) : defaultSchedule.defaultRate,
+    rateType: raw?.rateType || fallbackFields.rateType,
+    calcMethod: raw?.calcMethod || fallbackFields.calcMethod,
+    calcFormula: Array.isArray(raw?.calcFormula) ? raw.calcFormula : fallbackFields.calcFormula,
+    calcLabel:
+      typeof raw?.calcLabel === "string" && raw.calcLabel.trim()
+        ? raw.calcLabel.trim()
+        : fallbackFields.calcLabel,
+    detailColumns: normalizeDetailColumns(raw?.detailColumns),
+    updatedAt
+  };
+};
+const getAutoSchedules = () =>
+  Array.isArray(schedule?.autoSchedules) ? schedule.autoSchedules : [];
+const listAutoCutoffDays = () =>
+  getAutoSchedules()
+    .map((item) => Number(item?.cutoffDay))
+    .filter((day) => Number.isFinite(day) && day >= 1 && day <= 31)
+    .sort((a, b) => a - b);
+const getAutoScheduleByCutoff = (cutoffDay) => {
+  const target = Number(cutoffDay);
+  if (!Number.isFinite(target)) return null;
+  return getAutoSchedules().find((item) => Number(item?.cutoffDay) === target) || null;
+};
+const upsertAutoSchedule = (entry) => {
+  const targetCutoffDay = Math.max(
+    1,
+    Math.min(
+      31,
+      Number(entry?.cutoffDay) || Number(schedule?.cutoffDay) || defaultSchedule.cutoffDay
+    )
+  );
+  const existingEntry = getAutoScheduleByCutoff(targetCutoffDay);
+  const normalized = normalizeAutoScheduleEntry(entry, existingEntry || schedule);
+  const current = getAutoSchedules().filter(
+    (item) => Number(item?.cutoffDay) !== normalized.cutoffDay
+  );
+  current.push(normalized);
+  current.sort((a, b) => Number(a.cutoffDay) - Number(b.cutoffDay));
+  schedule.autoSchedules = current;
+  return normalized;
+};
 const updateScheduleInfo = (cutoffDay = schedule.cutoffDay) => {
   const dayValue = Number(cutoffDay) || defaultSchedule.cutoffDay;
+  const allDays = listAutoCutoffDays();
+  const dayListText = allDays.length ? allDays.join(", ") : `${dayValue}`;
   if (billCyclePill)
-    billCyclePill.textContent = `สร้างอัตโนมัติทุกวันที่ ${dayValue}`;
+    billCyclePill.textContent = `สร้างอัตโนมัติวันที่ ${dayListText}`;
   if (billCutoffPill)
     billCutoffPill.textContent = `ตัดรอบวันที่ ${dayValue}`;
   if (billScheduleDesc)
-    billScheduleDesc.textContent = `ระบบจะสร้างบิลอัตโนมัติทุกวันที่ ${dayValue} ของเดือน`;
+    billScheduleDesc.textContent = `ระบบจะสร้างบิลอัตโนมัติวันที่ ${dayListText} ของเดือน`;
   if (billAutoDay) billAutoDay.textContent = `${dayValue}`;
   if (billAutoNote) {
     const nextRun = getNextRunDate(dayValue);
@@ -997,20 +1179,51 @@ const buildMockEnergyRange = (startStr, endStr, seed) => {
   const end = parseDateInput(endStr);
   if (!start || !end) return [];
   const dates = listDatesInclusive(start, end);
-  const baseDaily = meterProfiles.reduce((sum, m) => sum + (m.baseDaily || 0), 0);
   const rng = seededRandom(seedFromString(seed || `${startStr}-${endStr}`));
+  const activeMeters = Array.isArray(meterProfiles) && meterProfiles.length
+    ? meterProfiles
+    : [{ name: "Meter", sn: "mock-meter", deviceType: "METER", baseDaily: 24 }];
   return dates.map((date) => {
-    const variance = baseDaily * 0.25;
-    const selfUse = roundTo(baseDaily + (rng() * 2 - 1) * variance, 1);
-    const solarIn = roundTo(selfUse + rng() * 3, 1);
-    const mdbIn = roundTo(Math.max(0, selfUse * 0.18 + rng() * 1.2), 1);
-    const mdbOut = roundTo(Math.max(0, mdbIn * 0.4 * rng()), 1);
+    let totalSolar = 0;
+    let totalSelf = 0;
+    let totalMdbIn = 0;
+    let totalMdbOut = 0;
+    const by_meter = {};
+    activeMeters.forEach((meter) => {
+      const meterKey = getMeterKey(meter);
+      if (!meterKey) return;
+      const baseDaily = Number(meter?.baseDaily) || 24;
+      const variance = Math.max(2, baseDaily * 0.22);
+      const selfUse = roundTo(
+        Math.max(0, baseDaily + (rng() * 2 - 1) * variance),
+        1
+      );
+      const isSolar = String(meter?.deviceType || "")
+        .toUpperCase()
+        .includes("SOLAR");
+      const solarIn = isSolar
+        ? roundTo(selfUse + rng() * 4.2, 1)
+        : roundTo(Math.max(0, selfUse * 0.2 + rng() * 0.8), 1);
+      const mdbIn = roundTo(Math.max(0, selfUse * 0.22 + rng() * 1.1), 1);
+      const mdbOut = roundTo(Math.max(0, mdbIn * (0.25 + rng() * 0.35)), 1);
+      by_meter[meterKey] = {
+        solar_in: solarIn,
+        self_use: selfUse,
+        mdb_in: mdbIn,
+        mdb_out: mdbOut
+      };
+      totalSolar += solarIn;
+      totalSelf += selfUse;
+      totalMdbIn += mdbIn;
+      totalMdbOut += mdbOut;
+    });
     return {
       date,
-      solar_in: solarIn,
-      self_use: selfUse,
-      mdb_in: mdbIn,
-      mdb_out: mdbOut
+      solar_in: roundTo(totalSolar, 1),
+      self_use: roundTo(totalSelf, 1),
+      mdb_in: roundTo(totalMdbIn, 1),
+      mdb_out: roundTo(totalMdbOut, 1),
+      by_meter
     };
   });
 };
@@ -1055,6 +1268,128 @@ const normalizeDailyRows = (rows) => {
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 };
 
+const hasDailyUsage = (rows) =>
+  rows.some((row) =>
+    [row?.solar_in, row?.self_use, row?.mdb_in, row?.mdb_out].some(
+      (value) => Math.abs(parseNumber(value)) > 0
+    )
+  );
+
+const normalizeEnergyTotalRows = (rows) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const date = normalizeDateValue(
+        row.created_at ?? row.createdAt ?? row.date ?? row.datetime ?? row.timestamp
+      );
+      if (!date) return null;
+      const createdRaw =
+        row.created_at ?? row.createdAt ?? row.datetime ?? row.timestamp ?? row.ts ?? "";
+      const createdTs = Date.parse(createdRaw);
+      const deviceId = Number(row.device_id ?? row.deviceId ?? row.id);
+      const energyTotal = parseNumber(
+        row.energy_total ?? row.energyTotal ?? row.total ?? row.value
+      );
+      if (!Number.isFinite(energyTotal)) return null;
+      return {
+        date,
+        createdTs: Number.isFinite(createdTs) ? createdTs : 0,
+        deviceId: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+        deviceName: readText(
+          row.device_name,
+          row.deviceName,
+          row.name
+        ),
+        deviceType: readText(row.device_type, row.deviceType, row.type),
+        energyTotal
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.createdTs - b.createdTs);
+
+const buildDailyRowsFromEnergyTotals = (rows) => {
+  const records = normalizeEnergyTotalRows(rows);
+  if (!records.length) return [];
+  const activeMeters = Array.isArray(meterProfiles) ? meterProfiles : [];
+  const meterById = new Map(
+    activeMeters
+      .map((meter) => [Number(meter?.id), meter])
+      .filter(([id]) => Number.isFinite(id) && id > 0)
+  );
+  const resolveMeter = (record) => {
+    if (Number.isFinite(record.deviceId) && meterById.has(record.deviceId)) {
+      return meterById.get(record.deviceId);
+    }
+    if (record.deviceName) {
+      const byName = activeMeters.find((meter) => meter?.name === record.deviceName);
+      if (byName) return byName;
+    }
+    const byType = activeMeters.find((meter) => {
+      const meterType = String(meter?.deviceType || "").toUpperCase();
+      const recordType = String(record.deviceType || "").toUpperCase();
+      return meterType && recordType && meterType === recordType;
+    });
+    return byType || null;
+  };
+
+  const perDay = new Map();
+  records.forEach((record) => {
+    const meter = resolveMeter(record);
+    if (!meter) return;
+    const meterKey = getMeterKey(meter);
+    if (!meterKey) return;
+    if (!perDay.has(record.date)) perDay.set(record.date, new Map());
+    const meterMap = perDay.get(record.date);
+    const current = meterMap.get(meterKey);
+    if (!current) {
+      meterMap.set(meterKey, {
+        meter,
+        min: record.energyTotal,
+        max: record.energyTotal
+      });
+      return;
+    }
+    current.min = Math.min(current.min, record.energyTotal);
+    current.max = Math.max(current.max, record.energyTotal);
+  });
+
+  return Array.from(perDay.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, meterMap]) => {
+      let totalSolar = 0;
+      let totalSelf = 0;
+      let totalMdbIn = 0;
+      let totalMdbOut = 0;
+      const by_meter = {};
+      meterMap.forEach((value, meterKey) => {
+        const meter = value.meter;
+        const dailyEnergy = roundTo(Math.max(0, value.max - value.min), 1);
+        const isSolar = String(meter?.deviceType || "")
+          .toUpperCase()
+          .includes("SOLAR");
+        const rowValue = {
+          solar_in: isSolar ? dailyEnergy : 0,
+          self_use: dailyEnergy,
+          mdb_in: dailyEnergy,
+          mdb_out: 0
+        };
+        by_meter[meterKey] = rowValue;
+        totalSolar += rowValue.solar_in;
+        totalSelf += rowValue.self_use;
+        totalMdbIn += rowValue.mdb_in;
+        totalMdbOut += rowValue.mdb_out;
+      });
+      return {
+        date,
+        solar_in: roundTo(totalSolar, 1),
+        self_use: roundTo(totalSelf, 1),
+        mdb_in: roundTo(totalMdbIn, 1),
+        mdb_out: roundTo(totalMdbOut, 1),
+        by_meter
+      };
+    });
+};
+
 const fetchEnergyMonth = async (monthStr) => {
   const url = `${energyApiBase}?period=month&month=${monthStr}`;
   const response = await fetch(url, { method: "GET" });
@@ -1062,8 +1397,11 @@ const fetchEnergyMonth = async (monthStr) => {
     throw new Error(`API error ${response.status}`);
   }
   const payload = await response.json();
-  const rows = normalizeDailyRows(extractDailyRows(payload));
-  return rows;
+  const rawRows = extractDailyRows(payload);
+  const rows = normalizeDailyRows(rawRows);
+  if (rows.length && hasDailyUsage(rows)) return rows;
+  const totalRows = buildDailyRowsFromEnergyTotals(rawRows);
+  return totalRows.length ? totalRows : rows;
 };
 
 const fetchEnergyRange = async (startStr, endStr) => {
@@ -1109,21 +1447,63 @@ const buildStorageKey = (prefix) => {
 };
 
 const loadSchedule = () => {
-  schedule = { ...defaultSchedule };
+  schedule = {
+    cutoffDay: defaultSchedule.cutoffDay,
+    ...buildDefaultScheduleFields(),
+    autoSchedules: []
+  };
   try {
     const saved = localStorage.getItem(scheduleKey);
     if (saved) schedule = { ...schedule, ...JSON.parse(saved) };
   } catch {
-    schedule = { ...defaultSchedule };
+    schedule = {
+      cutoffDay: defaultSchedule.cutoffDay,
+      ...buildDefaultScheduleFields(),
+      autoSchedules: []
+    };
   }
-  if (!Array.isArray(schedule.detailColumns) || !schedule.detailColumns.length) {
-    schedule.detailColumns = [...defaultSchedule.detailColumns];
+  const normalizedTop = normalizeAutoScheduleEntry(schedule, defaultSchedule);
+  schedule.cutoffDay = normalizedTop.cutoffDay;
+  schedule.defaultRate = normalizedTop.defaultRate;
+  schedule.rateType = normalizedTop.rateType;
+  schedule.calcMethod = normalizedTop.calcMethod;
+  schedule.calcFormula = normalizedTop.calcFormula;
+  schedule.calcLabel = normalizedTop.calcLabel;
+  schedule.detailColumns = normalizedTop.detailColumns;
+
+  const rawAutoSchedules = Array.isArray(schedule.autoSchedules)
+    ? schedule.autoSchedules
+    : [];
+  const sourceSchedules = rawAutoSchedules.length
+    ? rawAutoSchedules
+    : [
+      {
+        cutoffDay: schedule.cutoffDay,
+        defaultRate: schedule.defaultRate,
+        rateType: schedule.rateType,
+        calcMethod: schedule.calcMethod,
+        calcFormula: schedule.calcFormula,
+        calcLabel: schedule.calcLabel,
+        detailColumns: schedule.detailColumns
+      }
+    ];
+  const byCutoffDay = new Map();
+  sourceSchedules.forEach((item) => {
+    const normalized = normalizeAutoScheduleEntry(item, schedule);
+    byCutoffDay.set(normalized.cutoffDay, normalized);
+  });
+  if (!byCutoffDay.size) {
+    const fallback = normalizeAutoScheduleEntry(
+      { cutoffDay: defaultSchedule.cutoffDay },
+      defaultSchedule
+    );
+    byCutoffDay.set(fallback.cutoffDay, fallback);
   }
-  if (!Array.isArray(schedule.calcFormula)) {
-    schedule.calcFormula = [];
-  }
-  if (typeof schedule.calcLabel !== "string" || !schedule.calcLabel.trim()) {
-    schedule.calcLabel = defaultCalcLabel;
+  schedule.autoSchedules = Array.from(byCutoffDay.values()).sort(
+    (a, b) => Number(a.cutoffDay) - Number(b.cutoffDay)
+  );
+  if (!getAutoScheduleByCutoff(schedule.cutoffDay)) {
+    schedule.cutoffDay = schedule.autoSchedules[0].cutoffDay;
   }
 };
 const saveSchedule = () => {
@@ -1151,6 +1531,136 @@ const saveHistory = () => {
   localStorage.setItem(historyKey, JSON.stringify(history));
   localStorage.setItem(sequenceKey, String(billSequence));
 };
+const seedMockAutoHistoryIfEmpty = () => {
+  let alreadySeeded = false;
+  try {
+    alreadySeeded = localStorage.getItem(mockScenarioKey) === "1";
+  } catch {
+    alreadySeeded = false;
+  }
+  const preferredAuto =
+    getAutoScheduleByCutoff(15) ||
+    getAutoScheduleByCutoff(schedule.cutoffDay) ||
+    getAutoScheduleByCutoff(20) ||
+    getAutoSchedules()[0] ||
+    null;
+  if (!preferredAuto) return;
+
+  const targetCutoff = Number(preferredAuto.cutoffDay) || defaultSchedule.cutoffDay;
+  const existingTargetBills = history.filter(
+    (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === targetCutoff
+  );
+  if (alreadySeeded && existingTargetBills.length >= 12) return;
+
+  const setupTimestamp = Number(preferredAuto?.updatedAt) > 0
+    ? Number(preferredAuto.updatedAt)
+    : targetCutoff === 15
+      ? new Date(2026, 1, 13, 1, 54, 25).getTime()
+      : new Date(2025, 0, 24, 10, 15, 30).getTime();
+  const mockAutoConfig = normalizeAutoScheduleEntry(
+    {
+      ...preferredAuto,
+      cutoffDay: targetCutoff,
+      defaultRate:
+        parseFloat(`${preferredAuto?.defaultRate}`) || defaultSchedule.defaultRate,
+      rateType: preferredAuto?.rateType || defaultSchedule.rateType,
+      calcMethod: preferredAuto?.calcMethod || defaultSchedule.calcMethod,
+      calcFormula: Array.isArray(preferredAuto?.calcFormula)
+        ? preferredAuto.calcFormula
+        : buildLegacyFormula(
+          preferredAuto?.calcMethod || defaultSchedule.calcMethod,
+          meterProfiles
+        ),
+      calcLabel: preferredAuto?.calcLabel || defaultCalcLabel,
+      detailColumns: normalizeDetailColumns(preferredAuto?.detailColumns),
+      updatedAt: setupTimestamp
+    },
+    preferredAuto
+  );
+  const savedAuto = upsertAutoSchedule(mockAutoConfig);
+  if (!Number.isFinite(Number(schedule.cutoffDay))) {
+    schedule.cutoffDay = savedAuto.cutoffDay;
+  }
+  saveSchedule();
+
+  const latestRunDate = (() => {
+    const anchor = new Date(setupTimestamp);
+    const thisMonthRunDay = clampDay(
+      anchor.getFullYear(),
+      anchor.getMonth(),
+      savedAuto.cutoffDay
+    );
+    if (anchor.getDate() > thisMonthRunDay) {
+      return new Date(anchor.getFullYear(), anchor.getMonth(), thisMonthRunDay);
+    }
+    const prevMonth = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1);
+    const prevMonthRunDay = clampDay(
+      prevMonth.getFullYear(),
+      prevMonth.getMonth(),
+      savedAuto.cutoffDay
+    );
+    return new Date(prevMonth.getFullYear(), prevMonth.getMonth(), prevMonthRunDay);
+  })();
+
+  const mockMeters = getMetersFromFormula(savedAuto.calcFormula, meterProfiles);
+  const existingPeriods = new Set(
+    history
+      .filter(
+        (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(savedAuto.cutoffDay)
+      )
+      .map((bill) => `${bill.periodStart}|${bill.periodEnd}`)
+  );
+  const runDates = Array.from({ length: 12 }, (_, idx) => {
+    const monthShift = idx - 11;
+    const monthBase = new Date(
+      latestRunDate.getFullYear(),
+      latestRunDate.getMonth() + monthShift,
+      1
+    );
+    const runDay = clampDay(monthBase.getFullYear(), monthBase.getMonth(), savedAuto.cutoffDay);
+    return new Date(monthBase.getFullYear(), monthBase.getMonth(), runDay);
+  });
+  runDates.forEach((runDate) => {
+    const { start, end } = getAutoPeriodForRunDate(runDate, savedAuto.cutoffDay);
+    const periodStart = formatDate(start);
+    const periodEnd = formatDate(end);
+    const periodKey = `${periodStart}|${periodEnd}`;
+    if (existingPeriods.has(periodKey)) return;
+    const dailyRows = buildMockEnergyRange(
+      periodStart,
+      periodEnd,
+      `mock-auto-${savedAuto.cutoffDay}-${periodStart}-${periodEnd}`
+    );
+    createBill({
+      periodStart,
+      periodEnd,
+      meters: mockMeters,
+      rate: savedAuto.defaultRate,
+      rateType: savedAuto.rateType,
+      calcMethod: savedAuto.calcMethod,
+      calcFormula: savedAuto.calcFormula,
+      calcLabel: savedAuto.calcLabel,
+      cutoffDay: savedAuto.cutoffDay,
+      detailColumns: savedAuto.detailColumns,
+      auto: true,
+      source: "mock",
+      dailyRows,
+      createdAt: new Date(
+        runDate.getFullYear(),
+        runDate.getMonth(),
+        runDate.getDate(),
+        9,
+        0,
+        0
+      ).getTime()
+    });
+  });
+  try {
+    localStorage.setItem(mockScenarioKey, "1");
+  } catch {
+    // ignore localStorage write errors
+  }
+};
 
 const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
   const year = runDate.getFullYear();
@@ -1169,25 +1679,35 @@ const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
 };
 
 const getNextRunDate = (cutoffDay) => {
+  const normalizedCutoffDay =
+    Number(cutoffDay) || schedule.cutoffDay || defaultSchedule.cutoffDay;
   const today = new Date();
-  const thisRunDay = clampDay(today.getFullYear(), today.getMonth(), cutoffDay);
+  const thisRunDay = clampDay(
+    today.getFullYear(),
+    today.getMonth(),
+    normalizedCutoffDay
+  );
   let candidate = new Date(
     today.getFullYear(),
     today.getMonth(),
     thisRunDay
   );
-  const { start, end } = getAutoPeriodForRunDate(candidate, cutoffDay);
+  const { start, end } = getAutoPeriodForRunDate(candidate, normalizedCutoffDay);
   const startStr = formatDate(start);
   const endStr = formatDate(end);
   const alreadyGenerated = history.some(
-    (b) => Boolean(b?.auto) && b.periodStart === startStr && b.periodEnd === endStr
+    (b) =>
+      Boolean(b?.auto) &&
+      Number(b?.cutoffDay) === normalizedCutoffDay &&
+      b.periodStart === startStr &&
+      b.periodEnd === endStr
   );
   if (today > candidate || alreadyGenerated) {
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     const nextRunDay = clampDay(
       nextMonth.getFullYear(),
       nextMonth.getMonth(),
-      cutoffDay
+      normalizedCutoffDay
     );
     candidate = new Date(
       nextMonth.getFullYear(),
@@ -1211,11 +1731,181 @@ const getAutoPreviewRange = (cutoffDayValue) => {
     endStr: formatDate(end)
   };
 };
+const closeAutoRoundModal = () => {
+  autoRoundModal?.classList.add("hidden");
+};
+const openAutoRoundHistoryModal = (cutoffDay) => {
+  if (!autoRoundModal || !autoRoundModalRows) return;
+  const day = Number(cutoffDay) || defaultSchedule.cutoffDay;
+  const records = history
+    .filter(
+      (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(day)
+    )
+    .slice()
+    .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+  if (autoRoundModalTitle) {
+    autoRoundModalTitle.textContent = `ประวัติการออกบิลอัตโนมัติ • รอบวันที่ ${day} (${records.length} ใบ)`;
+  }
+  if (!records.length) {
+    autoRoundModalRows.innerHTML =
+      '<tr><td class="empty" colspan="6">ยังไม่มีประวัติการออกบิลรอบนี้</td></tr>';
+  } else {
+    autoRoundModalRows.innerHTML = records
+      .map((bill) => {
+        const createdAtValue = Number(bill?.createdAt);
+        const createdAtDate = Number.isFinite(createdAtValue)
+          ? new Date(createdAtValue)
+          : null;
+        const createdLabel =
+          createdAtDate && !Number.isNaN(createdAtDate.getTime())
+            ? formatDate(createdAtDate)
+            : "-";
+        return `
+          <tr>
+            <td>ใบที่ ${bill.billNo}</td>
+            <td>${bill.periodStart} - ${bill.periodEnd}</td>
+            <td>${formatNumber(bill.totalKwh, 1)}</td>
+            <td>${formatCurrency(bill.amount)}</td>
+            <td>${createdLabel}</td>
+            <td>
+              <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" type="button">ดูตัวอย่าง</button>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+    autoRoundModalRows
+      .querySelectorAll("button[data-action='sample']")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-id");
+          if (!id) return;
+          const bill = history.find((item) => item.id === id);
+          if (!bill) return;
+          const issueDate = parseDateInput(bill.periodEnd || "");
+          if (!issueDate) return;
+          closeAutoRoundModal();
+          hideReceiptHistory();
+          openReceiptPreview({ bill, issueDate });
+        });
+      });
+  }
+  autoRoundModal.classList.remove("hidden");
+};
+const renderAutoQueue = () => {
+  if (!billQueueRows) return;
+  const autoSchedules = getAutoSchedules()
+    .slice()
+    .sort((a, b) => Number(a.cutoffDay) - Number(b.cutoffDay));
+  if (!autoSchedules.length) {
+    billQueueRows.innerHTML =
+      '<tr><td class="empty" colspan="5">ยังไม่มีรอบอัตโนมัติ</td></tr>';
+    if (billQueueTitle) {
+      billQueueTitle.textContent = "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้";
+    }
+    return;
+  }
+  const rateTypeLabels = {
+    flat: "Flat rate",
+    tou: "TOU"
+  };
+  billQueueRows.innerHTML = autoSchedules
+    .map((autoConfig) => {
+      const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
+      const rateTypeLabel =
+        rateTypeLabels[autoConfig.rateType] || autoConfig.rateType || "-";
+      const updatedAtLabel =
+        Number.isFinite(Number(autoConfig?.updatedAt)) && Number(autoConfig.updatedAt) > 0
+          ? formatDateTime(autoConfig.updatedAt)
+          : "-";
+      const billCount = history.filter(
+        (bill) =>
+          Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(cutoffDay)
+      ).length;
+      return `
+        <tr>
+          <td>${cutoffDay}</td>
+          <td>${escapeHtml(updatedAtLabel)}</td>
+          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(
+        autoConfig.defaultRate,
+        2
+      )}/kWh • ${escapeHtml(rateTypeLabel)}</td>
+          <td><span class="queue-status ready">${billCount} ใบ</span></td>
+          <td>
+            <button class="small-btn" data-action="view-history" data-cutoff="${cutoffDay}" type="button">ดูประวัติรอบนี้</button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+  billQueueRows
+    .querySelectorAll("button[data-action='view-history']")
+    .forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cutoffDay = Number(btn.getAttribute("data-cutoff"));
+        if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return;
+        openAutoRoundHistoryModal(cutoffDay);
+      });
+    });
+  if (billQueueTitle) {
+    billQueueTitle.textContent = `รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ (${autoSchedules.length} รอบ)`;
+  }
+};
+const updateBillHistoryTitle = () => {
+  if (!billHistoryTitle) return;
+  billHistoryTitle.textContent =
+    billMode === "auto"
+      ? "ประวัติการสร้างบิลอัตโนมัติ"
+      : "ประวัติการสร้างบิลแบบกำหนดวัน";
+};
 
 const updateAutoPreviewText = () => {
   if (!billAutoPreview) return;
-  const { runDate, startStr, endStr } = getAutoPreviewRange(billCutoff?.value);
-  billAutoPreview.textContent = `ระบบจะสร้างบิลวันที่ ${formatDate(runDate)} สำหรับช่วง ${startStr} - ${endStr}`;
+  const selectedCutoffDay =
+    Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay;
+  const { runDate, startStr, endStr } = getAutoPreviewRange(selectedCutoffDay);
+  const allDays = listAutoCutoffDays();
+  const dayListText = allDays.length ? allDays.join(", ") : "-";
+  const exists = Boolean(getAutoScheduleByCutoff(selectedCutoffDay));
+  const modeText = exists ? "แก้ไขรอบเดิม" : "เพิ่มรอบใหม่";
+  billAutoPreview.textContent = `${modeText} วันที่ ${selectedCutoffDay} • จะออกบิลวันที่ ${formatDate(
+    runDate
+  )} สำหรับช่วง ${startStr} - ${endStr} • รอบที่ตั้งไว้: ${dayListText}`;
+};
+const getAutoModalDraft = (cutoffDay) =>
+  normalizeAutoScheduleEntry(
+    {
+      cutoffDay,
+      defaultRate: billRateInput?.value || schedule.defaultRate,
+      rateType: billType?.value || schedule.rateType,
+      calcMethod: inferCalcMethodFromFormula(formulaTerms),
+      calcFormula: getFormulaFromInputs(),
+      calcLabel: getFormulaResultName(),
+      detailColumns: getSelectedDetailColumns()
+    },
+    schedule
+  );
+const applyAutoScheduleToModal = (cutoffDay) => {
+  const normalizedDay =
+    Number(cutoffDay) || schedule.cutoffDay || defaultSchedule.cutoffDay;
+  const matched = getAutoScheduleByCutoff(normalizedDay);
+  const active = matched || getAutoModalDraft(normalizedDay);
+  if (billCutoff) billCutoff.value = String(normalizedDay);
+  if (billRateInput) billRateInput.value = active.defaultRate;
+  if (billType && active.rateType) billType.value = active.rateType;
+  renderColumnSelector(active.detailColumns);
+  formulaTerms = getFormulaForContext(
+    active.calcFormula,
+    active.calcMethod,
+    getSelectedMetersForFormula()
+  );
+  setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
+    skipPreview: true
+  });
+  populateFormulaInputs(formulaTerms, active.calcLabel || defaultCalcLabel);
+  updateAutoPreviewText();
+  if (isModalOpen) updateFormulaResultPreview();
+  return active;
 };
 
 const setBillMode = (mode) => {
@@ -1229,21 +1919,27 @@ const setBillMode = (mode) => {
   if (billModalTitle) {
     billModalTitle.textContent = isAuto ? "ตั้งค่าออกบิลอัตโนมัติ" : "สร้างใบแจ้งค่าไฟ";
   }
-  if (billHistoryTitle) {
-    billHistoryTitle.textContent = isAuto
-      ? "ประวัติการสร้างบิลอัตโนมัติ"
-      : "ประวัติการสร้างบิลแบบกำหนดวัน";
-  }
+  updateBillHistoryTitle();
   billDateRangeField?.classList.toggle("hidden", isAuto);
   billAutoPreviewField?.classList.toggle("hidden", !isAuto);
   billCutoffField?.classList.toggle("hidden", !isAuto);
+  billQueuePanel?.classList.toggle("hidden", !isAuto);
+  billHistoryPanel?.classList.toggle("hidden", isAuto);
   if (billConfirm) {
     billConfirm.textContent = isAuto ? "บันทึกอัตโนมัติ" : "สร้างบิล";
   }
-  updateAutoPreviewText();
-  if (isModalOpen) updateFormulaResultPreview();
+  if (isAuto && isModalOpen) {
+    const selectedCutoffDay =
+      Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay;
+    applyAutoScheduleToModal(selectedCutoffDay);
+  } else {
+    updateAutoPreviewText();
+    if (isModalOpen) updateFormulaResultPreview();
+  }
   hideReceiptHistory();
   closeReceiptPreview();
+  closeAutoRoundModal();
+  renderAutoQueue();
   renderHistory();
   updateSummary();
 };
@@ -1383,7 +2079,8 @@ const createBill = ({
   detailColumns,
   dailyRows,
   auto = false,
-  source = "api"
+  source = "api",
+  createdAt = Date.now()
 }) => {
   const normalizedColumns =
     Array.isArray(detailColumns) && detailColumns.length
@@ -1401,9 +2098,9 @@ const createBill = ({
   const amount = roundTo(totalKwh * rate, 2);
   billSequence += 1;
   const bill = {
-    id: `${Date.now()}-${billSequence}`,
+    id: `${createdAt}-${billSequence}`,
     billNo: billSequence,
-    createdAt: Date.now(),
+    createdAt,
     periodStart,
     periodEnd,
     rate: roundTo(rate, 2),
@@ -1602,7 +2299,10 @@ const showReceiptHistory = (id) => {
 const updateSummary = () => {
   const visibleHistory = getHistoryByCurrentMode();
   if (billTotalCount) billTotalCount.textContent = `${visibleHistory.length} ใบ`;
-  if (billAutoDay) billAutoDay.textContent = `${schedule.cutoffDay}`;
+  if (billAutoDay) {
+    const allDays = listAutoCutoffDays();
+    billAutoDay.textContent = allDays.length ? allDays.join(", ") : `${schedule.cutoffDay}`;
+  }
   if (!visibleHistory.length) {
     if (billLastPeriod) billLastPeriod.textContent = "-";
     if (billLastAmount) billLastAmount.textContent = "-";
@@ -1621,49 +2321,58 @@ const deleteBill = (id) => {
   if (!ok) return;
   history = history.filter((b) => b.id !== id);
   saveHistory();
+  renderAutoQueue();
   renderHistory();
   updateSummary();
 };
 
 const runAutoIfDue = async () => {
   const today = new Date();
-  const cutoffDay = schedule.cutoffDay || defaultSchedule.cutoffDay;
-  const effectiveDay = clampDay(
-    today.getFullYear(),
-    today.getMonth(),
-    cutoffDay
-  );
-  if (today.getDate() !== effectiveDay) return;
-  const { start, end } = getAutoPeriodForRunDate(today, cutoffDay);
-  const startStr = formatDate(start);
-  const endStr = formatDate(end);
-  const alreadyGenerated = history.some(
-    (b) => Boolean(b?.auto) && b.periodStart === startStr && b.periodEnd === endStr
-  );
-  if (alreadyGenerated) return;
-  const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
-  if (!rows.length) return;
-  const calcFormula = getFormulaForContext(
-    schedule.calcFormula,
-    schedule.calcMethod,
-    meterProfiles
-  );
-  const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
-  createBill({
-    periodStart: startStr,
-    periodEnd: endStr,
-    meters: formulaMeters,
-    rate: schedule.defaultRate,
-    rateType: schedule.rateType,
-    calcMethod: schedule.calcMethod || defaultSchedule.calcMethod,
-    calcFormula,
-    calcLabel: schedule.calcLabel || defaultCalcLabel,
-    cutoffDay,
-    detailColumns: schedule.detailColumns || defaultSchedule.detailColumns,
-    auto: true,
-    source,
-    dailyRows: rows
-  });
+  const autoSchedules = getAutoSchedules();
+  if (!autoSchedules.length) return;
+  for (const autoConfig of autoSchedules) {
+    const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
+    const effectiveDay = clampDay(
+      today.getFullYear(),
+      today.getMonth(),
+      cutoffDay
+    );
+    if (today.getDate() !== effectiveDay) continue;
+    const { start, end } = getAutoPeriodForRunDate(today, cutoffDay);
+    const startStr = formatDate(start);
+    const endStr = formatDate(end);
+    const alreadyGenerated = history.some(
+      (b) =>
+        Boolean(b?.auto) &&
+        Number(b?.cutoffDay) === cutoffDay &&
+        b.periodStart === startStr &&
+        b.periodEnd === endStr
+    );
+    if (alreadyGenerated) continue;
+    const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
+    if (!rows.length) continue;
+    const calcFormula = getFormulaForContext(
+      autoConfig.calcFormula,
+      autoConfig.calcMethod,
+      meterProfiles
+    );
+    const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
+    createBill({
+      periodStart: startStr,
+      periodEnd: endStr,
+      meters: formulaMeters,
+      rate: autoConfig.defaultRate,
+      rateType: autoConfig.rateType,
+      calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
+      calcFormula,
+      calcLabel: autoConfig.calcLabel || defaultCalcLabel,
+      cutoffDay,
+      detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+      auto: true,
+      source,
+      dailyRows: rows
+    });
+  }
 };
 
 const openModal = (mode = billMode) => {
@@ -1713,6 +2422,7 @@ const handleConfirm = async () => {
 
   if (billMode === "auto") {
     const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
+    const hadSchedule = Boolean(getAutoScheduleByCutoff(cutoffDay));
     schedule = {
       ...schedule,
       cutoffDay,
@@ -1723,13 +2433,27 @@ const handleConfirm = async () => {
       calcLabel,
       detailColumns
     };
+    const savedAutoSchedule = upsertAutoSchedule({
+      cutoffDay,
+      defaultRate: rateVal,
+      rateType: rateTypeVal,
+      calcMethod,
+      calcFormula,
+      calcLabel,
+      detailColumns,
+      updatedAt: Date.now()
+    });
     saveSchedule();
     updateScheduleInfo(cutoffDay);
+    renderAutoQueue();
     updateSummary();
     const { runDate, startStr, endStr } = getAutoPreviewRange(cutoffDay);
+    const allDays = listAutoCutoffDays().join(", ");
     closeModal();
     alert(
-      `บันทึกโหมดอัตโนมัติแล้ว\nระบบจะรันวันที่ ${formatDate(runDate)}\nช่วงบิล ${startStr} - ${endStr}`
+      `${hadSchedule ? "อัปเดตรอบอัตโนมัติแล้ว" : "เพิ่มรอบอัตโนมัติแล้ว"}\nตัดรอบวันที่ ${
+        savedAutoSchedule.cutoffDay
+      }\nระบบจะรันวันที่ ${formatDate(runDate)}\nช่วงบิล ${startStr} - ${endStr}\nรอบที่ตั้งไว้ทั้งหมด: ${allDays}`
     );
     return;
   }
@@ -1808,14 +2532,27 @@ document.addEventListener("keydown", (e) => {
     closeReceiptPreview();
     return;
   }
+  if (autoRoundModal && !autoRoundModal.classList.contains("hidden")) {
+    closeAutoRoundModal();
+    return;
+  }
   if (isModalOpen) closeModal();
 });
 
 billCutoff?.addEventListener("change", () => {
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   updateScheduleInfo(cutoffDay);
+  if (isModalOpen && billMode === "auto") {
+    applyAutoScheduleToModal(cutoffDay);
+    return;
+  }
   updateAutoPreviewText();
   if (isModalOpen) updateFormulaResultPreview();
+});
+autoRoundModalClose?.addEventListener("click", closeAutoRoundModal);
+autoRoundModalCloseFooter?.addEventListener("click", closeAutoRoundModal);
+autoRoundModal?.addEventListener("click", (e) => {
+  if (e.target === autoRoundModal) closeAutoRoundModal();
 });
 billFlowManualBtn?.addEventListener("click", () => {
   setBillMode("manual");
@@ -1881,6 +2618,7 @@ const setMode = (isBilling) => {
     closeModal();
     hideReceiptHistory();
     closeReceiptPreview();
+    closeAutoRoundModal();
   }
 };
 
@@ -1982,12 +2720,15 @@ applyPlantMeters(plantMeters, { persistPlant: false });
 historyKey = buildStorageKey("billingHistoryV2");
 scheduleKey = buildStorageKey("billingScheduleV1");
 sequenceKey = buildStorageKey("billingSequenceV1");
+mockScenarioKey = buildStorageKey("billingMockScenarioV2");
 loadSchedule();
 loadHistory();
 
 const initBilling = async () => {
+  seedMockAutoHistoryIfEmpty();
   updateScheduleInfo(schedule.cutoffDay);
   await runAutoIfDue();
+  renderAutoQueue();
   renderHistory();
   updateSummary();
 };
@@ -1999,9 +2740,25 @@ billConfirm?.addEventListener("click", () => {
 billScheduleRemove?.addEventListener("click", () => {
   const ok = confirm("รีเซ็ตการตั้งค่าบิลอัตโนมัติกลับเป็นวันที่ 5 ใช่หรือไม่?");
   if (!ok) return;
-  schedule = { ...defaultSchedule };
+  const defaultFields = buildDefaultScheduleFields();
+  schedule = {
+    cutoffDay: defaultSchedule.cutoffDay,
+    ...defaultFields,
+    autoSchedules: [
+      normalizeAutoScheduleEntry(
+        {
+          cutoffDay: defaultSchedule.cutoffDay,
+          ...defaultFields,
+          updatedAt: Date.now()
+        },
+        defaultSchedule
+      )
+    ]
+  };
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);
+  updateAutoPreviewText();
+  renderAutoQueue();
   updateSummary();
 });
 
