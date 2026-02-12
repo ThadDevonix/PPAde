@@ -30,7 +30,13 @@
     </section>
 
     <section class="panel">
-      <h3>กราฟการวัด</h3>
+      <div class="meter-chart-head">
+        <h3>กราฟการวัด</h3>
+        <div class="meter-total-box" aria-live="polite">
+          <span class="label">Total kWh</span>
+          <strong id="total-kwh-value">-</strong>
+        </div>
+      </div>
       <div class="meter-chart-controls">
         <div class="period-switch" id="chart-period-switch">
           <button class="period-btn" data-period="day" type="button">วัน</button>

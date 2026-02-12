@@ -26,6 +26,7 @@ const metaPlant = document.getElementById("meta-plant");
 const metaSn = document.getElementById("meta-sn");
 const metaStatus = document.getElementById("meta-status");
 const chartBox = document.getElementById("chart-box");
+const totalKwhValue = document.getElementById("total-kwh-value");
 
 const periodSwitch = document.getElementById("chart-period-switch");
 const periodButtons = Array.from(
@@ -56,6 +57,7 @@ const thaiMonthShort = [
 ];
 
 let selectedPeriod = "month";
+const selectedMeterId = Number(meterData?.id);
 
 const pad2 = (value) => String(value).padStart(2, "0");
 const formatDateKey = (date) =>
@@ -81,11 +83,27 @@ const parseNumber = (value) => {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : 0;
 };
+const readText = (...values) => {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (text) return text;
+  }
+  return "";
+};
+const selectedEnergyName = readText(
+  meterData?.sn,
+  meterData?.name,
+  plantData?.siteCode,
+  plantData?.site_code,
+  plantData?.name
+) || fallbackPlantName;
 const formatMetric = (value) =>
   parseNumber(value).toLocaleString("th-TH", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
   });
+const formatTotalKwh = (value) => `${formatMetric(value)} kWh`;
 const toDate = (value) => {
   if (!value && value !== 0) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -215,6 +233,12 @@ const buildDots = (series, xAt, yAt, color) =>
     .join("");
 const renderChart = (rows) => {
   if (!chartBox) return;
+  if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(
+    rows.reduce(
+      (sum, row) => sum + parseNumber(row?.solarIn) + parseNumber(row?.selfUse),
+      0
+    )
+  );
   if (!rows.length) {
     chartBox.textContent = "ไม่พบข้อมูลในช่วงที่เลือก";
     return;
@@ -320,9 +344,13 @@ const requestPayload = async (queryString) => {
   throw new Error(errors.join(" | "));
 };
 const fetchMonthRows = async (year, month) => {
+  const deviceIdParam =
+    Number.isFinite(selectedMeterId) && selectedMeterId > 0
+      ? `&device_id=${encodeURIComponent(selectedMeterId)}`
+      : "";
   const query = `period=month&name=${encodeURIComponent(
-    fallbackPlantName
-  )}&month=${year}-${pad2(month)}`;
+    selectedEnergyName
+  )}&month=${year}-${pad2(month)}${deviceIdParam}`;
   const payload = await requestPayload(query);
   return extractSeriesRows(payload);
 };
@@ -352,6 +380,7 @@ const updatePeriodUi = () => {
 const loadChartBySelection = async () => {
   if (!chartBox) return;
   chartBox.textContent = "กำลังโหลดกราฟ...";
+  if (totalKwhValue) totalKwhValue.textContent = "-";
   const year = getSelectedYear();
   const month = getSelectedMonth();
   const day = getSelectedDay();
@@ -391,6 +420,7 @@ const loadChartBySelection = async () => {
     renderChart(rows);
   } catch (error) {
     chartBox.textContent = `โหลดกราฟไม่สำเร็จ (${error.message})`;
+    if (totalKwhValue) totalKwhValue.textContent = "-";
     console.warn("Failed to load chart", error);
   }
 };

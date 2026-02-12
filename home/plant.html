@@ -57,64 +57,33 @@
           <button class="primary small-btn" id="bill-new-btn" type="button">สร้างบิลใหม่</button>
         </div>
       </div>
-      <div class="bill-meta-note" id="bill-schedule-info">
-        <div class="bill-pill-row">
-          <span class="pill schedule" id="bill-cycle-pill">สร้างอัตโนมัติทุกวันที่ 5</span>
-          <span class="pill schedule alt" id="bill-cutoff-pill">ตัดรอบวันที่ 5</span>
-          <button class="pill schedule ghost inline-delete" id="bill-schedule-remove" type="button">รีเซ็ต</button>
-        </div>
-        <p class="muted small" id="bill-schedule-desc">ระบบจะสร้างบิลอัตโนมัติทุกวันที่ 5 ของเดือน</p>
+      <div class="bill-flow-tabs" id="bill-flow-tabs">
+        <button class="bill-flow-btn active" id="bill-flow-manual" type="button">ออกบิลแบบกำหนดเอง</button>
+        <button class="bill-flow-btn" id="bill-flow-auto" type="button">ออกบิลอัตโนมัติ</button>
       </div>
-
-      <div class="summary-grid" id="bill-summary">
-        <div class="card summary-card">
-          <div class="summary-header">
-            <h4>สรุปบิลล่าสุด</h4>
-            <span class="pill count" id="bill-total-count">0 ใบ</span>
-          </div>
-          <div class="kv"><span>ตัดรอบวันที่</span><strong id="bill-auto-day">5</strong></div>
-          <div class="kv"><span>รอบล่าสุด</span><strong id="bill-last-period">-</strong></div>
-          <div class="kv"><span>ยอดล่าสุด</span><strong id="bill-last-amount">-</strong></div>
-          <p class="muted small" id="bill-auto-note">กำหนดรอบบิลในหน้าสร้างบิลใหม่</p>
-        </div>
-      </div>
-
-      <div class="history-wrap">
-        <table class="history-table">
-          <thead>
-            <tr>
-              <th style="width: 90px;">ใบที่</th>
-              <th>สร้างจากมิเตอร์</th>
-              <th>ช่วงวันที่</th>
-              <th style="width: 130px;">อัตรา (฿/kWh)</th>
-              <th style="width: 140px;">หน่วยรวม (kWh)</th>
-              <th style="width: 140px;">ยอดรวม</th>
-              <th style="width: 140px;">การทำงาน</th>
-            </tr>
-          </thead>
-          <tbody id="bill-history-rows">
-            <tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="panel-sub hidden" id="bill-detail">
+      <div class="panel-sub" id="bill-history-panel">
         <div class="summary-header">
-          <h4 id="bill-detail-title">รายละเอียดการใช้ไฟรายวัน</h4>
-          <button class="ghost small-btn" id="bill-detail-close" type="button">ปิด</button>
+          <h4 id="bill-history-title">ประวัติการสร้างบิลแบบกำหนดเอง</h4>
         </div>
-        <div class="device-table-wrap">
-          <table class="device-table">
+        <div class="history-wrap">
+          <table class="history-table">
             <thead>
-              <tr id="bill-detail-head"></tr>
+              <tr>
+                <th style="width: 90px;">ใบที่</th>
+                <th>สร้างจากมิเตอร์</th>
+                <th>ช่วงวันที่</th>
+                <th style="width: 130px;">อัตรา (฿/kWh)</th>
+                <th style="width: 140px;">หน่วยรวม (kWh)</th>
+                <th style="width: 140px;">ยอดรวม</th>
+                <th style="width: 140px;">การทำงาน</th>
+              </tr>
             </thead>
-            <tbody id="bill-detail-rows">
-              <tr><td class="empty" colspan="6">ยังไม่มีข้อมูลรายวัน</td></tr>
+            <tbody id="bill-history-rows">
+              <tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>
             </tbody>
           </table>
         </div>
       </div>
-
       <div class="panel-sub hidden" id="receipt-history">
         <div class="summary-header">
           <h4 id="receipt-title">ประวัติใบเสร็จ</h4>
@@ -166,7 +135,7 @@
     <div class="modal hidden" id="bill-modal" role="dialog" aria-modal="true">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>สร้างใบแจ้งค่าไฟ</h3>
+          <h3 id="bill-modal-title">สร้างใบแจ้งค่าไฟ</h3>
           <button class="ghost icon-btn" id="bill-modal-close" aria-label="ปิด">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -174,7 +143,10 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="field grid-2">
+          <div class="field hidden" id="bill-auto-preview-field">
+            <p class="muted small" id="bill-auto-preview">ระบบจะสร้างบิลตามรอบอัตโนมัติ</p>
+          </div>
+          <div class="field grid-2" id="bill-date-range-field">
             <div>
               <label for="bill-start">วันที่เริ่ม</label>
               <input type="date" id="bill-start">
@@ -198,16 +170,23 @@
             </div>
           </div>
           <div class="field">
-            <div class="formula-inline-grid">
-              <div class="formula-inline-cell">
-                <label for="formula-meter-left">มิเตอร์ 1</label>
+            <label>รูปแบบคำนวณหน่วย</label>
+            <div class="calc-mode-switch" id="calc-mode-switch" role="tablist" aria-label="รูปแบบคำนวณหน่วย">
+              <button class="calc-mode-btn active" id="calc-mode-single" type="button">ออกบิลค่าเดี่ยว</button>
+              <button class="calc-mode-btn" id="calc-mode-formula" type="button">ออกบิลแบบคำนวณ</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="formula-inline-grid" id="formula-inline-grid">
+              <div class="formula-inline-cell" id="formula-meter-left-cell">
+                <label for="formula-meter-left" id="formula-meter-left-label">มิเตอร์ 1</label>
                 <select id="formula-meter-left"></select>
               </div>
-              <div class="formula-inline-cell">
-                <label for="formula-value-left">ค่า 1</label>
+              <div class="formula-inline-cell" id="formula-value-left-cell">
+                <label for="formula-value-left" id="formula-value-left-label">ค่า 1</label>
                 <select id="formula-value-left"></select>
               </div>
-              <div class="formula-inline-cell formula-op-cell">
+              <div class="formula-inline-cell formula-op-cell" id="formula-op-cell">
                 <label for="formula-operator">เครื่องหมาย</label>
                 <select id="formula-operator">
                   <option value="+">+</option>
@@ -216,25 +195,25 @@
                   <option value="/">/</option>
                 </select>
               </div>
-              <div class="formula-inline-cell">
+              <div class="formula-inline-cell" id="formula-meter-right-cell">
                 <label for="formula-meter-right">มิเตอร์ 2</label>
                 <select id="formula-meter-right"></select>
               </div>
-              <div class="formula-inline-cell">
+              <div class="formula-inline-cell" id="formula-value-right-cell">
                 <label for="formula-value-right">ค่า 2</label>
                 <select id="formula-value-right"></select>
               </div>
-              <div class="formula-inline-cell">
+              <div class="formula-inline-cell" id="formula-result-name-cell">
                 <label for="formula-result-name">ชื่อผลคำนวณ</label>
                 <input type="text" id="formula-result-name" placeholder="เช่น หน่วยสุทธิ">
               </div>
-              <div class="formula-inline-cell">
+              <div class="formula-inline-cell" id="formula-result-value-cell">
                 <label for="formula-result-value">ผลที่ได้</label>
                 <input type="text" id="formula-result-value" readonly value="-">
               </div>
             </div>
           </div>
-          <div class="field">
+          <div class="field" id="bill-cutoff-field">
             <label for="bill-cutoff">ตัดรอบวันที่</label>
             <select id="bill-cutoff"></select>
           </div>

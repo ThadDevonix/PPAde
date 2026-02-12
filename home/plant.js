@@ -17,11 +17,6 @@ const deviceRowsEl = document.getElementById("device-rows");
 // Billing elements
 const billNewBtn = document.getElementById("bill-new-btn");
 const billHistoryRows = document.getElementById("bill-history-rows");
-const billDetail = document.getElementById("bill-detail");
-const billDetailHead = document.getElementById("bill-detail-head");
-const billDetailRows = document.getElementById("bill-detail-rows");
-const billDetailTitle = document.getElementById("bill-detail-title");
-const billDetailClose = document.getElementById("bill-detail-close");
 const receiptHistory = document.getElementById("receipt-history");
 const receiptTitle = document.getElementById("receipt-title");
 const receiptRows = document.getElementById("receipt-rows");
@@ -43,21 +38,35 @@ const billCyclePill = document.getElementById("bill-cycle-pill");
 const billCutoffPill = document.getElementById("bill-cutoff-pill");
 const billScheduleDesc = document.getElementById("bill-schedule-desc");
 const billScheduleRemove = document.getElementById("bill-schedule-remove");
+const billHistoryTitle = document.getElementById("bill-history-title");
+const billFlowManualBtn = document.getElementById("bill-flow-manual");
+const billFlowAutoBtn = document.getElementById("bill-flow-auto");
 
 // Modal
 const billModal = document.getElementById("bill-modal");
 const billModalClose = document.getElementById("bill-modal-close");
+const billModalTitle = document.getElementById("bill-modal-title");
 const billCancel = document.getElementById("bill-cancel");
 const billConfirm = document.getElementById("bill-confirm");
 const billStart = document.getElementById("bill-start");
 const billEnd = document.getElementById("bill-end");
 const billRateInput = document.getElementById("bill-rate");
 const billType = document.getElementById("bill-type");
+const calcModeSingleBtn = document.getElementById("calc-mode-single");
+const calcModeFormulaBtn = document.getElementById("calc-mode-formula");
+const formulaInlineGrid = document.getElementById("formula-inline-grid");
 const formulaMeterLeft = document.getElementById("formula-meter-left");
 const formulaValueLeft = document.getElementById("formula-value-left");
+const formulaMeterLeftLabel = document.getElementById("formula-meter-left-label");
+const formulaValueLeftLabel = document.getElementById("formula-value-left-label");
 const formulaOperator = document.getElementById("formula-operator");
+const formulaOpCell = document.getElementById("formula-op-cell");
 const formulaMeterRight = document.getElementById("formula-meter-right");
 const formulaValueRight = document.getElementById("formula-value-right");
+const formulaMeterRightCell = document.getElementById("formula-meter-right-cell");
+const formulaValueRightCell = document.getElementById("formula-value-right-cell");
+const formulaResultNameCell = document.getElementById("formula-result-name-cell");
+const formulaResultValueCell = document.getElementById("formula-result-value-cell");
 const formulaResultName = document.getElementById("formula-result-name");
 const formulaResultValue = document.getElementById("formula-result-value");
 const billColumnsList = document.getElementById("bill-columns-list");
@@ -65,6 +74,10 @@ const columnsSelectAllBtn = document.getElementById("columns-select-all");
 const columnsClearBtn = document.getElementById("columns-clear");
 const columnsSelectedCount = document.getElementById("columns-selected-count");
 const billCutoff = document.getElementById("bill-cutoff");
+const billCutoffField = document.getElementById("bill-cutoff-field");
+const billDateRangeField = document.getElementById("bill-date-range-field");
+const billAutoPreviewField = document.getElementById("bill-auto-preview-field");
+const billAutoPreview = document.getElementById("bill-auto-preview");
 const metersBtn = document.getElementById("mode-meters");
 const billingBtn = document.getElementById("mode-billing");
 const metersPanel = document.getElementById("meters-panel");
@@ -106,7 +119,6 @@ const detailColumnDefs = [
 ];
 
 let isModalOpen = false;
-let activeDetailId = null;
 let isReceiptPreviewOpen = false;
 let currentReceiptHtml = "";
 let currentReceiptTitle = "";
@@ -114,6 +126,8 @@ let currentReceiptContext = null;
 let currentReceiptRowsPerPage = 32;
 let formulaTerms = [];
 let formulaPreviewRequestId = 0;
+let calcInputMode = "formula";
+let billMode = "manual";
 
 const pad = (value) => String(value).padStart(2, "0");
 const formatDate = (date) =>
@@ -469,6 +483,42 @@ const formatFormulaLabel = (formula, meterPool = meterProfiles) => {
     })
     .join(" ");
 };
+const inferCalcInputMode = (formula, meterPool = meterProfiles) => {
+  const terms = normalizeCalcFormula(formula, meterPool, false);
+  return terms.length <= 1 ? "single" : "formula";
+};
+const getSingleModeCalcLabel = () => {
+  const fieldKey = formulaFieldLabelMap[formulaValueLeft?.value]
+    ? formulaValueLeft.value
+    : defaultFormulaField;
+  return formulaFieldLabelMap[fieldKey] || defaultCalcLabel;
+};
+const setCalcInputMode = (mode, options = {}) => {
+  const { skipPreview = false } = options;
+  calcInputMode = mode === "single" ? "single" : "formula";
+  const isSingle = calcInputMode === "single";
+  calcModeSingleBtn?.classList.toggle("active", isSingle);
+  calcModeFormulaBtn?.classList.toggle("active", !isSingle);
+  formulaInlineGrid?.classList.toggle("single-mode", isSingle);
+  formulaOpCell?.classList.toggle("hidden", isSingle);
+  formulaMeterRightCell?.classList.toggle("hidden", isSingle);
+  formulaValueRightCell?.classList.toggle("hidden", isSingle);
+  formulaResultNameCell?.classList.toggle("hidden", isSingle);
+  formulaResultValueCell?.classList.toggle("hidden", isSingle);
+  if (formulaMeterLeftLabel) {
+    formulaMeterLeftLabel.textContent = isSingle ? "มิเตอร์" : "มิเตอร์ 1";
+  }
+  if (formulaValueLeftLabel) {
+    formulaValueLeftLabel.textContent = isSingle ? "ค่า" : "ค่า 1";
+  }
+  if (isSingle && formulaResultName) {
+    formulaResultName.value = getSingleModeCalcLabel();
+  }
+  if (isSingle && formulaResultValue) {
+    formulaResultValue.value = "-";
+  }
+  if (!skipPreview && isModalOpen) updateFormulaResultPreview();
+};
 const buildFormulaFromInputs = () => {
   const activeMeters = getSelectedMetersForFormula();
   const meterMap = new Map(
@@ -487,6 +537,19 @@ const buildFormulaFromInputs = () => {
   const operator = formulaOperators.includes(formulaOperator?.value)
     ? formulaOperator.value
     : "-";
+  if (calcInputMode === "single") {
+    return normalizeCalcFormula(
+      [
+        {
+          operator: "+",
+          meterKey: getMeterKey(firstMeter),
+          meterName: firstMeter?.name || "",
+          field: firstField
+        }
+      ],
+      activeMeters
+    );
+  }
   return normalizeCalcFormula(
     [
       {
@@ -506,6 +569,7 @@ const buildFormulaFromInputs = () => {
   );
 };
 const getFormulaResultName = () => {
+  if (calcInputMode === "single") return getSingleModeCalcLabel();
   const raw = (formulaResultName?.value || "").trim();
   return raw || defaultCalcLabel;
 };
@@ -546,9 +610,18 @@ const populateFormulaInputs = (formula, calcLabel = defaultCalcLabel) => {
 };
 const updateFormulaResultPreview = async () => {
   if (!formulaResultValue) return;
-  const startDate = billStart?.value;
-  const endDate = billEnd?.value;
+  let startDate = billStart?.value;
+  let endDate = billEnd?.value;
+  if (billMode === "auto") {
+    const { startStr, endStr } = getAutoPreviewRange(billCutoff?.value);
+    startDate = startStr;
+    endDate = endStr;
+  }
   formulaTerms = buildFormulaFromInputs();
+  if (calcInputMode === "single") {
+    formulaResultValue.value = "-";
+    return;
+  }
   if (!startDate || !endDate) {
     formulaResultValue.value = "-";
     return;
@@ -599,6 +672,29 @@ const inferCalcMethodFromFormula = (formula) => {
   }
   return defaultSchedule.calcMethod;
 };
+const getMetersFromFormula = (formula, meterPool = meterProfiles) => {
+  const normalized = normalizeCalcFormula(formula, meterPool, false);
+  if (!Array.isArray(meterPool) || !meterPool.length) return [];
+  if (!normalized.length) return [meterPool[0]];
+  const picked = [];
+  const seen = new Set();
+  normalized.forEach((term) => {
+    const meterKey = String(term?.meterKey || "").trim();
+    const meterName = String(term?.meterName || "").trim();
+    const meter = meterPool.find((candidate) => {
+      const candidateKey = getMeterKey(candidate);
+      if (meterKey && candidateKey === meterKey) return true;
+      if (meterName && candidate?.name === meterName) return true;
+      return false;
+    });
+    if (!meter) return;
+    const stableKey = getMeterKey(meter) || `${meter.name || ""}|${meter.sn || ""}`;
+    if (!stableKey || seen.has(stableKey)) return;
+    seen.add(stableKey);
+    picked.push(meter);
+  });
+  return picked.length ? picked : [meterPool[0]];
+};
 
 const seedFromString = (value) => {
   let hash = 2166136261;
@@ -640,11 +736,6 @@ const closeModal = () => {
   billModal?.classList.add("hidden");
   isModalOpen = false;
   updateScheduleInfo(schedule.cutoffDay);
-};
-const hideDetail = () => {
-  if (!billDetail) return;
-  billDetail.classList.add("hidden");
-  activeDetailId = null;
 };
 const hideReceiptHistory = () => {
   receiptHistory?.classList.add("hidden");
@@ -1089,7 +1180,7 @@ const getNextRunDate = (cutoffDay) => {
   const startStr = formatDate(start);
   const endStr = formatDate(end);
   const alreadyGenerated = history.some(
-    (b) => b.periodStart === startStr && b.periodEnd === endStr
+    (b) => Boolean(b?.auto) && b.periodStart === startStr && b.periodEnd === endStr
   );
   if (today > candidate || alreadyGenerated) {
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
@@ -1105,6 +1196,56 @@ const getNextRunDate = (cutoffDay) => {
     );
   }
   return candidate;
+};
+
+const getAutoPreviewRange = (cutoffDayValue) => {
+  const cutoffDay = Number(cutoffDayValue) || schedule.cutoffDay || defaultSchedule.cutoffDay;
+  const runDate = getNextRunDate(cutoffDay);
+  const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
+  return {
+    cutoffDay,
+    runDate,
+    start,
+    end,
+    startStr: formatDate(start),
+    endStr: formatDate(end)
+  };
+};
+
+const updateAutoPreviewText = () => {
+  if (!billAutoPreview) return;
+  const { runDate, startStr, endStr } = getAutoPreviewRange(billCutoff?.value);
+  billAutoPreview.textContent = `ระบบจะสร้างบิลวันที่ ${formatDate(runDate)} สำหรับช่วง ${startStr} - ${endStr}`;
+};
+
+const setBillMode = (mode) => {
+  billMode = mode === "auto" ? "auto" : "manual";
+  const isAuto = billMode === "auto";
+  billFlowManualBtn?.classList.toggle("active", !isAuto);
+  billFlowAutoBtn?.classList.toggle("active", isAuto);
+  if (billNewBtn) {
+    billNewBtn.textContent = isAuto ? "ตั้งค่าอัตโนมัติ" : "สร้างบิลใหม่";
+  }
+  if (billModalTitle) {
+    billModalTitle.textContent = isAuto ? "ตั้งค่าออกบิลอัตโนมัติ" : "สร้างใบแจ้งค่าไฟ";
+  }
+  if (billHistoryTitle) {
+    billHistoryTitle.textContent = isAuto
+      ? "ประวัติการสร้างบิลอัตโนมัติ"
+      : "ประวัติการสร้างบิลแบบกำหนดเอง";
+  }
+  billDateRangeField?.classList.toggle("hidden", isAuto);
+  billAutoPreviewField?.classList.toggle("hidden", !isAuto);
+  billCutoffField?.classList.toggle("hidden", !isAuto);
+  if (billConfirm) {
+    billConfirm.textContent = isAuto ? "บันทึกอัตโนมัติ" : "สร้างบิล";
+  }
+  updateAutoPreviewText();
+  if (isModalOpen) updateFormulaResultPreview();
+  hideReceiptHistory();
+  closeReceiptPreview();
+  renderHistory();
+  updateSummary();
 };
 
 const findMeterScopedRow = (row, term) => {
@@ -1182,25 +1323,28 @@ const buildReceiptDates = (startStr, cutoffDay) => {
     })
     .filter((date) => date && date >= start && date <= today);
 };
-
-const getDetailColumns = (columns) => {
-  const list = Array.isArray(columns) ? columns : [];
-  const active = list.length ? list : defaultSchedule.detailColumns;
-  return detailColumnDefs.filter((col) => active.includes(col.key));
+const countBillPeriodDays = (bill) => {
+  if (Array.isArray(bill?.daily) && bill.daily.length) return bill.daily.length;
+  const start = parseDateInput(bill?.periodStart || "");
+  const end = parseDateInput(bill?.periodEnd || "");
+  if (!start || !end || start > end) return 0;
+  return listDatesInclusive(start, end).length;
 };
-const renderDetailHeader = (columns) => {
-  if (!billDetailHead) return;
-  const headerCells = columns
-    .map((col) => `<th>${col.label}</th>`)
-    .join("");
-  billDetailHead.innerHTML = `<th style="width: 140px;">วันที่</th>${headerCells}`;
-  if (billDetailRows) {
-    const emptyCell = billDetailRows.querySelector("td.empty");
-    if (emptyCell) {
-      emptyCell.setAttribute("colspan", String(columns.length + 1));
-    }
+const getManualIssueDate = (bill) => {
+  const periodEnd = parseDateInput(bill?.periodEnd || "");
+  if (periodEnd) return periodEnd;
+  const createdAt = Number(bill?.createdAt);
+  if (Number.isFinite(createdAt) && createdAt > 0) {
+    const created = new Date(createdAt);
+    if (!Number.isNaN(created.getTime())) return created;
   }
+  return null;
 };
+const getHistoryByCurrentMode = () => {
+  const isAutoMode = billMode === "auto";
+  return history.filter((bill) => Boolean(bill?.auto) === isAutoMode);
+};
+
 const getSelectedDetailColumns = () => {
   if (!billColumnsList) return [];
   return Array.from(
@@ -1283,40 +1427,49 @@ const createBill = ({
 
 const renderHistory = () => {
   if (!billHistoryRows) return;
-  if (!history.length) {
+  const visibleHistory = getHistoryByCurrentMode();
+  if (!visibleHistory.length) {
+    const emptyLabel =
+      billMode === "auto" ? "ยังไม่มีบิลอัตโนมัติ" : "ยังไม่มีบิลกำหนดเอง";
     billHistoryRows.innerHTML =
-      '<tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>';
+      `<tr><td class="empty" colspan="7">${emptyLabel}</td></tr>`;
     return;
   }
-  billHistoryRows.innerHTML = history
+  billHistoryRows.innerHTML = visibleHistory
     .map((bill) => {
-      const meterText = bill.meters.map((m) => m.name).join(", ");
-      const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดเอง";
-      const badgeClass = bill.auto ? "auto" : "manual";
-      const methodFormula =
+      const meterPool = Array.isArray(bill.meters) ? bill.meters : [];
+      const displayFormula =
         Array.isArray(bill.calcFormula) && bill.calcFormula.length
           ? bill.calcFormula
-          : buildLegacyFormula(bill.calcMethod, bill.meters);
-      const methodLabel = formatFormulaLabel(methodFormula, bill.meters);
-      const formulaName = (bill.calcLabel || defaultCalcLabel).trim();
-      const sourceLabel = bill.source === "api" ? "API" : "Mock";
+          : buildLegacyFormula(bill.calcMethod, meterPool);
+      const displayMeters = getMetersFromFormula(displayFormula, meterPool);
+      const meterText = displayMeters.map((m) => m.name).join(", ");
+      const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดเอง";
+      const badgeClass = bill.auto ? "auto" : "manual";
+      const manualIssueDate = getManualIssueDate(bill);
+      const manualIssueDateStr = manualIssueDate
+        ? formatDate(manualIssueDate)
+        : bill.periodEnd || bill.periodStart || "";
+      const actionButtons = bill.auto
+        ? `<button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติใบเสร็จ</button>
+           <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`
+        : `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดาวน์โหลด</button>
+           <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดูตัวอย่าง</button>
+           <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`;
       return `
         <tr data-id="${bill.id}">
           <td>ใบที่ ${bill.billNo}</td>
           <td>${meterText || "-"}</td>
-          <td>
-            <div>${bill.periodStart} - ${bill.periodEnd}</div>
-            <div class="muted small">${formulaName}: ${methodLabel} • ข้อมูล: ${sourceLabel}</div>
+          <td class="period-cell">
             <span class="badge ${badgeClass}">${badgeLabel}</span>
+            <div class="period-range">${bill.periodStart} - ${bill.periodEnd}</div>
           </td>
           <td>${formatNumber(bill.rate, 2)}</td>
           <td>${formatNumber(bill.totalKwh, 1)}</td>
           <td>${formatCurrency(bill.amount)}</td>
           <td>
             <div class="history-actions">
-              <button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติใบเสร็จ</button>
-              <button class="ghost small-btn" data-action="detail" data-id="${bill.id}" type="button">ดูรายวัน</button>
-              <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>
+              ${actionButtons}
             </div>
           </td>
         </tr>
@@ -1324,19 +1477,40 @@ const renderHistory = () => {
     })
     .join("");
 
-  billHistoryRows.querySelectorAll("button[data-action='detail']").forEach(
-    (btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        if (id) showBillDetail(id);
-      });
-    }
-  );
   billHistoryRows.querySelectorAll("button[data-action='receipt']").forEach(
     (btn) => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-id");
         if (id) showReceiptHistory(id);
+      });
+    }
+  );
+  billHistoryRows.querySelectorAll("button[data-action='sample']").forEach(
+    (btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        if (!id) return;
+        const bill = history.find((b) => b.id === id);
+        if (!bill) return;
+        const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
+        if (!issueDate) return;
+        hideReceiptHistory();
+        openReceiptPreview({ bill, issueDate });
+      });
+    }
+  );
+  billHistoryRows.querySelectorAll("button[data-action='download']").forEach(
+    (btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        if (!id) return;
+        const bill = history.find((b) => b.id === id);
+        if (!bill) return;
+        const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
+        if (!issueDate) return;
+        hideReceiptHistory();
+        openReceiptPreview({ bill, issueDate });
+        openReceiptPrint();
       });
     }
   );
@@ -1354,14 +1528,22 @@ const showReceiptHistory = (id) => {
   if (!receiptHistory || !receiptRows) return;
   const bill = history.find((b) => b.id === id);
   if (!bill) return;
-  hideDetail();
   const cutoffDay =
     bill.cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay;
-  const dates = buildReceiptDates(bill.periodStart, cutoffDay).sort(
+  const isAutoBill = Boolean(bill.auto);
+  const dates = (isAutoBill
+    ? buildReceiptDates(bill.periodStart, cutoffDay)
+    : (() => {
+      const issueDate = getManualIssueDate(bill);
+      return issueDate ? [issueDate] : [];
+    })()
+  ).sort(
     (a, b) => b - a
   );
   if (receiptTitle) {
-    receiptTitle.textContent = `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`;
+    receiptTitle.textContent = isAutoBill
+      ? `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`
+      : `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดเอง)`;
   }
   if (!dates.length) {
     receiptRows.innerHTML =
@@ -1371,11 +1553,16 @@ const showReceiptHistory = (id) => {
       .map((date, idx) => {
         const year = date.getFullYear();
         const monthIndex = date.getMonth();
-        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const dayCount = isAutoBill
+          ? new Date(year, monthIndex + 1, 0).getDate()
+          : Math.max(1, countBillPeriodDays(bill));
+        const periodLabel = isAutoBill
+          ? `งวด ${dates.length - idx} • ${formatMonth(date)}`
+          : `${bill.periodStart} - ${bill.periodEnd}`;
         return `
         <tr>
-          <td>งวด ${dates.length - idx} • ${formatMonth(date)}</td>
-          <td>${daysInMonth} วัน</td>
+          <td>${periodLabel}</td>
+          <td>${dayCount} วัน</td>
           <td>${formatDate(date)}</td>
           <td>
             <button class="small-btn" data-action="download" data-date="${formatDate(
@@ -1413,66 +1600,18 @@ const showReceiptHistory = (id) => {
 };
 
 const updateSummary = () => {
-  if (billTotalCount) billTotalCount.textContent = `${history.length} ใบ`;
+  const visibleHistory = getHistoryByCurrentMode();
+  if (billTotalCount) billTotalCount.textContent = `${visibleHistory.length} ใบ`;
   if (billAutoDay) billAutoDay.textContent = `${schedule.cutoffDay}`;
-  if (!history.length) {
+  if (!visibleHistory.length) {
     if (billLastPeriod) billLastPeriod.textContent = "-";
     if (billLastAmount) billLastAmount.textContent = "-";
     return;
   }
-  const latest = history[0];
+  const latest = visibleHistory[0];
   if (billLastPeriod)
     billLastPeriod.textContent = `${latest.periodStart} - ${latest.periodEnd}`;
   if (billLastAmount) billLastAmount.textContent = formatCurrency(latest.amount);
-};
-
-const showBillDetail = (id) => {
-  if (!billDetail || !billDetailRows) return;
-  const bill = history.find((b) => b.id === id);
-  if (!bill) return;
-  hideReceiptHistory();
-  activeDetailId = id;
-  billDetailTitle.textContent = `ใบที่ ${bill.billNo} • ${bill.periodStart} - ${bill.periodEnd}`;
-  const columns = getDetailColumns(bill.detailColumns).map((col) =>
-    col.key === "bill_units"
-      ? { ...col, label: `${(bill.calcLabel || defaultCalcLabel).trim()} (kWh)` }
-      : col
-  );
-  renderDetailHeader(columns);
-  const totals = bill.daily.reduce(
-    (acc, row) => {
-      acc.solar_in += parseNumber(row.solar_in);
-      acc.self_use += parseNumber(row.self_use);
-      acc.mdb_in += parseNumber(row.mdb_in);
-      acc.mdb_out += parseNumber(row.mdb_out);
-      acc.bill_units += parseNumber(row.bill_units);
-      return acc;
-    },
-    { solar_in: 0, self_use: 0, mdb_in: 0, mdb_out: 0, bill_units: 0 }
-  );
-
-  billDetailRows.innerHTML = bill.daily
-    .map((row) => {
-      const cells = columns
-        .map((col) => {
-          const value =
-            col.key === "bill_units" ? row.bill_units : row[col.key];
-          return `<td>${formatNumber(value, 1)}</td>`;
-        })
-        .join("");
-      return `<tr><td>${row.date}</td>${cells}</tr>`;
-    })
-    .join("");
-  const totalCells = columns
-    .map((col) => `<td><strong>${formatNumber(totals[col.key], 1)}</strong></td>`)
-    .join("");
-  billDetailRows.innerHTML += `
-    <tr>
-      <td><strong>รวม</strong></td>
-      ${totalCells}
-    </tr>
-  `;
-  billDetail.classList.remove("hidden");
 };
 
 const deleteBill = (id) => {
@@ -1484,7 +1623,6 @@ const deleteBill = (id) => {
   saveHistory();
   renderHistory();
   updateSummary();
-  if (activeDetailId === id) hideDetail();
 };
 
 const runAutoIfDue = async () => {
@@ -1500,7 +1638,7 @@ const runAutoIfDue = async () => {
   const startStr = formatDate(start);
   const endStr = formatDate(end);
   const alreadyGenerated = history.some(
-    (b) => b.periodStart === startStr && b.periodEnd === endStr
+    (b) => Boolean(b?.auto) && b.periodStart === startStr && b.periodEnd === endStr
   );
   if (alreadyGenerated) return;
   const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
@@ -1510,10 +1648,11 @@ const runAutoIfDue = async () => {
     schedule.calcMethod,
     meterProfiles
   );
+  const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
   createBill({
     periodStart: startStr,
     periodEnd: endStr,
-    meters: meterProfiles,
+    meters: formulaMeters,
     rate: schedule.defaultRate,
     rateType: schedule.rateType,
     calcMethod: schedule.calcMethod || defaultSchedule.calcMethod,
@@ -1527,7 +1666,7 @@ const runAutoIfDue = async () => {
   });
 };
 
-const openModal = () => {
+const openModal = (mode = billMode) => {
   if (!billModal) return;
   billModal.classList.remove("hidden");
   isModalOpen = true;
@@ -1540,27 +1679,19 @@ const openModal = () => {
     schedule.calcMethod,
     getSelectedMetersForFormula()
   );
+  setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
+    skipPreview: true
+  });
   populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
-  updateFormulaResultPreview();
+  setBillMode(mode);
 };
 
 const handleConfirm = async () => {
-  const selectedMeters = [...meterProfiles];
-  if (!selectedMeters.length) {
+  const selectedMeterPool = getSelectedMetersForFormula();
+  if (!selectedMeterPool.length) {
     alert("ยังไม่มีมิเตอร์ให้ใช้คำนวณ");
     return;
   }
-  const startDate = parseDateInput(billStart.value);
-  const endDate = parseDateInput(billEnd.value);
-  if (!startDate || !endDate) {
-    alert("กรุณากรอกช่วงวันที่ให้ครบ");
-    return;
-  }
-  if (startDate > endDate) {
-    alert("วันที่เริ่มต้องไม่มากกว่าวันที่สิ้นสุด");
-    return;
-  }
-  const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   const rateVal =
     parseFloat(billRateInput.value || `${schedule.defaultRate}`) ||
     schedule.defaultRate;
@@ -1572,12 +1703,47 @@ const handleConfirm = async () => {
   }
   const calcLabel = getFormulaResultName();
   const calcMethod = inferCalcMethodFromFormula(calcFormula);
+  const selectedMeters = getMetersFromFormula(calcFormula, selectedMeterPool);
   const selectedDetailColumns = getSelectedDetailColumns();
   const detailColumns = selectedDetailColumns.length
     ? selectedDetailColumns
     : schedule.detailColumns?.length
       ? [...schedule.detailColumns]
       : [...defaultSchedule.detailColumns];
+
+  if (billMode === "auto") {
+    const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
+    schedule = {
+      ...schedule,
+      cutoffDay,
+      defaultRate: rateVal,
+      rateType: rateTypeVal,
+      calcMethod,
+      calcFormula,
+      calcLabel,
+      detailColumns
+    };
+    saveSchedule();
+    updateScheduleInfo(cutoffDay);
+    updateSummary();
+    const { runDate, startStr, endStr } = getAutoPreviewRange(cutoffDay);
+    closeModal();
+    alert(
+      `บันทึกโหมดอัตโนมัติแล้ว\nระบบจะรันวันที่ ${formatDate(runDate)}\nช่วงบิล ${startStr} - ${endStr}`
+    );
+    return;
+  }
+
+  const startDate = parseDateInput(billStart.value);
+  const endDate = parseDateInput(billEnd.value);
+  if (!startDate || !endDate) {
+    alert("กรุณากรอกช่วงวันที่ให้ครบ");
+    return;
+  }
+  if (startDate > endDate) {
+    alert("วันที่เริ่มต้องไม่มากกว่าวันที่สิ้นสุด");
+    return;
+  }
   const periodStart = formatDate(startDate);
   const periodEnd = formatDate(endDate);
 
@@ -1599,7 +1765,7 @@ const handleConfirm = async () => {
     calcMethod,
     calcFormula,
     calcLabel,
-    cutoffDay,
+    cutoffDay: schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns,
     auto: false,
     source,
@@ -1608,7 +1774,6 @@ const handleConfirm = async () => {
 
   schedule = {
     ...schedule,
-    cutoffDay,
     defaultRate: rateVal,
     rateType: rateTypeVal,
     calcMethod,
@@ -1617,7 +1782,7 @@ const handleConfirm = async () => {
     detailColumns
   };
   saveSchedule();
-  updateScheduleInfo(cutoffDay);
+  updateScheduleInfo(schedule.cutoffDay);
   renderHistory();
   updateSummary();
   closeModal();
@@ -1649,6 +1814,20 @@ document.addEventListener("keydown", (e) => {
 billCutoff?.addEventListener("change", () => {
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   updateScheduleInfo(cutoffDay);
+  updateAutoPreviewText();
+  if (isModalOpen) updateFormulaResultPreview();
+});
+billFlowManualBtn?.addEventListener("click", () => {
+  setBillMode("manual");
+});
+billFlowAutoBtn?.addEventListener("click", () => {
+  setBillMode("auto");
+});
+calcModeSingleBtn?.addEventListener("click", () => {
+  setCalcInputMode("single");
+});
+calcModeFormulaBtn?.addEventListener("click", () => {
+  setCalcInputMode("formula");
 });
 [
   formulaMeterLeft,
@@ -1678,7 +1857,6 @@ columnsClearBtn?.addEventListener("click", () => {
   updateColumnSelectedCount();
 });
 
-billDetailClose?.addEventListener("click", hideDetail);
 receiptClose?.addEventListener("click", hideReceiptHistory);
 receiptPreviewClose?.addEventListener("click", closeReceiptPreview);
 receiptPreviewModal?.addEventListener("click", (e) => {
@@ -1701,7 +1879,6 @@ const setMode = (isBilling) => {
   if (billingBtn) billingBtn.classList.toggle("active", isBilling);
   if (!isBilling) {
     closeModal();
-    hideDetail();
     hideReceiptHistory();
     closeReceiptPreview();
   }
@@ -1810,13 +1987,12 @@ loadHistory();
 
 const initBilling = async () => {
   updateScheduleInfo(schedule.cutoffDay);
-  renderDetailHeader(getDetailColumns(schedule.detailColumns));
   await runAutoIfDue();
   renderHistory();
   updateSummary();
 };
 
-billNewBtn?.addEventListener("click", openModal);
+billNewBtn?.addEventListener("click", () => openModal(billMode));
 billConfirm?.addEventListener("click", () => {
   handleConfirm();
 });
@@ -1832,6 +2008,7 @@ billScheduleRemove?.addEventListener("click", () => {
 billModal?.classList.add("hidden");
 populateCutoffOptions();
 setDefaultRange(schedule.cutoffDay);
+setBillMode("manual");
 const bootstrapPlantPage = async () => {
   setMode(false);
   await hydratePlantMetersFromApi();
