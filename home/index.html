@@ -91,6 +91,22 @@
             <label for="plant-name-input">ตั้งชื่อ Plant</label>
             <input type="text" id="plant-name-input" placeholder="เช่น โรงงาน A">
           </div>
+          <div class="field">
+            <label for="plant-location-input">Location</label>
+            <input
+              type="text"
+              id="plant-location-input"
+              placeholder="เช่น 18.788300,98.985300 หรือ Chiang Mai, Thailand"
+            >
+            <div class="field-actions plant-location-actions">
+              <button class="chip-btn" id="plant-location-current" type="button">
+                ค้นหาตำแหน่งปัจจุบัน
+              </button>
+            </div>
+            <p class="muted small plant-location-hint" id="plant-location-hint">
+              ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API
+            </p>
+          </div>
         </div>
         <div class="plant-step hidden" data-step="2">
           <div class="field">

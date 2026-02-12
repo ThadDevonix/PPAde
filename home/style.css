@@ -1001,6 +1001,9 @@ tbody tr.selected {
     grid-template-columns: 1fr;
     gap: 6px;
   }
+  .formula-inline-grid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 760px) {
   .modal {
@@ -1033,6 +1036,12 @@ tbody tr.selected {
   gap: 8px;
   flex-wrap: wrap;
 }
+.plant-location-actions {
+  margin-top: 8px;
+}
+.plant-location-hint {
+  margin: 6px 0 0;
+}
 .chip-btn {
   padding: 6px 10px;
   border-radius: 999px;
@@ -1048,6 +1057,34 @@ tbody tr.selected {
 .pill.count {
   background: #eef3ff;
   color: #0f63d4;
+}
+.formula-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+.formula-inline-cell {
+  display: grid;
+  gap: 4px;
+}
+.formula-inline-cell label {
+  margin: 0;
+  font-size: 12px;
+}
+.formula-inline-cell input,
+.formula-inline-cell select {
+  min-width: 0;
+}
+.formula-op-cell {
+  max-width: 92px;
+}
+.formula-inline-cell input[readonly] {
+  background: #f5f7fb;
+  color: #334155;
+}
+#bill-modal .modal-content {
+  width: min(980px, 96vw);
 }
 .meter-card-grid {
   margin-top: 6px;
@@ -1114,6 +1151,9 @@ tbody tr.selected {
   border-color: var(--accent);
   background: #eef3ff;
   box-shadow: 0 10px 28px rgba(22, 119, 255, 0.18);
+}
+.meter-card-static {
+  cursor: default;
 }
 #meter-modal {
   z-index: 30;

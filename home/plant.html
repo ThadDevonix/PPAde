@@ -174,20 +174,6 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="field">
-            <div class="field-head">
-              <div>
-                <label>เลือกมิเตอร์</label>
-                <p class="muted small">แตะที่การ์ดเพื่อเลือก/ยกเลิก</p>
-              </div>
-              <div class="field-actions">
-                <button class="chip-btn" id="meter-select-all" type="button">เลือกทั้งหมด</button>
-                <button class="chip-btn ghost" id="meter-clear" type="button">ล้าง</button>
-                <span class="pill count" id="meter-selected-count">0/0</span>
-              </div>
-            </div>
-            <div id="modal-meter-list" class="meter-card-grid"></div>
-          </div>
           <div class="field grid-2">
             <div>
               <label for="bill-start">วันที่เริ่ม</label>
@@ -212,28 +198,41 @@
             </div>
           </div>
           <div class="field">
-            <label for="bill-calc">คำนวณหน่วยจาก</label>
-            <select id="bill-calc">
-              <option value="self_use">Self Use (Meter 1)</option>
-              <option value="mdb_net">MDB In - MDB Out (Meter 2)</option>
-              <option value="solar_in">Solar In (Meter 1)</option>
-              <option value="mdb_in">MDB In (Meter 2)</option>
-              <option value="mdb_out">MDB Out (Meter 2)</option>
-            </select>
-          </div>
-          <div class="field hidden" id="bill-columns-field">
-            <div class="field-head">
-              <div>
-                <label>คอลัมน์ที่ต้องการแสดง</label>
-                <p class="muted small">เลือกข้อมูลที่จะโชว์ในตารางรายวัน</p>
+            <div class="formula-inline-grid">
+              <div class="formula-inline-cell">
+                <label for="formula-meter-left">มิเตอร์ 1</label>
+                <select id="formula-meter-left"></select>
               </div>
-              <div class="field-actions">
-                <button class="chip-btn" id="columns-select-all" type="button">เลือกทั้งหมด</button>
-                <button class="chip-btn ghost" id="columns-clear" type="button">ล้าง</button>
-                <span class="pill count" id="columns-selected-count">0/0 เลือก</span>
+              <div class="formula-inline-cell">
+                <label for="formula-value-left">ค่า 1</label>
+                <select id="formula-value-left"></select>
+              </div>
+              <div class="formula-inline-cell formula-op-cell">
+                <label for="formula-operator">เครื่องหมาย</label>
+                <select id="formula-operator">
+                  <option value="+">+</option>
+                  <option value="-">-</option>
+                  <option value="*">*</option>
+                  <option value="/">/</option>
+                </select>
+              </div>
+              <div class="formula-inline-cell">
+                <label for="formula-meter-right">มิเตอร์ 2</label>
+                <select id="formula-meter-right"></select>
+              </div>
+              <div class="formula-inline-cell">
+                <label for="formula-value-right">ค่า 2</label>
+                <select id="formula-value-right"></select>
+              </div>
+              <div class="formula-inline-cell">
+                <label for="formula-result-name">ชื่อผลคำนวณ</label>
+                <input type="text" id="formula-result-name" placeholder="เช่น หน่วยสุทธิ">
+              </div>
+              <div class="formula-inline-cell">
+                <label for="formula-result-value">ผลที่ได้</label>
+                <input type="text" id="formula-result-value" readonly value="-">
               </div>
             </div>
-            <div class="checkbox-list" id="bill-columns-list"></div>
           </div>
           <div class="field">
             <label for="bill-cutoff">ตัดรอบวันที่</label>

@@ -11,11 +11,18 @@ const legacySeedPlantNames = new Set([
   "PEA โรงเรียนพิจองซิง จ.แม่ฮาย 5kW+op+batt",
   "PEA โรงเรียนเข้นหัวเวียง 5kW+op+batt"
 ]);
-const energyApiBase = "https://solarmdb.devonix.co.th/api/energy";
-const requestedPlantName = "CNX_PPA";
-const plantsLiveUrl = `${energyApiBase}?period=live&name=${encodeURIComponent(
-  requestedPlantName
-)}`;
+const sitesApiCandidates = [
+  "/api/sites",
+  "http://localhost:3000/api/sites",
+  "http://127.0.0.1:3000/api/sites",
+  "https://solarmdb.devonix.co.th/api/sites"
+];
+const devicesApiCandidates = [
+  "/api/devices",
+  "http://localhost:3000/api/devices",
+  "http://127.0.0.1:3000/api/devices",
+  "https://solarmdb.devonix.co.th/api/devices"
+];
 const generateId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -58,190 +65,502 @@ const readString = (...values) => {
   }
   return "";
 };
-const normalizeKeyToken = (value) =>
-  String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-const readStringByLooseKey = (value, keys) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
-  const wanted = new Set(keys.map(normalizeKeyToken));
-  const entries = Object.entries(value);
-  for (const [key, raw] of entries) {
-    if (!wanted.has(normalizeKeyToken(key))) continue;
-    const text = readString(raw);
-    if (text) return text;
-  }
-  return "";
-};
-const getPlantName = (value) =>
-  readString(
-    value?.["Name (Location)"],
-    value?.["name (location)"],
-    value?.["Name(Location)"],
-    value?.["name(location)"],
-    value?.name,
-    value?.plant,
-    value?.plant_name,
-    value?.plantName,
-    value?.location,
-    value?.location_name,
-    value?.locationName,
-    value?.site,
-    value?.site_name,
-    value?.siteName,
-    value?.Name
-  ) ||
-  readStringByLooseKey(value, [
-    "name",
-    "plant",
-    "plant_name",
-    "plantName",
-    "site",
-    "site_name",
-    "siteName",
-    "location",
-    "location_name",
-    "locationName",
-    "Name (Location)"
-  ]);
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const normalizePlantNameKey = (value) => value.trim().toLowerCase();
-const normalizePlantStatus = (value) => {
+const normalizeLocationValue = (value) => readString(value) || "Thailand";
+const normalizeSiteCodeKey = (value) =>
+  String(value || "").trim().toLowerCase();
+const normalizeSiteStatus = (value) => {
   if (typeof value === "boolean") return value ? "online" : "offline";
-  const text = readString(value).toLowerCase();
+  if (typeof value === "number") return value > 0 ? "online" : "offline";
+  const text = String(value ?? "").trim().toLowerCase();
   if (!text) return "online";
-  if (text.includes("off") || text.includes("down") || text.includes("error")) {
+  if (["0", "false", "off", "offline", "down", "error"].includes(text)) {
     return "offline";
   }
   return "online";
 };
-const hasPayloadData = (value) => {
-  if (Array.isArray(value)) return value.some((item) => hasPayloadData(item));
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value);
-    if (!entries.length) return false;
-    return entries.some(([, item]) => hasPayloadData(item));
-  }
-  if (value === null || value === undefined) return false;
-  if (typeof value === "string") return value.trim().length > 0;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "boolean") return true;
-  return false;
-};
-const extractApiRows = (payload) => {
+const extractSiteRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
-  const queue = [payload];
-  const rows = [];
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current || typeof current !== "object") continue;
-    if (Array.isArray(current)) {
-      queue.push(...current);
-      continue;
-    }
-    const name = getPlantName(current);
-    if (name) {
-      rows.push(current);
-      continue;
-    }
-    Object.values(current).forEach((value) => {
-      if (value && typeof value === "object") queue.push(value);
-    });
+  const keys = ["data", "items", "result", "rows", "list", "sites"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
   }
-  return rows;
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const extractDeviceRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "result", "rows", "list", "devices"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const toSitePlant = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const apiId = Number(row.id ?? row.site_id ?? row.siteId);
+  const siteCode = readString(row.site_code, row.siteCode, row.code);
+  const name = readString(
+    row.site_name,
+    row.siteName,
+    row.name,
+    row.plant_name,
+    row.plant
+  );
+  if (!name) return null;
+  const status = normalizeSiteStatus(
+    row.is_active ?? row.active ?? row.isActive ?? row.status
+  );
+  return {
+    id: Number.isFinite(apiId) && apiId > 0
+      ? `site-${apiId}`
+      : `site-${siteCode || generateId()}`,
+    apiId: Number.isFinite(apiId) && apiId > 0 ? apiId : null,
+    siteCode,
+    name,
+    location: readString(row.location, row.address),
+    timezone: readString(row.timezone) || "Asia/Bangkok",
+    country: "Thailand",
+    deviceType: "Meter",
+    deviceSn: readString(row.device_sn, row.meter_sn, row.sn),
+    status,
+    devices: []
+  };
+};
+const toApiDevice = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const siteId = Number(row.site_id ?? row.siteId);
+  if (!Number.isFinite(siteId) || siteId <= 0) return null;
+  const deviceId = Number(row.id ?? row.device_id ?? row.deviceId);
+  const deviceName = readString(
+    row.device_name,
+    row.deviceName,
+    row.name,
+    row.meter_name,
+    row.meterName
+  );
+  const sn = readString(
+    row.modbus_address_in,
+    row.modbusAddressIn,
+    row.sn,
+    row.serial,
+    row.device_sn
+  );
+  const status = normalizeSiteStatus(
+    row.is_active ?? row.active ?? row.isActive ?? row.status
+  );
+  return {
+    id: Number.isFinite(deviceId) && deviceId > 0 ? `device-${deviceId}` : generateId(),
+    apiId: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+    siteId,
+    name: deviceName || sn || "Device",
+    deviceName: deviceName || sn || "Device",
+    sn,
+    deviceType: readString(row.device_type, row.deviceType, row.type) || "METER",
+    status
+  };
 };
 const normalizeApiPlants = (payload) => {
-  const rows = extractApiRows(payload);
-  const byName = new Map();
+  const rows = extractSiteRows(payload);
+  const byKey = new Map();
   rows.forEach((row) => {
-    if (!row || typeof row !== "object") return;
-    const name = getPlantName(row);
-    if (!name) return;
-    const key = normalizePlantNameKey(name);
-    const existing = byName.get(key);
-    const deviceSn = readString(
-      row.device_sn,
-      row.meter_sn,
-      row.sn,
-      row.serial,
-      row.station,
-      row.address
-    );
-    const status = normalizePlantStatus(
-      row.status ?? row.state ?? row.online ?? row.connection_status
-    );
-    if (existing) {
-      if (!existing.deviceSn && deviceSn) existing.deviceSn = deviceSn;
-      if (status === "online") existing.status = "online";
-      return;
-    }
-    byName.set(key, {
-      id: generateId(),
-      name,
-      country: "Thailand",
-      deviceType: "Meter",
-      deviceSn,
-      status,
-      devices: []
-    });
+    const plant = toSitePlant(row);
+    if (!plant) return;
+    if (plant.status === "offline") return;
+    const key = plant.apiId
+      ? `id:${plant.apiId}`
+      : `code:${normalizeSiteCodeKey(plant.siteCode) || normalizePlantNameKey(plant.name)}`;
+    if (!byKey.has(key)) byKey.set(key, plant);
   });
-  if (!byName.size && hasPayloadData(payload)) {
-    const fallbackName = requestedPlantName;
-    const fallbackKey = normalizePlantNameKey(fallbackName);
-    byName.set(fallbackKey, {
-      id: generateId(),
-      name: fallbackName,
-      country: "Thailand",
-      deviceType: "Meter",
-      deviceSn: "",
-      status: "online",
-      devices: []
-    });
-  }
-  return Array.from(byName.values());
+  return Array.from(byKey.values());
 };
-const mergeApiPlantsWithLocal = (apiPlants, localPlants) => {
-  const localByName = new Map();
+const normalizeApiDevices = (payload) => {
+  const rows = extractDeviceRows(payload);
+  const byKey = new Map();
+  rows.forEach((row) => {
+    const device = toApiDevice(row);
+    if (!device) return;
+    if (device.status === "offline") return;
+    const key = device.apiId
+      ? `id:${device.apiId}`
+      : `site:${device.siteId}:${normalizePlantNameKey(device.name)}`;
+    if (!byKey.has(key)) byKey.set(key, device);
+  });
+  return Array.from(byKey.values());
+};
+const mergeApiPlantsWithLocal = (apiPlants, localPlants, apiDevices = []) => {
+  const byApiId = new Map();
+  const bySiteCode = new Map();
+  const byName = new Map();
+  const devicesBySiteId = new Map();
+  apiDevices.forEach((device) => {
+    const siteId = Number(device.siteId);
+    if (!Number.isFinite(siteId) || siteId <= 0) return;
+    if (!devicesBySiteId.has(siteId)) devicesBySiteId.set(siteId, []);
+    devicesBySiteId.get(siteId).push(device);
+  });
   localPlants.forEach((plant) => {
-    const key = normalizePlantNameKey(plant.name || "");
-    if (key) localByName.set(key, plant);
+    const apiId = Number(plant.apiId);
+    if (Number.isFinite(apiId) && apiId > 0) byApiId.set(apiId, plant);
+    const siteCodeKey = normalizeSiteCodeKey(plant.siteCode || plant.site_code);
+    if (siteCodeKey) bySiteCode.set(siteCodeKey, plant);
+    const nameKey = normalizePlantNameKey(plant.name || "");
+    if (nameKey) byName.set(nameKey, plant);
   });
   const mergedApi = apiPlants.map((apiPlant) => {
-    const key = normalizePlantNameKey(apiPlant.name || "");
-    const local = localByName.get(key);
-    if (!local) return apiPlant;
-    localByName.delete(key);
+    const apiSiteId = Number(apiPlant.apiId);
+    const apiDevicesForPlant =
+      Number.isFinite(apiSiteId) && apiSiteId > 0
+        ? devicesBySiteId.get(apiSiteId) || []
+        : [];
+    const local =
+      byApiId.get(Number(apiPlant.apiId)) ||
+      bySiteCode.get(normalizeSiteCodeKey(apiPlant.siteCode)) ||
+      byName.get(normalizePlantNameKey(apiPlant.name));
+    const localDevices = Array.isArray(local?.devices) ? local.devices : [];
+    const mergedDevices =
+      apiDevicesForPlant.length || (Number.isFinite(apiSiteId) && apiSiteId > 0)
+        ? apiDevicesForPlant
+        : localDevices;
     return {
       ...apiPlant,
-      id: local.id || apiPlant.id,
-      devices: Array.isArray(local.devices) ? local.devices : apiPlant.devices,
-      deviceSn: local.deviceSn || apiPlant.deviceSn || ""
+      id: local?.id || apiPlant.id,
+      devices: mergedDevices,
+      deviceSn: mergedDevices[0]?.sn || local?.deviceSn || apiPlant.deviceSn || ""
     };
   });
-  return normalizePlants([...mergedApi, ...Array.from(localByName.values())]);
+  return normalizePlants(mergedApi);
 };
+const parseFirstSiteFromResponse = (payload) => {
+  const list = normalizeApiPlants(payload);
+  if (list.length) return list[0];
+  return toSitePlant(payload);
+};
+const getResponseErrorText = async (response) => {
+  try {
+    const text = await response.text();
+    return text ? `: ${text}` : "";
+  } catch {
+    return "";
+  }
+};
+const buildApiUrl = (base, path = "", search = "") => {
+  const cleanedPath = path
+    ? `/${String(path).replace(/^\/+/, "")}`
+    : "";
+  return `${base}${cleanedPath}${search || ""}`;
+};
+const requestSitesApi = async (path = "", options = {}) => {
+  const method = String(options.method || "GET").toUpperCase();
+  let lastHttpError = null;
+  let lastNetworkError = null;
+  for (const base of sitesApiCandidates) {
+    const url = buildApiUrl(base, path, options.search || "");
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: options.headers,
+        body: options.body
+      });
+      if (!response.ok) {
+        const detail = await getResponseErrorText(response);
+        if (!lastHttpError) {
+          lastHttpError = new Error(
+            `${method} ${url} failed (${response.status})${detail}`
+          );
+        }
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (!lastNetworkError) lastNetworkError = error;
+    }
+  }
+  if (lastHttpError) throw lastHttpError;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error(`${method} Sites API failed`);
+};
+const requestDevicesApi = async (path = "", options = {}) => {
+  const method = String(options.method || "GET").toUpperCase();
+  let lastHttpError = null;
+  let lastNetworkError = null;
+  for (const base of devicesApiCandidates) {
+    const url = buildApiUrl(base, path, options.search || "");
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: options.headers,
+        body: options.body
+      });
+      if (!response.ok) {
+        const detail = await getResponseErrorText(response);
+        if (!lastHttpError) {
+          lastHttpError = new Error(
+            `${method} ${url} failed (${response.status})${detail}`
+          );
+        }
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (!lastNetworkError) lastNetworkError = error;
+    }
+  }
+  if (lastHttpError) throw lastHttpError;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error(`${method} Devices API failed`);
+};
+const createSiteCode = (name) => {
+  const base = String(name || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 16) || "PPA";
+  const suffix = Date.now().toString().slice(-6);
+  return `${base}_${suffix}`;
+};
+const createSitePayload = (name, location) => ({
+  site_code: createSiteCode(name),
+  site_name: name,
+  location: normalizeLocationValue(location),
+  timezone: "Asia/Bangkok",
+  is_active: 1
+});
 const fetchPlantsFromApi = async () => {
-  const response = await fetch(plantsLiveUrl, { method: "GET" });
-  if (!response.ok) throw new Error(`API error ${response.status}`);
+  const response = await requestSitesApi("", { method: "GET" });
   const payload = await response.json();
   return normalizeApiPlants(payload);
 };
+const fetchDevicesFromApi = async () => {
+  const response = await requestDevicesApi("", { method: "GET" });
+  const payload = await response.json();
+  return normalizeApiDevices(payload);
+};
+const getPlantDeviceNames = (plant) => {
+  const rawNames = Array.isArray(plant?.devices)
+    ? plant.devices
+        .map((device) =>
+          readString(device?.deviceName, device?.device_name, device?.name)
+        )
+        .filter(Boolean)
+    : [];
+  return Array.from(new Set(rawNames));
+};
+const getPlantDeviceSummaryText = (plant) => {
+  const names = getPlantDeviceNames(plant);
+  if (!names.length) return "Device: -";
+  if (names.length <= 2) return `Device: ${names.join(", ")}`;
+  return `Device: ${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+};
+const matchesPlantIdentity = (apiPlant, plant) => {
+  const apiId = Number(apiPlant?.apiId);
+  const plantApiId = Number(plant?.apiId);
+  if (
+    Number.isFinite(apiId) &&
+    apiId > 0 &&
+    Number.isFinite(plantApiId) &&
+    plantApiId > 0
+  ) {
+    return apiId === plantApiId;
+  }
+  const apiCode = normalizeSiteCodeKey(apiPlant?.siteCode);
+  const plantCode = normalizeSiteCodeKey(plant?.siteCode);
+  if (apiCode && plantCode && apiCode === plantCode) return true;
+  const apiName = normalizePlantNameKey(apiPlant?.name || "");
+  const plantName = normalizePlantNameKey(plant?.name || "");
+  if (apiName && plantName && apiName === plantName) return true;
+  return false;
+};
+const resolveApiPlant = async (plant) => {
+  if (!plant || typeof plant !== "object") return plant;
+  const apiId = Number(plant.apiId);
+  if (Number.isFinite(apiId) && apiId > 0) return plant;
+  const response = await requestSitesApi("", { method: "GET" }).catch(() => null);
+  if (!response) return plant;
+  const payload = await response.json().catch(() => null);
+  const rows = extractSiteRows(payload);
+  const matchedRow = rows.find((row) => {
+    const candidate = toSitePlant(row);
+    if (!candidate) return false;
+    return matchesPlantIdentity(candidate, plant);
+  });
+  const matched = matchedRow ? toSitePlant(matchedRow) : null;
+  if (!matched) return plant;
+  return {
+    ...plant,
+    apiId: matched.apiId,
+    siteCode: matched.siteCode || plant.siteCode || "",
+    name: matched.name || plant.name || "",
+    location: matched.location || plant.location || "",
+    timezone: matched.timezone || plant.timezone || "Asia/Bangkok",
+    status: matched.status || plant.status || "online"
+  };
+};
+const createPlantInApi = async (name, location) => {
+  const payload = createSitePayload(name, location);
+  const response = await requestSitesApi("", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const responsePayload = await response.json().catch(() => null);
+  const created = parseFirstSiteFromResponse(responsePayload);
+  if (created) return created;
+  const refreshed = await fetchPlantsFromApi().catch(() => []);
+  const matched = refreshed.find((site) => {
+    const sameCode =
+      normalizeSiteCodeKey(site.siteCode) === normalizeSiteCodeKey(payload.site_code);
+    const sameName =
+      normalizePlantNameKey(site.name) === normalizePlantNameKey(payload.site_name);
+    return sameCode || sameName;
+  });
+  if (matched) return matched;
+  return {
+    id: `site-${payload.site_code}`,
+    apiId: null,
+    siteCode: payload.site_code,
+    name: payload.site_name,
+    location: payload.location,
+    timezone: payload.timezone,
+    country: "Thailand",
+    deviceType: "Meter",
+    deviceSn: "",
+    status: "online",
+    devices: []
+  };
+};
+const updatePlantInApi = async (plant, name, location) => {
+  const targetPlant = await resolveApiPlant(plant);
+  const apiId = Number(targetPlant?.apiId);
+  if (!Number.isFinite(apiId) || apiId <= 0) return null;
+  const normalizedLocation = normalizeLocationValue(location || targetPlant.location);
+  const payload = {
+    id: apiId,
+    site_code: targetPlant.siteCode || createSiteCode(name),
+    site_name: name,
+    location: normalizedLocation,
+    timezone: targetPlant.timezone || "Asia/Bangkok",
+    is_active: targetPlant.status === "offline" ? 0 : 1
+  };
+  const response = await requestSitesApi("", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const responsePayload = await response.json().catch(() => null);
+  return (
+    parseFirstSiteFromResponse(responsePayload) || {
+      ...targetPlant,
+      siteCode: payload.site_code,
+      name,
+      location: payload.location,
+      timezone: payload.timezone
+    }
+  );
+};
+const deactivatePlantInApi = async (plant, options = {}) => {
+  const targetPlant = options.skipResolve ? plant : await resolveApiPlant(plant);
+  const apiId = Number(targetPlant?.apiId);
+  if (!Number.isFinite(apiId) || apiId <= 0) return false;
+  const payload = {
+    id: apiId,
+    site_code: targetPlant.siteCode || createSiteCode(targetPlant.name || "PPA"),
+    site_name: targetPlant.name || "PPA Site",
+    location: normalizeLocationValue(targetPlant.location),
+    timezone: targetPlant.timezone || "Asia/Bangkok",
+    is_active: 0
+  };
+  await requestSitesApi("", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return true;
+};
+const deletePlantInApi = async (plant) => {
+  const targetPlant = await resolveApiPlant(plant);
+  const apiId = Number(targetPlant?.apiId);
+  if (!Number.isFinite(apiId) || apiId <= 0) {
+    throw new Error("ไม่พบรหัส Plant จาก API จึงยังลบที่หลังบ้านไม่ได้");
+  }
+  const errors = [];
+  try {
+    await requestSitesApi(String(apiId), { method: "DELETE" });
+    return "hard";
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    await requestSitesApi("", {
+      method: "DELETE",
+      search: `?id=${encodeURIComponent(apiId)}`
+    });
+    return "hard";
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    await requestSitesApi("", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: apiId })
+    });
+    return "hard";
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    const deactivated = await deactivatePlantInApi(targetPlant, { skipResolve: true });
+    if (deactivated) return "soft";
+  } catch (error) {
+    errors.push(error);
+  }
+  throw errors[0] || new Error("DELETE /api/sites failed");
+};
 const hydratePlantsFromApi = async () => {
   isHydratingPlants = true;
+  let hydrated = false;
   plantsLoadError = "";
-  if (!plants.length) render([]);
+  render([]);
   try {
-    const apiPlants = await fetchPlantsFromApi();
-    if (apiPlants.length) {
-      plants = mergeApiPlantsWithLocal(apiPlants, plants);
-      savePlants();
-    } else if (!plants.length) {
-      plantsLoadError = "API ตอบกลับแล้ว แต่ไม่พบฟิลด์ชื่อ Plant";
-    }
+    const [apiPlants, apiDevices] = await Promise.all([
+      fetchPlantsFromApi(),
+      fetchDevicesFromApi().catch(() => [])
+    ]);
+    plants = mergeApiPlantsWithLocal(apiPlants, plants, apiDevices);
+    savePlants();
+    hydrated = true;
   } catch (error) {
-    plantsLoadError = "โหลดข้อมูล Plant จาก API ไม่สำเร็จ";
+    plantsLoadError =
+      "โหลดข้อมูลจาก Sites API ไม่สำเร็จ (แนะนำเปิดผ่าน npm start ที่ http://localhost:3000)";
     console.warn("Failed to load plants from API", error);
   } finally {
     isHydratingPlants = false;
   }
-  if (plants.length) {
+  if (hydrated) {
     applyFilters();
     return;
   }
@@ -269,6 +588,9 @@ const plantStepNext = document.getElementById("plant-step-next");
 const plantStepBack = document.getElementById("plant-step-back");
 const plantSave = document.getElementById("plant-save");
 const plantNameInput = document.getElementById("plant-name-input");
+const plantLocationInput = document.getElementById("plant-location-input");
+const plantLocationCurrentBtn = document.getElementById("plant-location-current");
+const plantLocationHint = document.getElementById("plant-location-hint");
 const plantStepPanels = document.querySelectorAll(".plant-step");
 const meterAddBtn = document.getElementById("meter-add-btn");
 const meterModal = document.getElementById("meter-modal");
@@ -293,6 +615,7 @@ const metersPerPage = 5;
 let isMeterModalOpen = false;
 let isHydratingPlants = false;
 let plantsLoadError = "";
+let isLocatingPlantLocation = false;
 
 const render = (data) => {
   if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
@@ -314,7 +637,8 @@ const render = (data) => {
       <td><span class="status-dot" title="online"></span></td>
       <td><div class="img-ph" aria-label="ภาพโรงไฟฟ้า (placeholder)"></div></td>
       <td>
-        <div class="name">${item.name}</div>
+        <div class="name">${escapeHtml(item.name)}</div>
+        <div class="sub">${escapeHtml(getPlantDeviceSummaryText(item))}</div>
       </td>
       <td>
         <div class="history-actions">
@@ -547,6 +871,51 @@ const renderMeterList = () => {
   renderMeterPager();
 };
 
+const setPlantLocationHint = (message, isError = false) => {
+  if (!plantLocationHint) return;
+  plantLocationHint.textContent = message;
+  plantLocationHint.style.color = isError ? "#d94646" : "";
+};
+const setPlantLocationLoading = (loading) => {
+  isLocatingPlantLocation = loading;
+  if (!plantLocationCurrentBtn) return;
+  plantLocationCurrentBtn.disabled = loading;
+  plantLocationCurrentBtn.textContent = loading
+    ? "กำลังค้นหาตำแหน่ง..."
+    : "ค้นหาตำแหน่งปัจจุบัน";
+};
+const locateCurrentPosition = () => {
+  if (isLocatingPlantLocation) return;
+  if (!navigator.geolocation) {
+    setPlantLocationHint("เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง", true);
+    return;
+  }
+  setPlantLocationLoading(true);
+  setPlantLocationHint("กำลังขอสิทธิ์ตำแหน่งจากอุปกรณ์...");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const lat = Number(position.coords.latitude).toFixed(6);
+      const lng = Number(position.coords.longitude).toFixed(6);
+      if (plantLocationInput) plantLocationInput.value = `${lat},${lng}`;
+      setPlantLocationHint(`ได้ตำแหน่งแล้ว: ${lat},${lng}`);
+      setPlantLocationLoading(false);
+    },
+    (error) => {
+      let message = "ไม่สามารถดึงตำแหน่งปัจจุบันได้";
+      if (error?.code === 1) message = "ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง";
+      if (error?.code === 2) message = "ไม่พบข้อมูลตำแหน่งจากอุปกรณ์";
+      if (error?.code === 3) message = "ดึงตำแหน่งไม่ทันเวลา (timeout)";
+      setPlantLocationHint(message, true);
+      setPlantLocationLoading(false);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    }
+  );
+};
+
 const getPlantNameValue = () => plantNameInput?.value.trim() ?? "";
 const canProceedToMeters = () => Boolean(getPlantNameValue());
 const updatePlantStepAvailability = () => {
@@ -591,6 +960,8 @@ const openPlantModal = (mode = "create", plant = null) => {
     if (plantModalTitle) plantModalTitle.textContent = "แก้ไข Plant";
     plantDelete?.classList.remove("hidden");
     if (plantNameInput) plantNameInput.value = plant.name || "";
+    if (plantLocationInput) plantLocationInput.value = plant.location || "";
+    setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
     const meters = Array.isArray(plant.devices) ? plant.devices : [];
     pendingMeters = meters.map((m) => {
       const addressGroups = getAddressGroupsFromMeter(m);
@@ -608,6 +979,8 @@ const openPlantModal = (mode = "create", plant = null) => {
     if (plantModalTitle) plantModalTitle.textContent = "สร้าง Plant";
     plantDelete?.classList.add("hidden");
     if (plantNameInput) plantNameInput.value = "";
+    if (plantLocationInput) plantLocationInput.value = "";
+    setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
     pendingMeters = [];
   }
   renderMeterList();
@@ -618,6 +991,9 @@ const closePlantModal = () => {
   plantModal?.classList.add("hidden");
   isPlantModalOpen = false;
   if (plantNameInput) plantNameInput.value = "";
+  if (plantLocationInput) plantLocationInput.value = "";
+  setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
+  setPlantLocationLoading(false);
   pendingMeters = [];
   editingPlantId = null;
   plantDelete?.classList.add("hidden");
@@ -636,15 +1012,23 @@ const applyFilters = () => {
   render(filtered);
 };
 
-const deletePlant = (id) => {
+const deletePlant = async (id) => {
   const target = plants.find((p) => p.id === id);
   if (!target) return;
   const ok = confirm(`ต้องการลบ Plant: ${target.name} ใช่หรือไม่?`);
   if (!ok) return;
-  plants = plants.filter((p) => p.id !== id);
-  savePlants();
-  applyFilters();
-  closePlantModal();
+  try {
+    const deleteMode = await deletePlantInApi(target);
+    plants = plants.filter((p) => p.id !== id);
+    savePlants();
+    applyFilters();
+    closePlantModal();
+    if (deleteMode === "soft") {
+      alert("ระบบปิดใช้งาน Plant ที่หลังบ้านแล้ว (is_active = 0) เนื่องจาก API ลบจริงยังไม่พร้อม");
+    }
+  } catch (error) {
+    alert(error?.message || "ลบ Plant ผ่าน API ไม่สำเร็จ");
+  }
 };
 
 document.getElementById("search").addEventListener("click", applyFilters);
@@ -682,6 +1066,7 @@ addressGroupAddBtn?.addEventListener("click", () => {
 plantNameInput?.addEventListener("input", () => {
   updatePlantStepAvailability();
 });
+plantLocationCurrentBtn?.addEventListener("click", locateCurrentPosition);
 meterNameInput?.addEventListener("input", () => {
   setFieldError(meterNameInput, !meterNameInput.value.trim());
 });
@@ -717,8 +1102,9 @@ meterAddConfirm?.addEventListener("click", () => {
   closeMeterModal();
 });
 
-plantSave?.addEventListener("click", () => {
+plantSave?.addEventListener("click", async () => {
   const plantName = plantNameInput?.value.trim();
+  const plantLocation = normalizeLocationValue(plantLocationInput?.value);
   if (!plantName) {
     alert("กรุณาตั้งชื่อ Plant");
     return;
@@ -740,31 +1126,56 @@ plantSave?.addEventListener("click", () => {
       addressGroups
     };
   });
-  if (editingPlantId) {
-    const current = plants.find((p) => p.id === editingPlantId);
-    if (!current) return;
-    const updated = {
-      ...current,
-      name: plantName,
-      devices,
-      deviceSn: devices[0]?.sn || current.deviceSn || ""
-    };
-    plants = plants.map((p) => (p.id === editingPlantId ? updated : p));
-  } else {
-    const newPlant = {
-      id: generateId(),
-      name: plantName,
-      country: "Thailand",
-      deviceType: "Meter",
-      deviceSn: devices[0]?.sn || "",
-      status: "online",
-      devices
-    };
-    plants = [newPlant, ...plants];
+  const originalSaveText = plantSave?.textContent || "บันทึก";
+  if (plantSave) {
+    plantSave.disabled = true;
+    plantSave.textContent = "กำลังบันทึก...";
   }
-  savePlants();
-  applyFilters();
-  closePlantModal();
+  try {
+    if (editingPlantId) {
+      const current = plants.find((p) => p.id === editingPlantId);
+      if (!current) return;
+      const updatedFromApi = await updatePlantInApi(
+        current,
+        plantName,
+        plantLocation
+      );
+      const updated = {
+        ...current,
+        ...updatedFromApi,
+        id: current.id,
+        name: updatedFromApi?.name || plantName,
+        location: updatedFromApi?.location || plantLocation,
+        devices,
+        deviceSn: devices[0]?.sn || current.deviceSn || ""
+      };
+      plants = plants.map((p) => (p.id === editingPlantId ? updated : p));
+    } else {
+      const createdFromApi = await createPlantInApi(plantName, plantLocation);
+      const newPlant = {
+        ...createdFromApi,
+        id: generateId(),
+        name: createdFromApi.name || plantName,
+        location: createdFromApi.location || plantLocation,
+        country: "Thailand",
+        deviceType: "Meter",
+        deviceSn: devices[0]?.sn || "",
+        status: createdFromApi.status || "online",
+        devices
+      };
+      plants = [newPlant, ...plants];
+    }
+    savePlants();
+    applyFilters();
+    closePlantModal();
+  } catch (error) {
+    alert(error?.message || "บันทึก Plant ผ่าน API ไม่สำเร็จ");
+  } finally {
+    if (plantSave) {
+      plantSave.disabled = false;
+      plantSave.textContent = originalSaveText;
+    }
+  }
 });
 
 Object.values(inputs).forEach((el) => {
@@ -782,6 +1193,6 @@ document.addEventListener("keydown", (e) => {
   if (isPlantModalOpen) closePlantModal();
 });
 
-if (plants.length) render(plants);
+render([]);
 updatePlantStepAvailability();
 hydratePlantsFromApi();

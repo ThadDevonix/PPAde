@@ -49,16 +49,17 @@ const billModal = document.getElementById("bill-modal");
 const billModalClose = document.getElementById("bill-modal-close");
 const billCancel = document.getElementById("bill-cancel");
 const billConfirm = document.getElementById("bill-confirm");
-const modalMeterList = document.getElementById("modal-meter-list");
-const meterSelectAllBtn = document.getElementById("meter-select-all");
-const meterClearBtn = document.getElementById("meter-clear");
-const meterSelectedCount = document.getElementById("meter-selected-count");
 const billStart = document.getElementById("bill-start");
 const billEnd = document.getElementById("bill-end");
 const billRateInput = document.getElementById("bill-rate");
 const billType = document.getElementById("bill-type");
-const billCalc = document.getElementById("bill-calc");
-const billColumnsField = document.getElementById("bill-columns-field");
+const formulaMeterLeft = document.getElementById("formula-meter-left");
+const formulaValueLeft = document.getElementById("formula-value-left");
+const formulaOperator = document.getElementById("formula-operator");
+const formulaMeterRight = document.getElementById("formula-meter-right");
+const formulaValueRight = document.getElementById("formula-value-right");
+const formulaResultName = document.getElementById("formula-result-name");
+const formulaResultValue = document.getElementById("formula-result-value");
 const billColumnsList = document.getElementById("bill-columns-list");
 const columnsSelectAllBtn = document.getElementById("columns-select-all");
 const columnsClearBtn = document.getElementById("columns-clear");
@@ -70,6 +71,12 @@ const metersPanel = document.getElementById("meters-panel");
 const billingPanel = document.getElementById("billing-panel");
 
 const energyApiBase = "https://solarmdb.devonix.co.th/api/energy";
+const devicesApiCandidates = [
+  "/api/devices",
+  "http://localhost:3000/api/devices",
+  "http://127.0.0.1:3000/api/devices",
+  "https://solarmdb.devonix.co.th/api/devices"
+];
 const calcMethodLabels = {
   self_use: "Self Use (Meter 1)",
   mdb_net: "MDB In - MDB Out (Meter 2)",
@@ -77,6 +84,19 @@ const calcMethodLabels = {
   mdb_in: "MDB In (Meter 2)",
   mdb_out: "MDB Out (Meter 2)"
 };
+const formulaOperators = ["+", "-", "*", "/"];
+const formulaFieldDefs = [
+  { key: "solar_in", label: "Solar In" },
+  { key: "self_use", label: "Self Use" },
+  { key: "mdb_in", label: "MDB In" },
+  { key: "mdb_out", label: "MDB Out" }
+];
+const formulaFieldLabelMap = formulaFieldDefs.reduce((acc, item) => {
+  acc[item.key] = item.label;
+  return acc;
+}, {});
+const defaultFormulaField = "self_use";
+const defaultCalcLabel = "ผลคำนวณ";
 const detailColumnDefs = [
   { key: "solar_in", label: "Solar In (kWh)" },
   { key: "self_use", label: "Self Use (kWh)" },
@@ -92,6 +112,8 @@ let currentReceiptHtml = "";
 let currentReceiptTitle = "";
 let currentReceiptContext = null;
 let currentReceiptRowsPerPage = 32;
+let formulaTerms = [];
+let formulaPreviewRequestId = 0;
 
 const pad = (value) => String(value).padStart(2, "0");
 const formatDate = (date) =>
@@ -192,6 +214,391 @@ const parseNumber = (value) => {
   const num = parseFloat(value);
   return Number.isFinite(num) ? num : 0;
 };
+const readText = (...values) => {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (text) return text;
+  }
+  return "";
+};
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+const normalizeSiteToken = (value) => String(value || "").trim().toLowerCase();
+const normalizeDeviceStatus = (value) => {
+  if (typeof value === "boolean") return value ? "online" : "offline";
+  if (typeof value === "number") return value > 0 ? "online" : "offline";
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return "online";
+  if (["0", "false", "off", "offline", "down", "error"].includes(text)) {
+    return "offline";
+  }
+  return "online";
+};
+const extractApiDeviceRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "result", "rows", "list", "devices"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const normalizeMeterRow = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const deviceId = Number(row.id ?? row.device_id ?? row.deviceId);
+  const siteId = Number(row.site_id ?? row.siteId);
+  const name = readText(
+    row.device_name,
+    row.deviceName,
+    row.meter_name,
+    row.meterName,
+    row.name
+  );
+  const serial = readText(
+    row.modbus_address_in,
+    row.modbusAddressIn,
+    row.device_sn,
+    row.sn,
+    row.serial,
+    row.modbus_address_out
+  );
+  return {
+    id: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+    siteId: Number.isFinite(siteId) && siteId > 0 ? siteId : null,
+    siteCode: readText(row.site_code, row.siteCode),
+    siteName: readText(row.site_name, row.siteName),
+    name: name || serial || "Meter",
+    sn: serial || "-",
+    status: normalizeDeviceStatus(
+      row.is_active ?? row.active ?? row.isActive ?? row.status
+    ),
+    deviceType: readText(row.device_type, row.deviceType, row.type) || "METER"
+  };
+};
+const normalizeMeterRows = (rows) => {
+  const byKey = new Map();
+  rows.forEach((row) => {
+    const meter = normalizeMeterRow(row);
+    if (!meter) return;
+    if (meter.status === "offline") return;
+    const key = meter.id
+      ? `id:${meter.id}`
+      : `${normalizeSiteToken(meter.siteCode)}:${normalizeSiteToken(meter.name)}:${normalizeSiteToken(meter.sn)}`;
+    if (!byKey.has(key)) byKey.set(key, meter);
+  });
+  return Array.from(byKey.values());
+};
+const buildDevicesApiUrl = (base, search = "") => `${base}${search || ""}`;
+const requestDevicesApi = async (search = "") => {
+  let lastHttpError = null;
+  let lastNetworkError = null;
+  for (const base of devicesApiCandidates) {
+    const url = buildDevicesApiUrl(base, search);
+    try {
+      const response = await fetch(url, { method: "GET" });
+      if (!response.ok) {
+        if (!lastHttpError) {
+          lastHttpError = new Error(`GET ${url} failed (${response.status})`);
+        }
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (!lastNetworkError) lastNetworkError = error;
+    }
+  }
+  if (lastHttpError) throw lastHttpError;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error("GET /api/devices failed");
+};
+const fetchPlantDevicesFromApi = async (targetPlant) => {
+  const siteId = Number(targetPlant?.apiId);
+  const siteCode = normalizeSiteToken(targetPlant?.siteCode || targetPlant?.site_code);
+  const siteName = normalizeSiteToken(targetPlant?.name);
+  const filters = [];
+  if (Number.isFinite(siteId) && siteId > 0) {
+    filters.push(`?site_id=${encodeURIComponent(siteId)}`);
+  }
+  filters.push("");
+
+  let rows = [];
+  for (const search of filters) {
+    const response = await requestDevicesApi(search).catch(() => null);
+    if (!response) continue;
+    const payload = await response.json().catch(() => null);
+    rows = extractApiDeviceRows(payload);
+    if (search) break;
+    if (rows.length) break;
+  }
+  if (!rows.length) return [];
+
+  const filtered = rows.filter((row) => {
+    const rowSiteId = Number(row?.site_id ?? row?.siteId);
+    if (Number.isFinite(siteId) && siteId > 0 && rowSiteId === siteId) return true;
+    const rowSiteCode = normalizeSiteToken(row?.site_code ?? row?.siteCode);
+    if (siteCode && rowSiteCode && rowSiteCode === siteCode) return true;
+    const rowSiteName = normalizeSiteToken(row?.site_name ?? row?.siteName);
+    if (siteName && rowSiteName && rowSiteName === siteName) return true;
+    return false;
+  });
+  return normalizeMeterRows(filtered);
+};
+const getMeterKey = (meter) =>
+  String(
+    meter?.sn ||
+      meter?.serial ||
+      meter?.id ||
+      meter?.name ||
+      ""
+  ).trim();
+const getMeterLabel = (meter) => {
+  if (!meter || typeof meter !== "object") return "Meter";
+  const name = meter.name || meter.sn || "Meter";
+  if (!meter.sn || meter.name === meter.sn) return name;
+  return `${name} (SN: ${meter.sn})`;
+};
+const getSelectedMetersForFormula = () => [...meterProfiles];
+const buildLegacyFormula = (method, meterPool = meterProfiles) => {
+  const meters = Array.isArray(meterPool) ? meterPool.filter(Boolean) : [];
+  const first = meters[0] || null;
+  const second = meters[1] || first;
+  const term = (meter, field, operator = "+") => ({
+    operator,
+    meterKey: getMeterKey(meter),
+    meterName: meter?.name || "",
+    field
+  });
+  if (method === "mdb_net") {
+    return [term(second, "mdb_in"), term(second, "mdb_out", "-")];
+  }
+  if (method === "solar_in") return [term(first, "solar_in")];
+  if (method === "mdb_in") return [term(second, "mdb_in")];
+  if (method === "mdb_out") return [term(second, "mdb_out")];
+  return [term(first, "self_use")];
+};
+const normalizeCalcFormula = (
+  formula,
+  meterPool = meterProfiles,
+  forceDefault = true
+) => {
+  const meters = Array.isArray(meterPool) ? meterPool.filter(Boolean) : [];
+  const meterKeyMap = new Map(
+    meters.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
+  );
+  const fallbackMeter = meters[0] || null;
+  const fallbackKey = getMeterKey(fallbackMeter);
+  const terms = Array.isArray(formula) ? formula : [];
+  const normalized = terms
+    .filter((term) => term && typeof term === "object")
+    .map((term, index) => {
+      const rawMeterKey = String(
+        term.meterKey || term.meterSn || term.meter || ""
+      ).trim();
+      const meterKey = meterKeyMap.has(rawMeterKey)
+        ? rawMeterKey
+        : rawMeterKey || fallbackKey;
+      const meter = meterKeyMap.get(meterKey) || fallbackMeter;
+      const field = formulaFieldLabelMap[term.field]
+        ? term.field
+        : defaultFormulaField;
+      const operator =
+        index === 0
+          ? "+"
+          : formulaOperators.includes(term.operator)
+            ? term.operator
+            : "+";
+      return {
+        operator,
+        meterKey,
+        meterName: term.meterName || meter?.name || "",
+        field
+      };
+    });
+  if (!normalized.length && forceDefault) {
+    normalized.push({
+      operator: "+",
+      meterKey: fallbackKey,
+      meterName: fallbackMeter?.name || "",
+      field: defaultFormulaField
+    });
+  }
+  return normalized;
+};
+const getFormulaForContext = (
+  scheduleFormula,
+  legacyMethod,
+  meterPool = meterProfiles
+) => {
+  if (Array.isArray(scheduleFormula) && scheduleFormula.length) {
+    return normalizeCalcFormula(scheduleFormula, meterPool);
+  }
+  return normalizeCalcFormula(buildLegacyFormula(legacyMethod, meterPool), meterPool);
+};
+const formatFormulaLabel = (formula, meterPool = meterProfiles) => {
+  const meters = Array.isArray(meterPool) ? meterPool : [];
+  const meterKeyMap = new Map(
+    meters.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
+  );
+  const terms = normalizeCalcFormula(formula, meters, false);
+  if (!terms.length) return calcMethodLabels.self_use;
+  return terms
+    .map((term, index) => {
+      const meter =
+        meterKeyMap.get(term.meterKey) ||
+        meters.find((item) => item.name === term.meterName) ||
+        null;
+      const meterLabel = meter
+        ? getMeterLabel(meter)
+        : term.meterName || term.meterKey || "Meter";
+      const fieldLabel = formulaFieldLabelMap[term.field] || term.field;
+      const prefix = index === 0 ? "" : `${term.operator} `;
+      return `${prefix}${meterLabel}.${fieldLabel}`;
+    })
+    .join(" ");
+};
+const buildFormulaFromInputs = () => {
+  const activeMeters = getSelectedMetersForFormula();
+  const meterMap = new Map(
+    activeMeters.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
+  );
+  const firstKey = String(formulaMeterLeft?.value || "").trim();
+  const secondKey = String(formulaMeterRight?.value || "").trim();
+  const firstMeter = meterMap.get(firstKey) || activeMeters[0] || null;
+  const secondMeter = meterMap.get(secondKey) || activeMeters[1] || firstMeter;
+  const firstField = formulaFieldLabelMap[formulaValueLeft?.value]
+    ? formulaValueLeft.value
+    : defaultFormulaField;
+  const secondField = formulaFieldLabelMap[formulaValueRight?.value]
+    ? formulaValueRight.value
+    : defaultFormulaField;
+  const operator = formulaOperators.includes(formulaOperator?.value)
+    ? formulaOperator.value
+    : "-";
+  return normalizeCalcFormula(
+    [
+      {
+        operator: "+",
+        meterKey: getMeterKey(firstMeter),
+        meterName: firstMeter?.name || "",
+        field: firstField
+      },
+      {
+        operator,
+        meterKey: getMeterKey(secondMeter),
+        meterName: secondMeter?.name || "",
+        field: secondField
+      }
+    ],
+    activeMeters
+  );
+};
+const getFormulaResultName = () => {
+  const raw = (formulaResultName?.value || "").trim();
+  return raw || defaultCalcLabel;
+};
+const populateFormulaInputs = (formula, calcLabel = defaultCalcLabel) => {
+  const activeMeters = getSelectedMetersForFormula();
+  if (!activeMeters.length) return;
+  const meterOptions = activeMeters
+    .map((meter) => {
+      const key = getMeterKey(meter);
+      return `<option value="${key}">${getMeterLabel(meter)}</option>`;
+    })
+    .join("");
+  const valueOptions = formulaFieldDefs
+    .map((field) => `<option value="${field.key}">${field.label}</option>`)
+    .join("");
+  if (formulaMeterLeft) formulaMeterLeft.innerHTML = meterOptions;
+  if (formulaMeterRight) formulaMeterRight.innerHTML = meterOptions;
+  if (formulaValueLeft) formulaValueLeft.innerHTML = valueOptions;
+  if (formulaValueRight) formulaValueRight.innerHTML = valueOptions;
+
+  const normalized = normalizeCalcFormula(formula, activeMeters, false);
+  const leftTerm = normalized[0] || buildLegacyFormula("self_use", activeMeters)[0];
+  const rightTerm =
+    normalized[1] ||
+    {
+      ...leftTerm,
+      operator: "-",
+      meterKey: getMeterKey(activeMeters[1] || activeMeters[0] || null),
+      meterName: (activeMeters[1] || activeMeters[0] || {}).name || ""
+    };
+  if (formulaMeterLeft) formulaMeterLeft.value = leftTerm.meterKey || getMeterKey(activeMeters[0]);
+  if (formulaValueLeft) formulaValueLeft.value = leftTerm.field || defaultFormulaField;
+  if (formulaOperator) formulaOperator.value = rightTerm.operator || "-";
+  if (formulaMeterRight) formulaMeterRight.value = rightTerm.meterKey || getMeterKey(activeMeters[1] || activeMeters[0]);
+  if (formulaValueRight) formulaValueRight.value = rightTerm.field || defaultFormulaField;
+  if (formulaResultName) formulaResultName.value = calcLabel || defaultCalcLabel;
+  formulaTerms = buildFormulaFromInputs();
+};
+const updateFormulaResultPreview = async () => {
+  if (!formulaResultValue) return;
+  const startDate = billStart?.value;
+  const endDate = billEnd?.value;
+  formulaTerms = buildFormulaFromInputs();
+  if (!startDate || !endDate) {
+    formulaResultValue.value = "-";
+    return;
+  }
+  const requestId = ++formulaPreviewRequestId;
+  formulaResultValue.value = "กำลังคำนวณ...";
+  try {
+    const { rows } = await getDailyEnergyForRange(startDate, endDate);
+    if (requestId !== formulaPreviewRequestId) return;
+    if (!rows.length) {
+      formulaResultValue.value = "-";
+      return;
+    }
+    const total = roundTo(
+      rows.reduce(
+        (sum, row) => sum + getBillUnits(row, defaultSchedule.calcMethod, formulaTerms),
+        0
+      ),
+      1
+    );
+    formulaResultValue.value = `${formatNumber(total, 1)} kWh`;
+  } catch {
+    if (requestId === formulaPreviewRequestId) {
+      formulaResultValue.value = "-";
+    }
+  }
+};
+const getFormulaFromInputs = () => {
+  formulaTerms = buildFormulaFromInputs();
+  return formulaTerms;
+};
+const inferCalcMethodFromFormula = (formula) => {
+  const terms = normalizeCalcFormula(formula, meterProfiles, false);
+  if (!terms.length) return defaultSchedule.calcMethod;
+  if (terms.length === 1) {
+    if (terms[0].field === "self_use") return "self_use";
+    if (terms[0].field === "solar_in") return "solar_in";
+    if (terms[0].field === "mdb_in") return "mdb_in";
+    if (terms[0].field === "mdb_out") return "mdb_out";
+  }
+  if (
+    terms.length === 2 &&
+    terms[0].field === "mdb_in" &&
+    terms[1].field === "mdb_out" &&
+    terms[1].operator === "-"
+  ) {
+    return "mdb_net";
+  }
+  return defaultSchedule.calcMethod;
+};
 
 const seedFromString = (value) => {
   let hash = 2166136261;
@@ -219,34 +626,6 @@ const updateColumnSelectedCount = () => {
     'input[type="checkbox"]:checked'
   ).length;
   columnsSelectedCount.textContent = `${selected}/${total} เลือก`;
-};
-const updateColumnVisibility = (selectedCount) => {
-  if (!billColumnsField) return;
-  const show = (Number(selectedCount) || 0) > 0;
-  billColumnsField.classList.toggle("hidden", !show);
-  if (show) updateColumnSelectedCount();
-};
-const updateSelectedCount = () => {
-  if (!meterSelectedCount || !modalMeterList) return;
-  const total = modalMeterList.querySelectorAll('input[type="checkbox"]').length;
-  const selected = modalMeterList.querySelectorAll(
-    'input[type="checkbox"]:checked'
-  ).length;
-  meterSelectedCount.textContent = `${selected}/${total} เลือก`;
-  updateColumnVisibility(selected);
-};
-const applyMeterCardHandlers = () => {
-  if (!modalMeterList) return;
-  modalMeterList.querySelectorAll(".meter-card").forEach((card) => {
-    const cb = card.querySelector('input[type="checkbox"]');
-    if (!cb) return;
-    card.classList.toggle("checked", cb.checked);
-    cb.addEventListener("change", () => {
-      card.classList.toggle("checked", cb.checked);
-      updateSelectedCount();
-    });
-  });
-  updateSelectedCount();
 };
 const applyColumnHandlers = () => {
   if (!billColumnsList) return;
@@ -468,6 +847,8 @@ const defaultSchedule = {
   defaultRate: 4.2,
   rateType: "flat",
   calcMethod: "self_use",
+  calcFormula: [],
+  calcLabel: defaultCalcLabel,
   detailColumns: detailColumnDefs.map((col) => col.key)
 };
 let schedule = { ...defaultSchedule };
@@ -647,6 +1028,12 @@ const loadSchedule = () => {
   if (!Array.isArray(schedule.detailColumns) || !schedule.detailColumns.length) {
     schedule.detailColumns = [...defaultSchedule.detailColumns];
   }
+  if (!Array.isArray(schedule.calcFormula)) {
+    schedule.calcFormula = [];
+  }
+  if (typeof schedule.calcLabel !== "string" || !schedule.calcLabel.trim()) {
+    schedule.calcLabel = defaultCalcLabel;
+  }
 };
 const saveSchedule = () => {
   localStorage.setItem(scheduleKey, JSON.stringify(schedule));
@@ -720,7 +1107,54 @@ const getNextRunDate = (cutoffDay) => {
   return candidate;
 };
 
-const getBillUnits = (row, method) => {
+const findMeterScopedRow = (row, term) => {
+  if (!row || typeof row !== "object" || !term) return null;
+  const meterKey = String(term.meterKey || "").trim();
+  const meterName = String(term.meterName || "").trim();
+  const match = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const candidateKey = getMeterKey(candidate);
+    if (meterKey && candidateKey && candidateKey === meterKey) return true;
+    if (meterName && candidate.name && candidate.name === meterName) return true;
+    return false;
+  };
+  const groups = [];
+  if (Array.isArray(row.meters)) groups.push(...row.meters);
+  if (Array.isArray(row.meter_data)) groups.push(...row.meter_data);
+  if (Array.isArray(row.devices)) groups.push(...row.devices);
+  const scoped = groups.find(match);
+  if (scoped) return scoped;
+  if (row.by_meter && typeof row.by_meter === "object") {
+    if (meterKey && row.by_meter[meterKey]) return row.by_meter[meterKey];
+    const keyed = Object.values(row.by_meter).find(match);
+    if (keyed) return keyed;
+  }
+  return null;
+};
+const getFormulaTermValue = (row, term) => {
+  const source = findMeterScopedRow(row, term) || row;
+  return parseNumber(source?.[term.field]);
+};
+const calculateByFormula = (row, formula) => {
+  const terms = normalizeCalcFormula(formula, meterProfiles, false);
+  if (!terms.length) return null;
+  let result = getFormulaTermValue(row, terms[0]);
+  for (let i = 1; i < terms.length; i += 1) {
+    const term = terms[i];
+    const value = getFormulaTermValue(row, term);
+    if (term.operator === "+") result += value;
+    if (term.operator === "-") result -= value;
+    if (term.operator === "*") result *= value;
+    if (term.operator === "/") {
+      if (Math.abs(value) < 1e-9) continue;
+      result /= value;
+    }
+  }
+  return roundTo(Math.max(0, result), 1);
+};
+const getBillUnits = (row, method, formula) => {
+  const byFormula = calculateByFormula(row, formula);
+  if (byFormula !== null) return byFormula;
   const solarIn = parseNumber(row.solar_in);
   const selfUse = parseNumber(row.self_use);
   const mdbIn = parseNumber(row.mdb_in);
@@ -799,6 +1233,8 @@ const createBill = ({
   rate,
   rateType,
   calcMethod,
+  calcFormula,
+  calcLabel,
   cutoffDay,
   detailColumns,
   dailyRows,
@@ -809,9 +1245,10 @@ const createBill = ({
     Array.isArray(detailColumns) && detailColumns.length
       ? detailColumns
       : defaultSchedule.detailColumns;
+  const normalizedFormula = normalizeCalcFormula(calcFormula, meters);
   const daily = dailyRows.map((row) => ({
     ...row,
-    bill_units: getBillUnits(row, calcMethod)
+    bill_units: getBillUnits(row, calcMethod, normalizedFormula)
   }));
   const totalKwh = roundTo(
     daily.reduce((sum, row) => sum + (row.bill_units || 0), 0),
@@ -831,6 +1268,8 @@ const createBill = ({
     amount,
     auto,
     calcMethod,
+    calcFormula: normalizedFormula,
+    calcLabel: (calcLabel || defaultCalcLabel).trim(),
     cutoffDay: cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns: normalizedColumns,
     source,
@@ -854,7 +1293,12 @@ const renderHistory = () => {
       const meterText = bill.meters.map((m) => m.name).join(", ");
       const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดเอง";
       const badgeClass = bill.auto ? "auto" : "manual";
-      const methodLabel = calcMethodLabels[bill.calcMethod] || bill.calcMethod;
+      const methodFormula =
+        Array.isArray(bill.calcFormula) && bill.calcFormula.length
+          ? bill.calcFormula
+          : buildLegacyFormula(bill.calcMethod, bill.meters);
+      const methodLabel = formatFormulaLabel(methodFormula, bill.meters);
+      const formulaName = (bill.calcLabel || defaultCalcLabel).trim();
       const sourceLabel = bill.source === "api" ? "API" : "Mock";
       return `
         <tr data-id="${bill.id}">
@@ -862,7 +1306,7 @@ const renderHistory = () => {
           <td>${meterText || "-"}</td>
           <td>
             <div>${bill.periodStart} - ${bill.periodEnd}</div>
-            <div class="muted small">คิดจาก: ${methodLabel} • ข้อมูล: ${sourceLabel}</div>
+            <div class="muted small">${formulaName}: ${methodLabel} • ข้อมูล: ${sourceLabel}</div>
             <span class="badge ${badgeClass}">${badgeLabel}</span>
           </td>
           <td>${formatNumber(bill.rate, 2)}</td>
@@ -989,7 +1433,11 @@ const showBillDetail = (id) => {
   hideReceiptHistory();
   activeDetailId = id;
   billDetailTitle.textContent = `ใบที่ ${bill.billNo} • ${bill.periodStart} - ${bill.periodEnd}`;
-  const columns = getDetailColumns(bill.detailColumns);
+  const columns = getDetailColumns(bill.detailColumns).map((col) =>
+    col.key === "bill_units"
+      ? { ...col, label: `${(bill.calcLabel || defaultCalcLabel).trim()} (kWh)` }
+      : col
+  );
   renderDetailHeader(columns);
   const totals = bill.daily.reduce(
     (acc, row) => {
@@ -1057,6 +1505,11 @@ const runAutoIfDue = async () => {
   if (alreadyGenerated) return;
   const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
   if (!rows.length) return;
+  const calcFormula = getFormulaForContext(
+    schedule.calcFormula,
+    schedule.calcMethod,
+    meterProfiles
+  );
   createBill({
     periodStart: startStr,
     periodEnd: endStr,
@@ -1064,6 +1517,8 @@ const runAutoIfDue = async () => {
     rate: schedule.defaultRate,
     rateType: schedule.rateType,
     calcMethod: schedule.calcMethod || defaultSchedule.calcMethod,
+    calcFormula,
+    calcLabel: schedule.calcLabel || defaultCalcLabel,
     cutoffDay,
     detailColumns: schedule.detailColumns || defaultSchedule.detailColumns,
     auto: true,
@@ -1073,41 +1528,26 @@ const runAutoIfDue = async () => {
 };
 
 const openModal = () => {
-  if (!billModal || !modalMeterList) return;
+  if (!billModal) return;
   billModal.classList.remove("hidden");
   isModalOpen = true;
-  modalMeterList.innerHTML = meterProfiles
-    .map(
-      (m, i) =>
-        `<label class="meter-card">
-            <input type="checkbox" value="${i}" checked>
-            <div class="meter-card-body">
-              <div class="meter-name-row">
-                <span class="meter-name">${m.name}</span>
-                <span class="meter-status ${m.status === "online" ? "online" : "offline"}">
-                  ${m.status === "online" ? "ออนไลน์" : "ออฟไลน์"}
-                </span>
-              </div>
-              <div class="meter-sn">SN: ${m.sn}</div>
-            </div>
-          </label>`
-    )
-    .join("");
   setDefaultRange(schedule.cutoffDay);
   if (billRateInput) billRateInput.value = schedule.defaultRate;
   if (billType && schedule.rateType) billType.value = schedule.rateType;
-  if (billCalc && schedule.calcMethod) billCalc.value = schedule.calcMethod;
   renderColumnSelector(schedule.detailColumns);
-  applyMeterCardHandlers();
+  formulaTerms = getFormulaForContext(
+    schedule.calcFormula,
+    schedule.calcMethod,
+    getSelectedMetersForFormula()
+  );
+  populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
+  updateFormulaResultPreview();
 };
 
 const handleConfirm = async () => {
-  if (!modalMeterList) return;
-  const checked = Array.from(
-    modalMeterList.querySelectorAll("input[type=checkbox]:checked")
-  ).map((el) => Number(el.value));
-  if (!checked.length) {
-    alert("กรุณาเลือกอย่างน้อย 1 มิเตอร์");
+  const selectedMeters = [...meterProfiles];
+  if (!selectedMeters.length) {
+    alert("ยังไม่มีมิเตอร์ให้ใช้คำนวณ");
     return;
   }
   const startDate = parseDateInput(billStart.value);
@@ -1120,20 +1560,24 @@ const handleConfirm = async () => {
     alert("วันที่เริ่มต้องไม่มากกว่าวันที่สิ้นสุด");
     return;
   }
-  const selectedMeters = checked
-    .map((i) => meterProfiles[i])
-    .filter(Boolean);
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   const rateVal =
     parseFloat(billRateInput.value || `${schedule.defaultRate}`) ||
     schedule.defaultRate;
   const rateTypeVal = billType?.value || schedule.rateType;
-  const calcMethod = billCalc?.value || schedule.calcMethod;
-  const detailColumns = getSelectedDetailColumns();
-  if (!detailColumns.length) {
-    alert("กรุณาเลือกอย่างน้อย 1 คอลัมน์ที่ต้องการแสดง");
+  const calcFormula = getFormulaFromInputs();
+  if (!calcFormula.length) {
+    alert("กรุณากำหนดสูตรคำนวณอย่างน้อย 1 พจน์");
     return;
   }
+  const calcLabel = getFormulaResultName();
+  const calcMethod = inferCalcMethodFromFormula(calcFormula);
+  const selectedDetailColumns = getSelectedDetailColumns();
+  const detailColumns = selectedDetailColumns.length
+    ? selectedDetailColumns
+    : schedule.detailColumns?.length
+      ? [...schedule.detailColumns]
+      : [...defaultSchedule.detailColumns];
   const periodStart = formatDate(startDate);
   const periodEnd = formatDate(endDate);
 
@@ -1153,6 +1597,8 @@ const handleConfirm = async () => {
     rate: rateVal,
     rateType: rateTypeVal,
     calcMethod,
+    calcFormula,
+    calcLabel,
     cutoffDay,
     detailColumns,
     auto: false,
@@ -1166,6 +1612,8 @@ const handleConfirm = async () => {
     defaultRate: rateVal,
     rateType: rateTypeVal,
     calcMethod,
+    calcFormula,
+    calcLabel,
     detailColumns
   };
   saveSchedule();
@@ -1202,23 +1650,18 @@ billCutoff?.addEventListener("change", () => {
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   updateScheduleInfo(cutoffDay);
 });
-meterSelectAllBtn?.addEventListener("click", () => {
-  if (!modalMeterList) return;
-  modalMeterList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-    cb.checked = true;
-    const card = cb.closest(".meter-card");
-    if (card) card.classList.add("checked");
+[
+  formulaMeterLeft,
+  formulaValueLeft,
+  formulaOperator,
+  formulaMeterRight,
+  formulaValueRight,
+  billStart,
+  billEnd
+].forEach((el) => {
+  el?.addEventListener("change", () => {
+    updateFormulaResultPreview();
   });
-  updateSelectedCount();
-});
-meterClearBtn?.addEventListener("click", () => {
-  if (!modalMeterList) return;
-  modalMeterList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-    cb.checked = false;
-    const card = cb.closest(".meter-card");
-    if (card) card.classList.remove("checked");
-  });
-  updateSelectedCount();
 });
 columnsSelectAllBtn?.addEventListener("click", () => {
   if (!billColumnsList) return;
@@ -1281,38 +1724,83 @@ if (!plant) {
 
 nameEl.textContent = plant.name;
 
-const devices = Array.isArray(plant.devices) && plant.devices.length
-  ? plant.devices
-  : [
-      { name: "Meter A", sn: plant.deviceSn || "-", status: "online" },
-      { name: "Meter B", sn: (plant.deviceSn || "-") + "-B", status: "online" }
-    ];
+const normalizeLocalMeters = (meters) =>
+  normalizeMeterRows(
+    (Array.isArray(meters) ? meters : []).map((meter) => ({
+      ...meter,
+      site_id: meter?.siteId ?? meter?.site_id ?? plant?.apiId,
+      device_name: meter?.deviceName ?? meter?.device_name ?? meter?.name,
+      modbus_address_in: meter?.sn ?? meter?.serial ?? meter?.modbus_address_in
+    }))
+  );
 
-meterProfiles = buildMeterProfiles(devices);
+let plantMeters = normalizeLocalMeters(plant.devices);
+if (!plantMeters.length && !stored) {
+  plantMeters = normalizeLocalMeters([
+    { name: "Meter A", sn: plant.deviceSn || "-", status: "online" },
+    { name: "Meter B", sn: `${plant.deviceSn || "-"}-B`, status: "online" }
+  ]);
+}
 
-if (deviceRowsEl) {
-  deviceRowsEl.innerHTML = devices
+const renderPlantMeters = () => {
+  if (!deviceRowsEl) return;
+  if (!plantMeters.length) {
+    deviceRowsEl.innerHTML = '<tr><td class="empty" colspan="3">ไม่พบมิเตอร์ของ Plant นี้</td></tr>';
+    return;
+  }
+  deviceRowsEl.innerHTML = plantMeters
     .map(
-      (d, idx) => `
+      (meter, idx) => `
       <tr data-idx="${idx}">
-        <td><span class="status-dot" title="${d.status}"></span></td>
-        <td>${d.name}</td>
-        <td>${d.sn}</td>
+        <td><span class="status-dot" title="${escapeHtml(meter.status)}"></span></td>
+        <td>${escapeHtml(meter.name)}</td>
+        <td>${escapeHtml(meter.sn)}</td>
       </tr>`
     )
     .join("");
 
-  deviceRowsEl.querySelectorAll("tr").forEach((tr) => {
+  deviceRowsEl.querySelectorAll("tr[data-idx]").forEach((tr) => {
     tr.addEventListener("click", () => {
       const idx = Number(tr.dataset.idx);
-      const meter = devices[idx];
+      const meter = plantMeters[idx];
       if (!meter) return;
       localStorage.setItem("selectedPlant", JSON.stringify(plant));
       localStorage.setItem("selectedMeter", JSON.stringify(meter));
       window.location.href = "./meter.html";
     });
   });
-}
+};
+
+const applyPlantMeters = (meters, { persistPlant = true } = {}) => {
+  plantMeters = normalizeLocalMeters(meters);
+  plant = { ...plant, devices: plantMeters };
+  meterProfiles = buildMeterProfiles(plantMeters);
+  if (persistPlant) {
+    localStorage.setItem("selectedPlant", JSON.stringify(plant));
+  }
+  renderPlantMeters();
+};
+
+const hydratePlantMetersFromApi = async () => {
+  try {
+    const apiMeters = await fetchPlantDevicesFromApi(plant);
+    if (!apiMeters.length) {
+      const hasPlantIdentity =
+        (Number.isFinite(Number(plant?.apiId)) && Number(plant.apiId) > 0) ||
+        normalizeSiteToken(plant?.siteCode || plant?.site_code) ||
+        normalizeSiteToken(plant?.name);
+      if (hasPlantIdentity) {
+        applyPlantMeters([], { persistPlant: true });
+      }
+      return;
+    }
+    applyPlantMeters(apiMeters, { persistPlant: true });
+  } catch (error) {
+    console.warn("Failed to load devices from API", error);
+  }
+};
+
+applyPlantMeters(plantMeters, { persistPlant: false });
 
 historyKey = buildStorageKey("billingHistoryV2");
 scheduleKey = buildStorageKey("billingScheduleV1");
@@ -1344,5 +1832,9 @@ billScheduleRemove?.addEventListener("click", () => {
 billModal?.classList.add("hidden");
 populateCutoffOptions();
 setDefaultRange(schedule.cutoffDay);
-setMode(false);
-initBilling();
+const bootstrapPlantPage = async () => {
+  setMode(false);
+  await hydratePlantMetersFromApi();
+  await initBilling();
+};
+bootstrapPlantPage();

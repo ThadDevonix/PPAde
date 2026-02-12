@@ -9,6 +9,13 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "home");
 const upstreamEnergyApi = "https://solarmdb.devonix.co.th/api/energy";
+const upstreamSitesApi = "https://solarmdb.devonix.co.th/api/sites";
+const upstreamDevicesApi = "https://solarmdb.devonix.co.th/api/devices";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization"
+};
 
 const mime = (filePath) => {
   const ext = path.extname(filePath).toLowerCase();
@@ -33,12 +40,82 @@ const mime = (filePath) => {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    const isApiPath =
+      url.pathname === "/api/energy" ||
+      url.pathname === "/api/sites" ||
+      url.pathname.startsWith("/api/sites/") ||
+      url.pathname === "/api/devices" ||
+      url.pathname.startsWith("/api/devices/");
+    if (req.method === "OPTIONS" && isApiPath) {
+      res.writeHead(204, corsHeaders);
+      res.end();
+      return;
+    }
 
     if (url.pathname === "/api/energy") {
       const upstreamUrl = `${upstreamEnergyApi}${url.search}`;
       const upstreamRes = await fetch(upstreamUrl, { method: "GET" });
       const body = await upstreamRes.text();
       res.writeHead(upstreamRes.status, {
+        ...corsHeaders,
+        "Content-Type":
+          upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
+      });
+      res.end(body);
+      return;
+    }
+
+    if (url.pathname === "/api/sites" || url.pathname.startsWith("/api/sites/")) {
+      const suffix = url.pathname.slice("/api/sites".length);
+      const upstreamUrl = `${upstreamSitesApi}${suffix}${url.search}`;
+      const method = req.method || "GET";
+      const bodyChunks = [];
+      if (method !== "GET" && method !== "HEAD") {
+        for await (const chunk of req) bodyChunks.push(chunk);
+      }
+      const upstreamRes = await fetch(upstreamUrl, {
+        method,
+        headers: {
+          Accept: req.headers.accept || "application/json",
+          "Content-Type": req.headers["content-type"] || "application/json"
+        },
+        body:
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : Buffer.concat(bodyChunks)
+      });
+      const body = await upstreamRes.text();
+      res.writeHead(upstreamRes.status, {
+        ...corsHeaders,
+        "Content-Type":
+          upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
+      });
+      res.end(body);
+      return;
+    }
+
+    if (url.pathname === "/api/devices" || url.pathname.startsWith("/api/devices/")) {
+      const suffix = url.pathname.slice("/api/devices".length);
+      const upstreamUrl = `${upstreamDevicesApi}${suffix}${url.search}`;
+      const method = req.method || "GET";
+      const bodyChunks = [];
+      if (method !== "GET" && method !== "HEAD") {
+        for await (const chunk of req) bodyChunks.push(chunk);
+      }
+      const upstreamRes = await fetch(upstreamUrl, {
+        method,
+        headers: {
+          Accept: req.headers.accept || "application/json",
+          "Content-Type": req.headers["content-type"] || "application/json"
+        },
+        body:
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : Buffer.concat(bodyChunks)
+      });
+      const body = await upstreamRes.text();
+      res.writeHead(upstreamRes.status, {
+        ...corsHeaders,
         "Content-Type":
           upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
       });
