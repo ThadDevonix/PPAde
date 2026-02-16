@@ -63,7 +63,10 @@ const escapeHtml = (value) =>
     .replace(/'/g, "&#39;");
 
 const redirectToLogin = () => {
-  window.location.href = "/login/index.html";
+  const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const search = new URLSearchParams();
+  search.set("redirect", target);
+  window.location.href = `./login/index.html?${search.toString()}`;
 };
 
 const setMessage = (message, type = "") => {
@@ -194,7 +197,18 @@ const extractPagination = (payload) => {
   };
 };
 
+const hasPaginationSignal = (pagination) =>
+  Boolean(
+    (pagination?.nextPage && pagination.nextPage > 0) ||
+      (pagination?.totalPages && pagination.totalPages > 1) ||
+      pagination?.hasMore === true
+  );
+
 const buildUsersApiUrl = (page, limit) => {
+  if (page <= 1) {
+    // Keep legacy behavior for backends that expose the user list at /api/users.
+    return "/api/users";
+  }
   const search = new URLSearchParams();
   search.set("page", String(page));
   search.set("limit", String(limit));
@@ -353,6 +367,17 @@ const fetchUsers = async () => {
       }
       const payload = await parseResponsePayload(response);
       if (!response.ok) {
+        if (page > 1 && usersByKey.size > 0) {
+          break;
+        }
+        if (response.status === 429) {
+          const retryAfterRaw = Number(response.headers.get("retry-after"));
+          const retryAfterText =
+            Number.isFinite(retryAfterRaw) && retryAfterRaw > 0
+              ? `กรุณารอ ${Math.ceil(retryAfterRaw)} วินาทีแล้วลองใหม่`
+              : "กรุณารอสักครู่แล้วกดรีเฟรชอีกครั้ง";
+          throw new Error(responseMessage(payload, `คำขอมากเกินกำหนด (${retryAfterText})`));
+        }
         throw new Error(responseMessage(payload, "โหลดรายการผู้ใช้ไม่สำเร็จ"));
       }
 
@@ -384,10 +409,7 @@ const fetchUsers = async () => {
         page += 1;
         continue;
       }
-      if (pageRows.length >= pageLimit) {
-        page += 1;
-        continue;
-      }
+      if (!hasPaginationSignal(pagination)) break;
       break;
     }
 

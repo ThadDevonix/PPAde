@@ -24,6 +24,7 @@ export const createSession = (user, ttlMs) => {
     name: user.name || user.email,
     role: user.role || "",
     upstreamToken: user.upstreamToken || "",
+    upstreamCookie: user.upstreamCookie || "",
     expiresAt
   });
   return { sessionId, expiresAt };

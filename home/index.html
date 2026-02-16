@@ -13,9 +13,12 @@
   <div class="shell">
     <nav class="nav">
       <div class="nav-links">
-        <a class="nav-link active" href="#">
+        <a class="nav-link active" href="./index.html">
           <span class="home-icon" aria-hidden="true"></span>
           Home
+        </a>
+        <a class="nav-link" href="./users.html">
+          Users
         </a>
       </div>
       <div class="nav-auth">
@@ -28,8 +31,8 @@
       <div class="filters-main">
         <div class="filters-row">
           <div>
-            <label for="plant">Plant name</label>
-            <input id="plant" type="text" placeholder="Plant name" />
+            <label for="plant">Plant name / Site ID</label>
+            <input id="plant" type="text" placeholder="เช่น 1 หรือ Chiang Mai PPA Site" />
           </div>
         </div>
         <div class="actions-right">
@@ -40,6 +43,7 @@
       <div class="actions-center">
         <img src="./images/logo_d_v2-01-2.svg" alt="" class="plant-count-logo" aria-hidden="true">
         <span class="pill count" id="plant-count">0 Plant</span>
+        <span class="pill cache-status hidden" id="sites-cache-badge" aria-live="polite"></span>
         <button id="create-plant" class="primary">สร้าง Plant</button>
       </div>
     </div>
@@ -50,13 +54,14 @@
           <tr>
             <th style="width: 80px;">Status</th>
             <th style="width: 110px;">Plant Image</th>
+            <th style="width: 120px;">Site ID</th>
             <th>Plant Name</th>
             <th style="width: 140px;">มิเตอร์</th>
             <th style="width: 140px;">แก้ไข</th>
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td class="empty" colspan="5">กำลังโหลด...</td></tr>
+          <tr><td class="empty" colspan="6">กำลังโหลด...</td></tr>
         </tbody>
       </table>
     </div>
@@ -197,6 +202,6 @@
     </div>
   </template>
 
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=20260216-4" defer></script>
 </body>
 </html>

@@ -12,8 +12,44 @@ const setMessage = (text, type = "info") => {
   if (type === "success") messageEl.classList.add("success");
 };
 
+const resolveDefaultAppPath = () => {
+  const path = window.location.pathname;
+  if (path.endsWith("/login/index.html")) {
+    return path.replace(/\/login\/index\.html$/, "/index.html");
+  }
+  if (path.endsWith("/login/")) {
+    return path.replace(/\/login\/$/, "/index.html");
+  }
+  if (path.endsWith("/login")) {
+    return path.replace(/\/login$/, "/index.html");
+  }
+  return "/index.html";
+};
+
+const resolveRedirectTarget = () => {
+  const defaultPath = resolveDefaultAppPath();
+  const rawTarget = new URLSearchParams(window.location.search).get("redirect");
+  if (!rawTarget) return defaultPath;
+  try {
+    const targetUrl = new URL(rawTarget, window.location.origin);
+    if (targetUrl.origin !== window.location.origin) return defaultPath;
+    const targetPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+    if (!targetPath.startsWith("/")) return defaultPath;
+    if (
+      targetPath === "/login" ||
+      targetPath === "/login/" ||
+      targetPath === "/login/index.html"
+    ) {
+      return defaultPath;
+    }
+    return targetPath;
+  } catch {
+    return defaultPath;
+  }
+};
+
 const redirectToApp = () => {
-  window.location.replace("/index.html");
+  window.location.replace(resolveRedirectTarget());
 };
 
 const checkSession = async () => {

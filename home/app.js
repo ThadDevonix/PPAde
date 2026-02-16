@@ -11,18 +11,10 @@ const legacySeedPlantNames = new Set([
   "PEA โรงเรียนพิจองซิง จ.แม่ฮาย 5kW+op+batt",
   "PEA โรงเรียนเข้นหัวเวียง 5kW+op+batt"
 ]);
-const sitesApiCandidates = [
-  "/api/sites",
-  "http://localhost:3000/api/sites",
-  "http://127.0.0.1:3000/api/sites",
-  "https://solarmdb.devonix.co.th/api/sites"
-];
-const devicesApiCandidates = [
-  "/api/devices",
-  "http://localhost:3000/api/devices",
-  "http://127.0.0.1:3000/api/devices",
-  "https://solarmdb.devonix.co.th/api/devices"
-];
+const sitesApiBase = "/api/sites";
+const devicesApiBase = "/api/devices";
+const sitesRetryMaxAttempts = 3;
+const sitesRetryBaseDelayMs = 700;
 const generateId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -149,6 +141,14 @@ const toSitePlant = (row) => {
     devices: []
   };
 };
+const plantIdentityKey = (plant) => {
+  if (!plant || typeof plant !== "object") return "";
+  if (Number.isFinite(Number(plant.apiId)) && Number(plant.apiId) > 0) {
+    return `id:${Number(plant.apiId)}`;
+  }
+  const fallback = normalizeSiteCodeKey(plant.siteCode) || normalizePlantNameKey(plant.name || "");
+  return fallback ? `code:${fallback}` : "";
+};
 const toApiDevice = (row) => {
   if (!row || typeof row !== "object") return null;
   const siteId = Number(row.site_id ?? row.siteId);
@@ -182,16 +182,23 @@ const toApiDevice = (row) => {
     status
   };
 };
+const deviceIdentityKey = (device) => {
+  if (!device || typeof device !== "object") return "";
+  if (Number.isFinite(Number(device.apiId)) && Number(device.apiId) > 0) {
+    return `id:${Number(device.apiId)}`;
+  }
+  const siteId = Number(device.siteId);
+  if (!Number.isFinite(siteId) || siteId <= 0) return "";
+  return `site:${siteId}:${normalizePlantNameKey(device.name || "")}`;
+};
 const normalizeApiPlants = (payload) => {
   const rows = extractSiteRows(payload);
   const byKey = new Map();
   rows.forEach((row) => {
     const plant = toSitePlant(row);
     if (!plant) return;
-    if (plant.status === "offline") return;
-    const key = plant.apiId
-      ? `id:${plant.apiId}`
-      : `code:${normalizeSiteCodeKey(plant.siteCode) || normalizePlantNameKey(plant.name)}`;
+    const key = plantIdentityKey(plant);
+    if (!key) return;
     if (!byKey.has(key)) byKey.set(key, plant);
   });
   return Array.from(byKey.values());
@@ -202,10 +209,8 @@ const normalizeApiDevices = (payload) => {
   rows.forEach((row) => {
     const device = toApiDevice(row);
     if (!device) return;
-    if (device.status === "offline") return;
-    const key = device.apiId
-      ? `id:${device.apiId}`
-      : `site:${device.siteId}:${normalizePlantNameKey(device.name)}`;
+    const key = deviceIdentityKey(device);
+    if (!key) return;
     if (!byKey.has(key)) byKey.set(key, device);
   });
   return Array.from(byKey.values());
@@ -272,65 +277,88 @@ const buildApiUrl = (base, path = "", search = "") => {
     : "";
   return `${base}${cleanedPath}${search || ""}`;
 };
-const requestSitesApi = async (path = "", options = {}) => {
+const requestApi = async (base, path = "", options = {}) => {
+  const url = buildApiUrl(base, path, options.search || "");
   const method = String(options.method || "GET").toUpperCase();
-  let lastHttpError = null;
-  let lastNetworkError = null;
-  for (const base of sitesApiCandidates) {
-    const url = buildApiUrl(base, path, options.search || "");
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: options.headers,
-        body: options.body
-      });
-      if (!response.ok) {
-        const detail = await getResponseErrorText(response);
-        if (!lastHttpError) {
-          lastHttpError = new Error(
-            `${method} ${url} failed (${response.status})${detail}`
-          );
-        }
-        continue;
-      }
-      return response;
-    } catch (error) {
-      if (!lastNetworkError) lastNetworkError = error;
-    }
+  const response = await fetch(url, {
+    method,
+    credentials: "same-origin",
+    headers: options.headers,
+    body: options.body
+  });
+  if (response.status === 401) {
+    const unauthorizedError = new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    unauthorizedError.code = "UNAUTHORIZED";
+    throw unauthorizedError;
   }
-  if (lastHttpError) throw lastHttpError;
-  if (lastNetworkError) throw lastNetworkError;
-  throw new Error(`${method} Sites API failed`);
+  if (response.status === 429) {
+    const rateLimitError = new Error("API ถูกเรียกถี่เกินไป (429)");
+    rateLimitError.code = "RATE_LIMIT";
+    throw rateLimitError;
+  }
+  if (!response.ok) {
+    const detail = await getResponseErrorText(response);
+    throw new Error(`${method} ${url} failed (${response.status})${detail}`);
+  }
+  return response;
+};
+const requestSitesApi = async (path = "", options = {}) => {
+  return requestApi(sitesApiBase, path, options);
 };
 const requestDevicesApi = async (path = "", options = {}) => {
-  const method = String(options.method || "GET").toUpperCase();
-  let lastHttpError = null;
-  let lastNetworkError = null;
-  for (const base of devicesApiCandidates) {
-    const url = buildApiUrl(base, path, options.search || "");
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: options.headers,
-        body: options.body
-      });
-      if (!response.ok) {
-        const detail = await getResponseErrorText(response);
-        if (!lastHttpError) {
-          lastHttpError = new Error(
-            `${method} ${url} failed (${response.status})${detail}`
-          );
-        }
-        continue;
-      }
-      return response;
-    } catch (error) {
-      if (!lastNetworkError) lastNetworkError = error;
-    }
+  return requestApi(devicesApiBase, path, options);
+};
+const waitMs = (ms) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+const normalizeSitesCacheStatus = (value) => {
+  const status = readString(value).toUpperCase();
+  if (["MISS", "HIT", "STALE"].includes(status)) return status;
+  return "";
+};
+const setSitesCacheBadge = (status = "", detail = "") => {
+  const badge = document.getElementById("sites-cache-badge");
+  if (!badge) return;
+  const normalized = String(status || "").trim().toUpperCase();
+  badge.classList.remove(
+    "cache-miss",
+    "cache-hit",
+    "cache-stale",
+    "cache-retry",
+    "cache-error"
+  );
+
+  if (!normalized) {
+    badge.textContent = "";
+    badge.classList.add("hidden");
+    return;
   }
-  if (lastHttpError) throw lastHttpError;
-  if (lastNetworkError) throw lastNetworkError;
-  throw new Error(`${method} Devices API failed`);
+
+  if (normalized === "MISS") {
+    badge.textContent = "API: MISS";
+    badge.classList.add("cache-miss");
+  } else if (normalized === "HIT") {
+    badge.textContent = "API: HIT";
+    badge.classList.add("cache-hit");
+  } else if (normalized === "STALE") {
+    badge.textContent = "API: STALE";
+    badge.classList.add("cache-stale");
+  } else if (normalized === "RETRY") {
+    badge.textContent = detail
+      ? `API: RETRY (${detail})`
+      : "API: RETRY";
+    badge.classList.add("cache-retry");
+  } else if (normalized === "ERROR") {
+    badge.textContent = "API: 429";
+    badge.classList.add("cache-error");
+  } else {
+    badge.textContent = "";
+    badge.classList.add("hidden");
+    return;
+  }
+
+  badge.classList.remove("hidden");
 };
 const createSiteCode = (name) => {
   const base = String(name || "")
@@ -352,12 +380,37 @@ const createSitePayload = (name, location) => ({
 const fetchPlantsFromApi = async () => {
   const response = await requestSitesApi("", { method: "GET" });
   const payload = await response.json();
-  return normalizeApiPlants(payload);
+  return {
+    plants: normalizeApiPlants(payload),
+    cacheStatus: normalizeSitesCacheStatus(response.headers.get("x-proxy-cache"))
+  };
+};
+const fetchPlantsFromApiWithRetry = async () => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= sitesRetryMaxAttempts; attempt += 1) {
+    try {
+      return await fetchPlantsFromApi();
+    } catch (error) {
+      if (error?.code === "UNAUTHORIZED") throw error;
+      if (error?.code !== "RATE_LIMIT") throw error;
+      lastError = error;
+      if (attempt >= sitesRetryMaxAttempts) break;
+      const nextAttempt = attempt + 1;
+      setSitesCacheBadge("RETRY", `${nextAttempt}/${sitesRetryMaxAttempts}`);
+      await waitMs(sitesRetryBaseDelayMs * attempt);
+    }
+  }
+  throw lastError || new Error("โหลดข้อมูลจาก Sites API ไม่สำเร็จ");
 };
 const fetchDevicesFromApi = async () => {
   const response = await requestDevicesApi("", { method: "GET" });
   const payload = await response.json();
   return normalizeApiDevices(payload);
+};
+const getPlantSiteId = (plant) => {
+  const apiId = Number(plant?.apiId);
+  if (Number.isFinite(apiId) && apiId > 0) return String(apiId);
+  return "-";
 };
 const getPlantMeterCount = (plant) =>
   Array.isArray(plant?.devices) ? plant.devices.length : 0;
@@ -415,7 +468,9 @@ const createPlantInApi = async (name, location) => {
   const responsePayload = await response.json().catch(() => null);
   const created = parseFirstSiteFromResponse(responsePayload);
   if (created) return created;
-  const refreshed = await fetchPlantsFromApi().catch(() => []);
+  const refreshed = await fetchPlantsFromApi()
+    .then((result) => result.plants)
+    .catch(() => []);
   const matched = refreshed.find((site) => {
     const sameCode =
       normalizeSiteCodeKey(site.siteCode) === normalizeSiteCodeKey(payload.site_code);
@@ -527,26 +582,45 @@ const deletePlantInApi = async (plant) => {
   throw errors[0] || new Error("DELETE /api/sites failed");
 };
 const hydratePlantsFromApi = async () => {
+  const hadPlants = plants.length > 0;
   isHydratingPlants = true;
   let hydrated = false;
   plantsLoadError = "";
-  render([]);
+  if (!hadPlants) render([]);
   try {
-    const [apiPlants, apiDevices] = await Promise.all([
-      fetchPlantsFromApi(),
-      fetchDevicesFromApi().catch(() => [])
-    ]);
+    const sitesResult = await fetchPlantsFromApiWithRetry();
+    const apiPlants = sitesResult.plants;
+    setSitesCacheBadge(sitesResult.cacheStatus);
+    const apiDevices = await fetchDevicesFromApi().catch(() => []);
     plants = mergeApiPlantsWithLocal(apiPlants, plants, apiDevices);
     savePlants();
     hydrated = true;
   } catch (error) {
-    plantsLoadError =
-      "โหลดข้อมูลจาก Sites API ไม่สำเร็จ (แนะนำเปิดผ่าน npm start ที่ http://localhost:3000)";
-    console.warn("Failed to load plants from API", error);
+    if (error?.code === "UNAUTHORIZED") {
+      redirectToLogin();
+      return;
+    }
+    if (error?.code === "RATE_LIMIT") {
+      plantsLoadError = "API ถูกเรียกถี่เกินไป (429) กรุณารอสักครู่แล้วกดรีเฟรช";
+      setSitesCacheBadge("ERROR");
+      console.warn("Sites API rate limited", error);
+    }
+    if (!plantsLoadError) {
+      const reason = readString(error?.message);
+      plantsLoadError = reason
+        ? `โหลดข้อมูลจาก Sites API ไม่สำเร็จ: ${reason}`
+        : "โหลดข้อมูลจาก Sites API ไม่สำเร็จ (แนะนำเปิดผ่าน npm start ที่ http://localhost:3000)";
+      setSitesCacheBadge("ERROR");
+      console.warn("Failed to load plants from API", error);
+    }
   } finally {
     isHydratingPlants = false;
   }
   if (hydrated) {
+    applyFilters();
+    return;
+  }
+  if (hadPlants) {
     applyFilters();
     return;
   }
@@ -606,7 +680,10 @@ let plantsLoadError = "";
 let isLocatingPlantLocation = false;
 
 const redirectToLogin = () => {
-  window.location.href = "/login/index.html";
+  const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const search = new URLSearchParams();
+  search.set("redirect", target);
+  window.location.href = `./login/index.html?${search.toString()}`;
 };
 const setAuthUser = (user) => {
   if (!authUserEl) return;
@@ -655,21 +732,22 @@ const render = (data) => {
   if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
   if (!data.length) {
     if (isHydratingPlants) {
-      rowsEl.innerHTML = '<tr><td class="empty" colspan="5">กำลังโหลดข้อมูล Plant...</td></tr>';
+      rowsEl.innerHTML = '<tr><td class="empty" colspan="6">กำลังโหลดข้อมูล Plant...</td></tr>';
       return;
     }
     if (plantsLoadError) {
-      rowsEl.innerHTML = `<tr><td class="empty" colspan="5">${plantsLoadError}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td class="empty" colspan="6">${plantsLoadError}</td></tr>`;
       return;
     }
-    rowsEl.innerHTML = '<tr><td class="empty" colspan="5">ไม่พบข้อมูล</td></tr>';
+    rowsEl.innerHTML = '<tr><td class="empty" colspan="6">ไม่พบข้อมูล</td></tr>';
     return;
   }
 
   rowsEl.innerHTML = data.map((item, idx) => `
     <tr data-index="${idx}" data-id="${item.id}">
-      <td><span class="status-dot" title="online"></span></td>
+      <td><span class="status-dot ${item.status === "offline" ? "offline" : "online"}" title="${item.status === "offline" ? "offline" : "online"}"></span></td>
       <td><div class="img-ph" aria-label="ภาพโรงไฟฟ้า (placeholder)"></div></td>
+      <td>${escapeHtml(getPlantSiteId(item))}</td>
       <td>
         <div class="name">${escapeHtml(item.name)}</div>
       </td>
@@ -1042,7 +1120,12 @@ const applyFilters = () => {
   const plantText = inputs.plant.value.trim().toLowerCase();
 
   const filtered = plants.filter((p) => {
-    const matchesPlant = !plantText || p.name.toLowerCase().includes(plantText);
+    const siteId = getPlantSiteId(p).toLowerCase();
+    const siteName = readString(p.name, p.site_name).toLowerCase();
+    const matchesPlant =
+      !plantText ||
+      siteName.includes(plantText) ||
+      (siteId !== "-" && siteId.includes(plantText));
     return matchesPlant;
   });
   render(filtered);
@@ -1233,7 +1316,11 @@ document.addEventListener("keydown", (e) => {
 const startApp = async () => {
   const user = await ensureAuthenticated();
   if (!user) return;
-  render([]);
+  if (plants.length) {
+    applyFilters();
+  } else {
+    render([]);
+  }
   updatePlantStepAvailability();
   hydratePlantsFromApi();
 };

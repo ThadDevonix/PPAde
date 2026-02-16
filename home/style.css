@@ -200,6 +200,33 @@ body {
   box-shadow: 0 8px 18px rgba(15, 99, 212, 0.15);
   letter-spacing: 0.2px;
 }
+.cache-status {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+.cache-status.cache-miss {
+  background: #eef4ff;
+  color: #2457d6;
+  border-color: #c9d8ff;
+}
+.cache-status.cache-hit {
+  background: #e7f8ef;
+  color: #0f8f47;
+  border-color: #bde8cf;
+}
+.cache-status.cache-stale,
+.cache-status.cache-retry {
+  background: #fff7e8;
+  color: #9a6700;
+  border-color: #f3d7a2;
+}
+.cache-status.cache-error {
+  background: #fff1f2;
+  color: #be123c;
+  border-color: #fecdd3;
+}
 .plant-count-logo {
   height: 100px;
   width: auto;
@@ -326,8 +353,8 @@ th {
   color: var(--muted);
   font-weight: 600;
 }
-th:nth-child(4),
-td:nth-child(4) {
+th:nth-child(5),
+td:nth-child(5) {
   text-align: center;
 }
 tbody tr:nth-child(even) {
@@ -350,6 +377,10 @@ tbody tr.selected {
   background: var(--success);
   display: inline-block;
   box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.15);
+}
+.status-dot.offline {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
 }
 .img-ph {
   width: 72px;

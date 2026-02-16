@@ -85,6 +85,8 @@ const isProxyApiPath = (pathname) =>
   pathname === "/api/users" ||
   pathname.startsWith("/api/users/");
 const isApiPath = (pathname) => isAuthApiPath(pathname) || isProxyApiPath(pathname);
+const isLoginPath = (pathname) =>
+  pathname === "/login" || pathname === "/login/" || pathname === "/login/index.html";
 
 const isPublicStaticPath = (pathname) =>
   pathname === "/login" || pathname === "/login/" || pathname.startsWith("/login/");
@@ -213,10 +215,11 @@ const requireApiSession = (req, res) => {
   return session;
 };
 
-const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
-  const method = String(req.method || "GET").toUpperCase();
-  const requestBody = method === "GET" || method === "HEAD" ? null : await readBodyBuffer(req);
+const sitesCacheFreshMs = 30 * 1000;
+const sitesCacheStaleMs = 5 * 60 * 1000;
+const sitesResponseCache = new Map();
 
+const buildProxyRequestHeaders = (req, method, extraHeaders = {}) => {
   const headers = {
     Accept: req.headers.accept || "application/json"
   };
@@ -225,12 +228,19 @@ const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
   } else if (method !== "GET" && method !== "HEAD") {
     headers["Content-Type"] = "application/json";
   }
-
   Object.entries(extraHeaders || {}).forEach(([key, value]) => {
     if (typeof value === "string" && value) {
       headers[key] = value;
     }
   });
+  return headers;
+};
+
+const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
+  const method = String(req.method || "GET").toUpperCase();
+  const requestBody = method === "GET" || method === "HEAD" ? null : await readBodyBuffer(req);
+
+  const headers = buildProxyRequestHeaders(req, method, extraHeaders);
 
   const upstreamRes = await fetch(upstreamUrl, {
     method,
@@ -245,6 +255,75 @@ const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
   res.writeHead(upstreamRes.status, {
     ...corsHeaders,
     "Content-Type": upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
+  });
+  res.end(body);
+};
+
+const buildSitesCacheKey = (session, upstreamUrl) => {
+  const identity = String(session?.userId || session?.email || "anonymous");
+  return `${identity}:${upstreamUrl}`;
+};
+
+const sendCachedSitesResponse = (res, cached, cacheStatus) => {
+  res.writeHead(200, {
+    ...corsHeaders,
+    "Content-Type": cached.contentType || "application/json; charset=utf-8",
+    "X-Proxy-Cache": cacheStatus
+  });
+  res.end(cached.body || "[]");
+};
+
+const proxySitesGetWithCache = async (req, res, session, upstreamUrl, extraHeaders = {}) => {
+  const now = Date.now();
+  const cacheKey = buildSitesCacheKey(session, upstreamUrl);
+  const cached = sitesResponseCache.get(cacheKey) || null;
+
+  if (cached && now - cached.cachedAt <= sitesCacheFreshMs) {
+    sendCachedSitesResponse(res, cached, "HIT");
+    return;
+  }
+
+  const headers = buildProxyRequestHeaders(req, "GET", extraHeaders);
+  let upstreamRes = null;
+  try {
+    upstreamRes = await fetch(upstreamUrl, {
+      method: "GET",
+      headers
+    });
+  } catch (error) {
+    if (cached && now - cached.cachedAt <= sitesCacheStaleMs) {
+      sendCachedSitesResponse(res, cached, "STALE");
+      return;
+    }
+    throw error;
+  }
+
+  const body = await upstreamRes.text();
+  const contentType =
+    upstreamRes.headers.get("content-type") || "application/json; charset=utf-8";
+  if (upstreamRes.ok) {
+    sitesResponseCache.set(cacheKey, {
+      body,
+      contentType,
+      cachedAt: Date.now()
+    });
+    res.writeHead(200, {
+      ...corsHeaders,
+      "Content-Type": contentType,
+      "X-Proxy-Cache": "MISS"
+    });
+    res.end(body);
+    return;
+  }
+
+  if (upstreamRes.status === 429 && cached && now - cached.cachedAt <= sitesCacheStaleMs) {
+    sendCachedSitesResponse(res, cached, "STALE");
+    return;
+  }
+
+  res.writeHead(upstreamRes.status, {
+    ...corsHeaders,
+    "Content-Type": contentType
   });
   res.end(body);
 };
@@ -368,6 +447,50 @@ const normalizeUserFromApi = (user, fallbackEmail = "") => {
 
 const buildAuthHeader = (token) => (token ? `Bearer ${token}` : "");
 
+const splitCombinedSetCookieHeader = (rawValue) => {
+  const text = String(rawValue || "").trim();
+  if (!text) return [];
+  const list = [];
+  let start = 0;
+  let inExpires = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const next = text.slice(i, i + 8).toLowerCase();
+    if (next === "expires=") {
+      inExpires = true;
+      continue;
+    }
+    const char = text[i];
+    if (inExpires && char === ";") {
+      inExpires = false;
+      continue;
+    }
+    if (!inExpires && char === ",") {
+      const part = text.slice(start, i).trim();
+      if (part) list.push(part);
+      start = i + 1;
+    }
+  }
+  const tail = text.slice(start).trim();
+  if (tail) list.push(tail);
+  return list;
+};
+
+const extractCookieHeaderFromResponse = (response) => {
+  if (!response?.headers) return "";
+  let setCookieValues = [];
+  if (typeof response.headers.getSetCookie === "function") {
+    setCookieValues = response.headers.getSetCookie();
+  } else {
+    const fallback = response.headers.get("set-cookie");
+    if (fallback) setCookieValues = splitCombinedSetCookieHeader(fallback);
+  }
+  if (!Array.isArray(setCookieValues) || !setCookieValues.length) return "";
+  const pairs = setCookieValues
+    .map((cookieValue) => String(cookieValue || "").split(";")[0]?.trim() || "")
+    .filter(Boolean);
+  return pairs.join("; ");
+};
+
 const resolveUpstreamAuthHeader = (req, session) => {
   if (typeof req.headers.authorization === "string" && req.headers.authorization.trim()) {
     return req.headers.authorization.trim();
@@ -381,15 +504,27 @@ const resolveUpstreamAuthHeader = (req, session) => {
   return "";
 };
 
-const fetchCurrentUserFromUpstream = async (token) => {
-  if (!token) return null;
+const resolveUpstreamCookieHeader = (req, session) => {
+  const requestCookie =
+    typeof req.headers["x-upstream-cookie"] === "string"
+      ? req.headers["x-upstream-cookie"].trim()
+      : "";
+  if (requestCookie) return requestCookie;
+  if (session?.upstreamCookie) return session.upstreamCookie;
+  return "";
+};
+
+const fetchCurrentUserFromUpstream = async (token, cookieHeader = "") => {
+  if (!token && !cookieHeader) return null;
   try {
+    const headers = {
+      Accept: "application/json"
+    };
+    if (token) headers.Authorization = buildAuthHeader(token);
+    if (cookieHeader) headers.Cookie = cookieHeader;
     const response = await fetch(upstreamAuthMeApi, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: buildAuthHeader(token)
-      }
+      headers
     });
     if (!response.ok) return null;
     const payload = await parseJsonResponse(response);
@@ -400,18 +535,20 @@ const fetchCurrentUserFromUpstream = async (token) => {
   }
 };
 
-const fetchUserFromUsersApi = async (email, token) => {
+const fetchUserFromUsersApi = async (email, token, cookieHeader = "") => {
   const targetEmail = normalizeEmail(email);
   if (!targetEmail) return null;
   const authHeader = token ? buildAuthHeader(token) : buildAuthHeader(serviceAuthToken);
-  if (!authHeader) return null;
+  if (!authHeader && !cookieHeader) return null;
   try {
+    const headers = {
+      Accept: "application/json"
+    };
+    if (authHeader) headers.Authorization = authHeader;
+    if (cookieHeader) headers.Cookie = cookieHeader;
     const response = await fetch(upstreamUsersApi, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: authHeader
-      }
+      headers
     });
     if (!response.ok) return null;
     const payload = await parseJsonResponse(response);
@@ -436,6 +573,7 @@ const tryUpstreamLogin = async (email, password) => {
   });
 
   const payload = await parseJsonResponse(response);
+  const upstreamCookie = extractCookieHeaderFromResponse(response);
   if (!response.ok) {
     return {
       ok: false,
@@ -446,8 +584,8 @@ const tryUpstreamLogin = async (email, password) => {
 
   const token = extractAuthToken(payload);
   const payloadUser = normalizeUserFromApi(extractAuthUser(payload), email);
-  const meUser = await fetchCurrentUserFromUpstream(token);
-  const usersApiUser = await fetchUserFromUsersApi(email, token);
+  const meUser = await fetchCurrentUserFromUpstream(token, upstreamCookie);
+  const usersApiUser = await fetchUserFromUsersApi(email, token, upstreamCookie);
   const normalizedUser =
     usersApiUser || meUser || payloadUser || { id: email, email: normalizeEmail(email), name: email, role: "" };
   if (!normalizedUser?.isActive) {
@@ -462,6 +600,7 @@ const tryUpstreamLogin = async (email, password) => {
     ok: true,
     status: response.status,
     token,
+    upstreamCookie,
     user: normalizedUser
   };
 };
@@ -502,7 +641,8 @@ const handleAuthApi = async (req, res, url) => {
       const { sessionId, expiresAt } = createSession(
         {
           ...upstreamLogin.user,
-          upstreamToken: upstreamLogin.token
+          upstreamToken: upstreamLogin.token,
+          upstreamCookie: upstreamLogin.upstreamCookie
         },
         sessionTtlMs
       );
@@ -558,14 +698,17 @@ const handleAuthApi = async (req, res, url) => {
 
     const { sessionId, session } = getSessionFromRequest(req);
     const authHeader = resolveUpstreamAuthHeader(req, session);
-    if (authHeader) {
+    const upstreamCookie = resolveUpstreamCookieHeader(req, session);
+    if (authHeader || upstreamCookie) {
+      const headers = {
+        Accept: "application/json"
+      };
+      if (authHeader) headers.Authorization = authHeader;
+      if (upstreamCookie) headers.Cookie = upstreamCookie;
       try {
         await fetch(upstreamAuthLogoutApi, {
           method: "POST",
-          headers: {
-            Accept: "application/json",
-            Authorization: authHeader
-          }
+          headers
         });
       } catch {
         // ignore upstream logout errors
@@ -791,6 +934,26 @@ const resolveStaticPath = (pathname) => {
   return pathname;
 };
 
+const resolveSafeRedirectPath = (rawRedirect) => {
+  if (typeof rawRedirect !== "string" || !rawRedirect.trim()) return "/index.html";
+  try {
+    const trustedOrigin = "http://localhost";
+    const targetUrl = new URL(rawRedirect, trustedOrigin);
+    if (targetUrl.origin !== trustedOrigin) return "/index.html";
+    if (isLoginPath(targetUrl.pathname)) return "/index.html";
+    const targetPath = `${targetUrl.pathname}${targetUrl.search}`;
+    return targetPath.startsWith("/") ? targetPath : "/index.html";
+  } catch {
+    return "/index.html";
+  }
+};
+
+const buildLoginRedirectLocation = (url) => {
+  const params = new URLSearchParams();
+  params.set("redirect", `${url.pathname}${url.search}`);
+  return `/login/index.html?${params.toString()}`;
+};
+
 const serveStaticFile = async (res, pathname) => {
   const relPath = resolveStaticPath(pathname);
   const safePath = path.posix.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, "");
@@ -802,7 +965,14 @@ const serveStaticFile = async (res, pathname) => {
   }
 
   const data = await readFile(filePath);
-  res.writeHead(200, { "Content-Type": mime(filePath) });
+  const headers = {
+    "Content-Type": mime(filePath)
+  };
+  const ext = path.extname(filePath).toLowerCase();
+  if ([".html", ".css", ".js"].includes(ext)) {
+    headers["Cache-Control"] = "no-store, max-age=0";
+  }
+  res.writeHead(200, headers);
   res.end(data);
 };
 
@@ -825,33 +995,51 @@ const server = createServer(async (req, res) => {
     if (isProxyApiPath(url.pathname)) {
       const session = requireApiSession(req, res);
       if (!session) return;
+      const authHeader = resolveUpstreamAuthHeader(req, session);
+      const upstreamCookie = resolveUpstreamCookieHeader(req, session);
 
       if (url.pathname === "/api/energy") {
         const upstreamUrl = `${upstreamEnergyApi}${url.search}`;
-        await proxyRequest(req, res, upstreamUrl);
+        await proxyRequest(req, res, upstreamUrl, {
+          Authorization: authHeader,
+          Cookie: upstreamCookie
+        });
         return;
       }
 
       if (url.pathname === "/api/sites" || url.pathname.startsWith("/api/sites/")) {
         const suffix = url.pathname.slice("/api/sites".length);
         const upstreamUrl = `${upstreamSitesApi}${suffix}${url.search}`;
-        await proxyRequest(req, res, upstreamUrl);
+        if (method === "GET") {
+          await proxySitesGetWithCache(req, res, session, upstreamUrl, {
+            Authorization: authHeader,
+            Cookie: upstreamCookie
+          });
+          return;
+        }
+        await proxyRequest(req, res, upstreamUrl, {
+          Authorization: authHeader,
+          Cookie: upstreamCookie
+        });
         return;
       }
 
       if (url.pathname === "/api/devices" || url.pathname.startsWith("/api/devices/")) {
         const suffix = url.pathname.slice("/api/devices".length);
         const upstreamUrl = `${upstreamDevicesApi}${suffix}${url.search}`;
-        await proxyRequest(req, res, upstreamUrl);
+        await proxyRequest(req, res, upstreamUrl, {
+          Authorization: authHeader,
+          Cookie: upstreamCookie
+        });
         return;
       }
 
       if (url.pathname === "/api/users" || url.pathname.startsWith("/api/users/")) {
         const suffix = url.pathname.slice("/api/users".length);
         const upstreamUrl = `${upstreamUsersApi}${suffix}${url.search}`;
-        const authHeader = resolveUpstreamAuthHeader(req, session);
         await proxyRequest(req, res, upstreamUrl, {
-          Authorization: authHeader
+          Authorization: authHeader,
+          Cookie: upstreamCookie
         });
         return;
       }
@@ -874,18 +1062,15 @@ const server = createServer(async (req, res) => {
     }
 
     if (!isAuthenticated && !isPublicStaticPath(url.pathname)) {
-      res.writeHead(302, { Location: "/login/index.html" });
+      res.writeHead(302, { Location: buildLoginRedirectLocation(url) });
       res.end();
       return;
     }
 
-    if (
-      isAuthenticated &&
-      (url.pathname === "/login" ||
-        url.pathname === "/login/" ||
-        url.pathname === "/login/index.html")
-    ) {
-      res.writeHead(302, { Location: "/index.html" });
+    if (isAuthenticated && isLoginPath(url.pathname)) {
+      res.writeHead(302, {
+        Location: resolveSafeRedirectPath(url.searchParams.get("redirect"))
+      });
       res.end();
       return;
     }
