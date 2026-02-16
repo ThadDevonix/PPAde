@@ -530,10 +530,10 @@ const setCalcInputMode = (mode, options = {}) => {
   formulaResultNameCell?.classList.toggle("hidden", isSingle);
   formulaResultValueCell?.classList.toggle("hidden", isSingle);
   if (formulaMeterLeftLabel) {
-    formulaMeterLeftLabel.textContent = isSingle ? "มิเตอร์" : "มิเตอร์ 1";
+    formulaMeterLeftLabel.textContent = "ชื่อมิเตอร์ที่ 1";
   }
   if (formulaValueLeftLabel) {
-    formulaValueLeftLabel.textContent = isSingle ? "ค่า" : "ค่า 1";
+    formulaValueLeftLabel.textContent = "ค่าที่ใช้คำนวณ";
   }
   if (isSingle && formulaResultName) {
     formulaResultName.value = getSingleModeCalcLabel();
@@ -854,10 +854,10 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         </tr>
       `)
       .join("");
-  const termOneDetail = getTermDetail(leftTerm, "ค่า 1");
-  const termTwoDetail = getTermDetail(rightTerm, "ค่า 2");
-  const termOneHeader = getTermHeaderLabel(leftTerm, "ค่า 1");
-  const termTwoHeader = getTermHeaderLabel(rightTerm, "ค่า 2");
+  const termOneDetail = getTermDetail(leftTerm, "ค่าที่ใช้คำนวณ 1");
+  const termTwoDetail = getTermDetail(rightTerm, "ค่าที่ใช้คำนวณ 2");
+  const termOneHeader = getTermHeaderLabel(leftTerm, "ค่าที่ใช้คำนวณ 1");
+  const termTwoHeader = getTermHeaderLabel(rightTerm, "ค่าที่ใช้คำนวณ 2");
   const formulaOperator =
     showFormulaColumns && formulaOperators.includes(rightTerm?.operator)
       ? rightTerm.operator

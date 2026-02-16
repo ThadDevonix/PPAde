@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "add-user": "node src/scripts/add-user.js"
   },
   "keywords": [],
   "author": "",

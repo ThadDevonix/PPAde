@@ -562,6 +562,8 @@ const inputs = {
 };
 const createPlantBtn = document.getElementById("create-plant");
 const plantCountEl = document.getElementById("plant-count");
+const authUserEl = document.getElementById("auth-user");
+const logoutBtn = document.getElementById("logout-btn");
 const plantModal = document.getElementById("plant-modal");
 const plantModalTitle = document.getElementById("plant-modal-title");
 const plantModalClose = document.getElementById("plant-modal-close");
@@ -602,6 +604,52 @@ let isMeterModalOpen = false;
 let isHydratingPlants = false;
 let plantsLoadError = "";
 let isLocatingPlantLocation = false;
+
+const redirectToLogin = () => {
+  window.location.href = "/login/index.html";
+};
+const setAuthUser = (user) => {
+  if (!authUserEl) return;
+  const label = readString(user?.name, user?.email) || "ผู้ใช้งาน";
+  authUserEl.textContent = `ผู้ใช้: ${label}`;
+};
+const ensureAuthenticated = async () => {
+  try {
+    const response = await fetch("/api/auth/me", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      redirectToLogin();
+      return null;
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!payload?.user) {
+      redirectToLogin();
+      return null;
+    }
+    setAuthUser(payload.user);
+    return payload.user;
+  } catch {
+    redirectToLogin();
+    return null;
+  }
+};
+const logout = async () => {
+  if (logoutBtn) {
+    logoutBtn.disabled = true;
+    logoutBtn.textContent = "กำลังออกจากระบบ...";
+  }
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin"
+    });
+  } catch {
+    // ignore network error and force redirect to login
+  }
+  redirectToLogin();
+};
 
 const render = (data) => {
   if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
@@ -1025,6 +1073,7 @@ document.getElementById("reset").addEventListener("click", () => {
   applyFilters();
 });
 
+logoutBtn?.addEventListener("click", logout);
 createPlantBtn?.addEventListener("click", openPlantModal);
 plantModalClose?.addEventListener("click", closePlantModal);
 plantCancel?.addEventListener("click", closePlantModal);
@@ -1181,6 +1230,12 @@ document.addEventListener("keydown", (e) => {
   if (isPlantModalOpen) closePlantModal();
 });
 
-render([]);
-updatePlantStepAvailability();
-hydratePlantsFromApi();
+const startApp = async () => {
+  const user = await ensureAuthenticated();
+  if (!user) return;
+  render([]);
+  updatePlantStepAvailability();
+  hydratePlantsFromApi();
+};
+
+startApp();

@@ -76,6 +76,29 @@ body {
 }
 .nav-link:hover { color: #8cb7ff; }
 .nav-link.active { color: #5c9dff; }
+.nav-auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.auth-user {
+  background: rgba(92, 157, 255, 0.16);
+  color: #dbe8ff;
+  border: 1px solid rgba(140, 183, 255, 0.3);
+  box-shadow: none;
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nav-logout {
+  border-color: rgba(140, 183, 255, 0.35);
+  background: rgba(14, 31, 58, 0.55);
+  color: #dbe8ff;
+}
+.nav-logout:hover {
+  background: rgba(47, 89, 153, 0.65);
+}
 .home-icon {
   width: 18px; height: 18px;
   border: 2px solid currentColor;
@@ -151,6 +174,13 @@ body {
   width: 100%;
 }
 @media (max-width: 760px) {
+  .nav {
+    flex-wrap: wrap;
+  }
+  .nav-auth {
+    width: 100%;
+    justify-content: flex-end;
+  }
   .filters {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -1205,31 +1235,71 @@ tbody tr.selected {
 }
 .formula-inline-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(130px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
   align-items: end;
+  padding: 10px;
+  border: 1px solid #dfe7f6;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f9fbff 0%, #f5f8ff 100%);
 }
 .formula-inline-grid.single-mode {
-  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .formula-inline-cell {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
 }
 .formula-inline-cell label {
   margin: 0;
   font-size: 12px;
+  font-weight: 700;
+  color: #4b5a73;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .formula-inline-cell input,
 .formula-inline-cell select {
   min-width: 0;
+  width: 100%;
 }
 .formula-op-cell {
-  max-width: 92px;
+  max-width: none;
+}
+#formula-meter-left-cell {
+  grid-column: 1;
+}
+#formula-value-left-cell {
+  grid-column: 2;
+}
+#formula-op-cell {
+  grid-column: 3;
+}
+#formula-op-cell label {
+  text-align: center;
+}
+#formula-op-cell select {
+  text-align: center;
+  font-weight: 700;
+}
+#formula-meter-right-cell {
+  grid-column: 4;
+}
+#formula-value-right-cell {
+  grid-column: 1;
+}
+#formula-result-name-cell {
+  grid-column: 2 / span 2;
+}
+#formula-result-value-cell {
+  grid-column: 4;
 }
 .formula-inline-cell input[readonly] {
-  background: #f5f7fb;
+  background: #eef3fb;
   color: #334155;
+  font-weight: 700;
 }
 #bill-modal .modal-content {
   width: min(980px, 96vw);
@@ -1275,6 +1345,33 @@ tbody tr.selected {
   }
   .bill-flow-btn:first-child {
     border-right: 1px solid #dde6f8;
+  }
+  .formula-inline-grid,
+  .formula-inline-grid.single-mode {
+    grid-template-columns: 1fr;
+  }
+  #formula-meter-left-cell,
+  #formula-value-left-cell,
+  #formula-op-cell,
+  #formula-meter-right-cell,
+  #formula-value-right-cell,
+  #formula-result-name-cell,
+  #formula-result-value-cell {
+    grid-column: auto;
+  }
+}
+@media (min-width: 561px) and (max-width: 960px) {
+  .formula-inline-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #formula-meter-left-cell,
+  #formula-value-left-cell,
+  #formula-op-cell,
+  #formula-meter-right-cell,
+  #formula-value-right-cell,
+  #formula-result-name-cell,
+  #formula-result-value-cell {
+    grid-column: auto;
   }
 }
 .meter-card-grid {

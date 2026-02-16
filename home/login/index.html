@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เข้าสู่ระบบ | PPAde</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card">
+      <h1>เข้าสู่ระบบ</h1>
+      <p class="subtitle">ใช้บัญชีที่ผู้ดูแลระบบเพิ่มไว้แล้วเท่านั้น</p>
+
+      <form id="login-form" class="auth-form" novalidate>
+        <label for="email">อีเมล</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+
+        <label for="password">รหัสผ่าน</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+        <button id="login-submit" class="primary" type="submit">เข้าสู่ระบบ</button>
+      </form>
+
+      <p id="login-message" class="message" role="status" aria-live="polite"></p>
+      <a class="link" href="./forgot-password.html">ลืมรหัสผ่าน?</a>
+    </section>
+  </main>
+
+  <script src="./login.js" defer></script>
+</body>
+</html>
