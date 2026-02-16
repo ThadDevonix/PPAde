@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>จัดการผู้ใช้ | PPA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./users.css">
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav">
+      <div class="nav-links">
+        <a class="nav-link" href="./index.html">
+          <span class="home-icon" aria-hidden="true"></span>
+          Home
+        </a>
+        <a class="nav-link active" href="./users.html">
+          Users
+        </a>
+      </div>
+      <div class="nav-auth">
+        <span id="auth-user" class="pill auth-user"></span>
+        <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+      </div>
+    </nav>
+
+    <section class="users-toolbar">
+      <div>
+        <h1>จัดการผู้ใช้</h1>
+        <p class="muted">เพิ่มและลบผู้ใช้ผ่าน API `/api/users`</p>
+      </div>
+      <div class="users-toolbar-actions">
+        <button id="refresh-users" type="button">รีเฟรช</button>
+        <button id="open-create-user" class="primary" type="button">เพิ่มผู้ใช้</button>
+      </div>
+    </section>
+
+    <div class="table-wrap users-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 70px;">ID</th>
+            <th style="width: 220px;">Email</th>
+            <th>Name</th>
+            <th style="width: 130px;">Role</th>
+            <th style="width: 110px;">Status</th>
+            <th style="width: 190px;">Last Login</th>
+            <th style="width: 130px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="user-rows">
+          <tr><td class="empty" colspan="7">กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p id="users-message" class="users-message muted" role="status" aria-live="polite"></p>
+  </div>
+
+  <div class="modal hidden" id="user-create-modal" role="dialog" aria-modal="true">
+    <div class="modal-content small">
+      <div class="modal-header">
+        <h3>เพิ่มผู้ใช้</h3>
+        <button class="ghost icon-btn" id="user-create-close" aria-label="ปิด">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="user-create-form" class="modal-body" novalidate>
+        <div class="field">
+          <label for="new-user-email">Email <span class="req-star">*</span></label>
+          <input id="new-user-email" type="email" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label for="new-user-name">Name <span class="req-star">*</span></label>
+          <input id="new-user-name" type="text" autocomplete="name" required />
+        </div>
+        <div class="field">
+          <label for="new-user-password">Password <span class="req-star">*</span></label>
+          <input id="new-user-password" type="password" autocomplete="new-password" required />
+        </div>
+        <div class="field">
+          <label for="new-user-role">Role</label>
+          <select id="new-user-role">
+            <option value="admin">admin</option>
+            <option value="superadmin">superadmin</option>
+            <option value="user">user</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="new-user-active">สถานะ</label>
+          <select id="new-user-active">
+            <option value="1">active</option>
+            <option value="0">inactive</option>
+          </select>
+        </div>
+      </form>
+      <div class="modal-footer">
+        <button class="ghost small-btn" id="user-create-cancel" type="button">ยกเลิก</button>
+        <button class="primary" id="user-create-submit" type="submit" form="user-create-form">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./users.js" defer></script>
+</body>
+</html>

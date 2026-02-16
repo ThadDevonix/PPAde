@@ -1,0 +1,103 @@
+.users-toolbar {
+  background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.users-toolbar h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.users-toolbar .muted {
+  margin: 4px 0 0;
+}
+
+.users-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.users-table-wrap {
+  margin-top: 16px;
+}
+
+.users-table-wrap table {
+  min-width: 980px;
+}
+
+.users-message {
+  min-height: 22px;
+  margin: 12px 2px 0;
+  font-size: 14px;
+}
+
+.users-message.error {
+  color: #d94646;
+}
+
+.users-message.success {
+  color: #15803d;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+
+.status-badge.active {
+  background: #e8f8ef;
+  color: #138a4c;
+}
+
+.status-badge.inactive {
+  background: #fcecec;
+  color: #c53030;
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #eef3ff;
+  color: #355ca8;
+}
+
+.users-delete-btn {
+  color: #b42318;
+  border-color: #f3c8c5;
+  background: #fff;
+}
+
+.users-delete-btn:hover {
+  background: #fef2f2;
+}
+
+@media (max-width: 760px) {
+  .users-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .users-toolbar-actions {
+    justify-content: flex-end;
+  }
+}
