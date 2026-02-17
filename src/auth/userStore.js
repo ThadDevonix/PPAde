@@ -54,10 +54,11 @@ const queueWrite = (fn) => {
 
 export const sanitizeUser = (user) => {
   if (!user) return null;
+  const email = normalizeEmail(user.email || user.username);
   return {
     id: user.id,
-    email: user.email,
-    name: user.name || user.email
+    email,
+    name: user.name || email
   };
 };
 
@@ -85,7 +86,6 @@ export const addUser = async ({ email, name, password }) =>
       email: normalized,
       name: String(name || "").trim() || normalized,
       password,
-      resetToken: null,
       createdAt: now,
       updatedAt: now
     };
@@ -93,30 +93,6 @@ export const addUser = async ({ email, name, password }) =>
     await writeUsers(users);
     return nextUser;
   });
-
-export const setResetTokenForEmail = async (email, tokenHash, expiresAt) =>
-  queueWrite(async () => {
-    const normalized = normalizeEmail(email);
-    const users = await readUsers();
-    const index = users.findIndex((user) => normalizeEmail(user.email) === normalized);
-    if (index === -1) return null;
-    users[index] = {
-      ...users[index],
-      resetToken: {
-        tokenHash,
-        expiresAt
-      },
-      updatedAt: new Date().toISOString()
-    };
-    await writeUsers(users);
-    return users[index];
-  });
-
-export const getUserByResetTokenHash = async (tokenHash) => {
-  if (!tokenHash) return null;
-  const users = await readUsers();
-  return users.find((user) => user?.resetToken?.tokenHash === tokenHash) || null;
-};
 
 export const updatePasswordForUserId = async (userId, password) =>
   queueWrite(async () => {
@@ -126,7 +102,6 @@ export const updatePasswordForUserId = async (userId, password) =>
     users[index] = {
       ...users[index],
       password,
-      resetToken: null,
       updatedAt: new Date().toISOString()
     };
     await writeUsers(users);

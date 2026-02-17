@@ -32,7 +32,7 @@
         <div class="filters-row">
           <div>
             <label for="plant">Plant name / Site ID</label>
-            <input id="plant" type="text" placeholder="เช่น 1 หรือ Chiang Mai PPA Site" />
+            <input id="plant" type="text" placeholder="ค้นหา" />
           </div>
         </div>
         <div class="actions-right">
@@ -99,23 +99,20 @@
         <div class="plant-step" data-step="1">
           <div class="field">
             <label for="plant-name-input">ตั้งชื่อ Plant</label>
-            <input type="text" id="plant-name-input" placeholder="เช่น โรงงาน A">
+            <input type="text" id="plant-name-input">
           </div>
           <div class="field">
             <label for="plant-location-input">Location</label>
             <input
               type="text"
               id="plant-location-input"
-              placeholder="เช่น 18.788300,98.985300 หรือ Chiang Mai, Thailand"
             >
             <div class="field-actions plant-location-actions">
               <button class="chip-btn" id="plant-location-current" type="button">
                 ค้นหาตำแหน่งปัจจุบัน
               </button>
             </div>
-            <p class="muted small plant-location-hint" id="plant-location-hint">
-              ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API
-            </p>
+            <p class="muted small plant-location-hint" id="plant-location-hint"></p>
           </div>
         </div>
         <div class="plant-step hidden" data-step="2">
@@ -157,7 +154,7 @@
       <div class="modal-body">
         <div class="field">
           <label for="meter-name-input">ตั้งชื่อมิเตอร์ <span class="req-star">*</span></label>
-          <input type="text" id="meter-name-input" placeholder="">
+          <input type="text" id="meter-name-input">
         </div>
         <div class="field">
           <div class="field-head">
@@ -188,15 +185,15 @@
       <div class="address-group-grid">
         <div class="field">
           <label>ชื่อ Address <span class="req-star">*</span></label>
-          <input type="text" data-field="addressName" placeholder="">
+          <input type="text" data-field="addressName">
         </div>
         <div class="field">
           <label>Station <span class="req-star">*</span></label>
-          <input type="text" data-field="station" placeholder="" inputmode="numeric" pattern="[0-9]*">
+          <input type="text" data-field="station" inputmode="numeric" pattern="[0-9]*">
         </div>
         <div class="field">
           <label>เลข Address <span class="req-star">*</span></label>
-          <input type="text" data-field="address" placeholder="" inputmode="numeric" pattern="[0-9]*">
+          <input type="text" data-field="address" inputmode="numeric" pattern="[0-9]*">
         </div>
       </div>
     </div>

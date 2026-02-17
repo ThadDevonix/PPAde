@@ -9,7 +9,7 @@ const readArg = (flag) => {
   return args[index + 1] || "";
 };
 
-const email = readArg("--email");
+const email = readArg("--email") || readArg("--username");
 const password = readArg("--password");
 const name = readArg("--name");
 

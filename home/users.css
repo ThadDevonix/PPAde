@@ -26,6 +26,16 @@
   flex-wrap: wrap;
 }
 
+.users-modal-title-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.users-edit-id {
+  margin: 0;
+  font-size: 12px;
+}
+
 .users-table-wrap {
   margin-top: 16px;
 }
@@ -90,6 +100,82 @@
 
 .users-delete-btn:hover {
   background: #fef2f2;
+}
+
+.users-edit-btn {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #fff;
+}
+
+.users-edit-btn:hover {
+  background: #eff6ff;
+}
+
+.users-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.users-sites-hint {
+  margin: 6px 2px 0;
+  font-size: 12px;
+}
+
+.field #new-user-sites-search {
+  margin-bottom: 8px;
+}
+
+.field #new-user-sites-search:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.users-sites-list {
+  min-height: 140px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.users-sites-list.is-disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.users-site-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.users-site-option:hover {
+  background: #f1f5f9;
+}
+
+.users-site-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #1677ff;
+}
+
+.users-site-option input[type="checkbox"]:disabled {
+  accent-color: #94a3b8;
+}
+
+.users-sites-empty {
+  margin: 0;
+  font-size: 13px;
+  padding: 8px;
 }
 
 @media (max-width: 760px) {

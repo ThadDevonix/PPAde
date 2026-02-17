@@ -18,11 +18,25 @@ export const createSession = (user, ttlMs) => {
   pruneExpiredSessions();
   const sessionId = randomUUID();
   const expiresAt = Date.now() + ttlMs;
+  const siteIds = Array.isArray(user.siteIds)
+    ? Array.from(
+        new Set(
+          user.siteIds
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0)
+            .map((value) => Math.trunc(value))
+        )
+      )
+    : [];
+  const role = String(user.role || "").trim().toLowerCase();
+  const email = String(user.email || user.username || "").trim().toLowerCase();
   sessions.set(sessionId, {
     userId: user.id,
-    email: user.email,
-    name: user.name || user.email,
-    role: user.role || "",
+    email,
+    name: user.name || email,
+    role,
+    siteIds,
+    canViewAllSites: role === "superadmin" || user.canViewAllSites === true,
     upstreamToken: user.upstreamToken || "",
     upstreamCookie: user.upstreamCookie || "",
     expiresAt

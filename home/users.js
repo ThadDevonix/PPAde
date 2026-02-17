@@ -10,14 +10,27 @@ const createForm = document.getElementById("user-create-form");
 const createSubmitBtn = document.getElementById("user-create-submit");
 const createCancelBtn = document.getElementById("user-create-cancel");
 const createCloseBtn = document.getElementById("user-create-close");
+const userModalTitle = document.getElementById("user-modal-title");
+const userEditIdEl = document.getElementById("user-edit-id");
 const newUserEmailInput = document.getElementById("new-user-email");
 const newUserNameInput = document.getElementById("new-user-name");
 const newUserPasswordInput = document.getElementById("new-user-password");
+const newUserPasswordLabel = document.getElementById("new-user-password-label");
 const newUserRoleInput = document.getElementById("new-user-role");
 const newUserActiveInput = document.getElementById("new-user-active");
+const newUserSitesField = document.getElementById("new-user-sites-field");
+const newUserSitesSearchInput = document.getElementById("new-user-sites-search");
+const newUserSitesList = document.getElementById("new-user-sites-list");
+const newUserSitesHint = document.getElementById("new-user-sites-hint");
 
 let users = [];
 let currentUser = null;
+let availableSites = [];
+let selectedCreateSiteIds = new Set();
+let siteSearchQuery = "";
+let userFormMode = "create";
+let editingUserId = null;
+let editingEmail = "";
 let isLoading = false;
 let loadError = "";
 const clientTimeoutMs = 15000;
@@ -53,6 +66,27 @@ const readString = (...values) => {
 };
 
 const normalizeEmail = (value) => readString(value).toLowerCase();
+const normalizeRole = (value) => readString(value).toLowerCase();
+const normalizeEntityId = (value) =>
+  value === undefined || value === null ? "" : String(value).trim();
+const isSameEntityId = (left, right) => {
+  const leftId = normalizeEntityId(left);
+  const rightId = normalizeEntityId(right);
+  if (!leftId || !rightId) return false;
+  if (leftId === rightId) return true;
+  const leftNumber = Number(leftId);
+  const rightNumber = Number(rightId);
+  return (
+    Number.isFinite(leftNumber) &&
+    Number.isFinite(rightNumber) &&
+    Math.trunc(leftNumber) === Math.trunc(rightNumber)
+  );
+};
+const allowedUserRoles = new Set(["admin", "superadmin"]);
+const normalizeAllowedRole = (value, fallback = "admin") => {
+  const role = normalizeRole(value);
+  return allowedUserRoles.has(role) ? role : fallback;
+};
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -85,6 +119,55 @@ const setAuthUser = (user) => {
   authUserEl.textContent = role ? `${name} (${role})` : name;
 };
 
+const isEditMode = () => userFormMode === "edit" && editingUserId !== null;
+
+const canCurrentUserChangePassword = (targetUserId) => {
+  const role = normalizeRole(currentUser?.role);
+  if (role === "superadmin") return true;
+  if (role !== "admin") return false;
+  return isSameEntityId(currentUser?.id, targetUserId);
+};
+
+const syncPasswordFieldState = () => {
+  if (!newUserPasswordInput || !newUserPasswordLabel) return;
+  if (userFormMode !== "edit") {
+    newUserPasswordInput.disabled = false;
+    newUserPasswordInput.required = true;
+    newUserPasswordInput.placeholder = "";
+    newUserPasswordLabel.innerHTML = 'Password <span class="req-star">*</span>';
+    return;
+  }
+
+  const canChangePassword = canCurrentUserChangePassword(editingUserId);
+  newUserPasswordInput.required = false;
+  newUserPasswordInput.disabled = !canChangePassword;
+  newUserPasswordInput.placeholder = "";
+  newUserPasswordLabel.textContent = "Password";
+  if (!canChangePassword) {
+    newUserPasswordInput.value = "";
+    return;
+  }
+};
+
+const setUserFormMode = (mode, user = null) => {
+  userFormMode = mode === "edit" ? "edit" : "create";
+  editingUserId = userFormMode === "edit" ? user?.id ?? null : null;
+  editingEmail = userFormMode === "edit" ? normalizeEmail(user?.email) : "";
+
+  if (userModalTitle) {
+    userModalTitle.textContent = userFormMode === "edit" ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้";
+  }
+  if (createSubmitBtn) {
+    createSubmitBtn.textContent = userFormMode === "edit" ? "บันทึกการแก้ไข" : "บันทึก";
+  }
+  syncPasswordFieldState();
+  if (userEditIdEl) {
+    const hasId = editingUserId !== null && editingUserId !== undefined && editingUserId !== "";
+    userEditIdEl.textContent = hasId ? `ID: ${editingUserId}` : "";
+    userEditIdEl.classList.toggle("hidden", !hasId);
+  }
+};
+
 const extractRows = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -104,9 +187,23 @@ const extractRows = (payload) => {
 
 const normalizeUser = (row) => {
   if (!row || typeof row !== "object") return null;
-  const email = normalizeEmail(row.email ?? row.user_email ?? row.userEmail ?? row.username);
+  const email = normalizeEmail(
+    row.email ??
+      row.user_email ??
+      row.userEmail ??
+      row.username ??
+      row.user_name ??
+      row.userName
+  );
   const id = row.id ?? row.user_id ?? row.userId;
   if (id === undefined || id === null || !email) return null;
+  const siteIds = normalizeSiteIds([
+    ...(Array.isArray(row.siteIds) ? row.siteIds : []),
+    ...(Array.isArray(row.site_ids) ? row.site_ids : []),
+    ...(Array.isArray(row.allowedSiteIds) ? row.allowedSiteIds : []),
+    ...(Array.isArray(row.allowed_site_ids) ? row.allowed_site_ids : []),
+    ...(Array.isArray(row.sites) ? row.sites : [])
+  ]);
   return {
     id,
     email,
@@ -119,10 +216,66 @@ const normalizeUser = (row) => {
         row.displayName,
         row.username
       ) || email,
-    role: readString(row.role, row.user_role, row.userRole) || "user",
+    role: (() => {
+      const role = normalizeRole(readString(row.role, row.user_role, row.userRole));
+      return allowedUserRoles.has(role) ? role : "-";
+    })(),
+    siteIds,
     isActive: Number(row.is_active ?? row.isActive ?? row.active ?? 1) !== 0,
     lastLoginAt: readString(row.last_login_at, row.lastLoginAt),
     createdAt: readString(row.created_at, row.createdAt)
+  };
+};
+
+const toPositiveInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : null;
+};
+
+const normalizeSiteIds = (values) => {
+  if (!Array.isArray(values)) return [];
+  const dedup = new Set();
+  values.forEach((value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const siteId = toPositiveInt(value.id ?? value.site_id ?? value.siteId);
+      if (siteId) dedup.add(siteId);
+      return;
+    }
+    const siteId = toPositiveInt(value);
+    if (siteId) dedup.add(siteId);
+  });
+  return Array.from(dedup);
+};
+
+const extractSiteRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "rows", "list", "result", "sites"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+
+const normalizeSite = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const id = toPositiveInt(row.id ?? row.site_id ?? row.siteId);
+  if (!id) return null;
+  const code = readString(row.site_code, row.siteCode, row.code);
+  const name = readString(row.site_name, row.siteName, row.name);
+  const label = code && name ? `${code} - ${name}` : code || name || `Site ${id}`;
+  return {
+    id,
+    label
   };
 };
 
@@ -293,27 +446,42 @@ const renderUsers = () => {
         </td>
         <td>${escapeHtml(formatDateTime(user.lastLoginAt))}</td>
         <td>
-          <button
-            class="small-btn users-delete-btn"
-            type="button"
-            data-action="delete"
-            data-id="${escapeHtml(String(user.id))}"
-            ${isCurrentUser ? "disabled aria-disabled=\"true\" title=\"ไม่สามารถลบบัญชีที่กำลังใช้งาน\"" : ""}
-          >
-            ลบ
-          </button>
+          <div class="users-action-group">
+            <button
+              class="small-btn users-edit-btn"
+              type="button"
+              data-action="edit"
+              data-id="${escapeHtml(String(user.id))}"
+            >
+              แก้ไข
+            </button>
+            <button
+              class="small-btn users-delete-btn"
+              type="button"
+              data-action="delete"
+              data-id="${escapeHtml(String(user.id))}"
+              ${isCurrentUser ? "disabled aria-disabled=\"true\" title=\"ไม่สามารถลบบัญชีที่กำลังใช้งาน\"" : ""}
+            >
+              ลบ
+            </button>
+          </div>
         </td>
       </tr>
     `;
     })
     .join("");
 
-  userRowsEl.querySelectorAll('button[data-action="delete"]').forEach((button) => {
+  userRowsEl.querySelectorAll("button[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
+      const action = button.getAttribute("data-action");
       const id = button.getAttribute("data-id");
       if (!id) return;
       const target = users.find((item) => String(item.id) === id);
-      if (target) {
+      if (action === "edit" && target) {
+        void openEditModal(target);
+        return;
+      }
+      if (action === "delete" && target) {
         void deleteUser(target);
       }
     });
@@ -337,6 +505,7 @@ const ensureAuthenticated = async () => {
     }
     currentUser = payload.user;
     setAuthUser(currentUser);
+    syncPasswordFieldState();
     return currentUser;
   } catch {
     redirectToLogin();
@@ -434,34 +603,230 @@ const fetchUsers = async () => {
   }
 };
 
+const clearSelectedSiteOptions = () => {
+  selectedCreateSiteIds = new Set();
+};
+
+const getSelectedCreateSiteIds = () => normalizeSiteIds(Array.from(selectedCreateSiteIds));
+const normalizeSearchText = (value) => readString(value).toLowerCase();
+
+const setSitesListDisabled = (disabled) => {
+  if (!newUserSitesList) return;
+  newUserSitesList.classList.toggle("is-disabled", disabled);
+  newUserSitesList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.disabled = disabled;
+  });
+  if (newUserSitesSearchInput) {
+    newUserSitesSearchInput.disabled = disabled || availableSites.length === 0;
+  }
+};
+
+const renderCreateSiteOptions = () => {
+  if (!newUserSitesList) return;
+  if (!availableSites.length) {
+    newUserSitesList.innerHTML = '<p class="muted users-sites-empty">ไม่พบ Plant ให้เลือก</p>';
+    setSitesListDisabled(true);
+    return;
+  }
+  const filteredSites = availableSites.filter((site) => {
+    if (!siteSearchQuery) return true;
+    const searchSpace = `${site.label} ${site.id}`.toLowerCase();
+    return searchSpace.includes(siteSearchQuery);
+  });
+  if (!filteredSites.length) {
+    newUserSitesList.innerHTML = '<p class="muted users-sites-empty">ไม่พบ Plant จากคำค้นหา</p>';
+    return;
+  }
+  const selectedIds = new Set(getSelectedCreateSiteIds());
+  newUserSitesList.innerHTML = filteredSites
+    .map(
+      (site) => `
+      <label class="users-site-option">
+        <input
+          type="checkbox"
+          data-site-id="${escapeHtml(String(site.id))}"
+          ${selectedIds.has(site.id) ? "checked" : ""}
+        />
+        <span>${escapeHtml(site.label)}</span>
+      </label>
+    `
+    )
+    .join("");
+};
+
+const syncCreateSiteFieldState = () => {
+  if (!newUserRoleInput || !newUserSitesField) return;
+  const role = normalizeAllowedRole(newUserRoleInput.value || "admin", "admin");
+  if (newUserSitesHint) {
+    newUserSitesHint.textContent = "";
+  }
+  if (role === "admin") {
+    newUserSitesField.classList.remove("hidden");
+    setSitesListDisabled(!availableSites.length);
+    return;
+  }
+
+  clearSelectedSiteOptions();
+  renderCreateSiteOptions();
+  if (role === "superadmin") {
+    newUserSitesField.classList.remove("hidden");
+    setSitesListDisabled(true);
+    return;
+  }
+
+  newUserSitesField.classList.add("hidden");
+  setSitesListDisabled(true);
+};
+
+const loadAssignableSites = async () => {
+  if (!newUserSitesList) return;
+  newUserSitesList.innerHTML = '<p class="muted users-sites-empty">กำลังโหลด Plant...</p>';
+  setSitesListDisabled(true);
+
+  try {
+    const response = await fetchWithTimeout("/api/sites", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (response.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(responseMessage(payload, "โหลดรายการ Plant ไม่สำเร็จ"));
+    }
+
+    const siteMap = new Map();
+    extractSiteRows(payload)
+      .map((row) => normalizeSite(row))
+      .filter(Boolean)
+      .forEach((site) => {
+        siteMap.set(site.id, site);
+      });
+    availableSites = Array.from(siteMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+  } catch (error) {
+    availableSites = [];
+    setMessage(friendlyErrorMessage(error, "โหลดรายการ Plant ไม่สำเร็จ"), "error");
+  } finally {
+    renderCreateSiteOptions();
+    syncCreateSiteFieldState();
+  }
+};
+
 const closeCreateModal = () => {
   createModal?.classList.add("hidden");
   createForm?.reset();
+  setUserFormMode("create");
   if (newUserRoleInput) newUserRoleInput.value = "admin";
   if (newUserActiveInput) newUserActiveInput.value = "1";
+  siteSearchQuery = "";
+  if (newUserSitesSearchInput) {
+    newUserSitesSearchInput.value = "";
+  }
+  clearSelectedSiteOptions();
+  syncCreateSiteFieldState();
 };
 
-const openCreateModal = () => {
+const openCreateModal = async () => {
+  setUserFormMode("create");
   createModal?.classList.remove("hidden");
+  syncCreateSiteFieldState();
+  await loadAssignableSites();
   newUserEmailInput?.focus();
 };
 
-const createUser = async () => {
-  const email = normalizeEmail(newUserEmailInput?.value);
+const openEditModal = async (targetUser) => {
+  if (!targetUser) return;
+  setUserFormMode("edit", targetUser);
+  createModal?.classList.remove("hidden");
+
+  if (newUserEmailInput) newUserEmailInput.value = targetUser.email || "";
+  if (newUserNameInput) newUserNameInput.value = targetUser.name || "";
+  if (newUserPasswordInput) newUserPasswordInput.value = "";
+  if (newUserRoleInput) {
+    newUserRoleInput.value = normalizeAllowedRole(targetUser.role, "admin");
+  }
+  if (newUserActiveInput) {
+    newUserActiveInput.value = targetUser.isActive ? "1" : "0";
+  }
+
+  siteSearchQuery = "";
+  if (newUserSitesSearchInput) {
+    newUserSitesSearchInput.value = "";
+  }
+  selectedCreateSiteIds = new Set(normalizeSiteIds(targetUser.siteIds));
+
+  syncCreateSiteFieldState();
+  await loadAssignableSites();
+  newUserNameInput?.focus();
+};
+
+const requestUpdateUser = async (id, payload) => {
+  const encodedId = encodeURIComponent(String(id));
+  const payloadWithId = {
+    id,
+    ...payload
+  };
+  const attempts = [
+    { method: "PUT", url: `/api/users/${encodedId}`, body: payload },
+    { method: "PUT", url: `/api/users?id=${encodedId}`, body: payloadWithId },
+    { method: "PATCH", url: `/api/users/${encodedId}`, body: payload },
+    { method: "PATCH", url: `/api/users?id=${encodedId}`, body: payloadWithId },
+    { method: "PUT", url: "/api/users", body: payloadWithId },
+    { method: "PATCH", url: "/api/users", body: payloadWithId }
+  ];
+
+  let lastResponse = null;
+  for (const attempt of attempts) {
+    const response = await fetchWithTimeout(attempt.url, {
+      method: attempt.method,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(attempt.body)
+    });
+    lastResponse = response;
+    if (response.ok) return response;
+    if (![404, 405].includes(response.status)) return response;
+  }
+  if (lastResponse) return lastResponse;
+  throw new Error("ไม่พบ API สำหรับแก้ไขผู้ใช้");
+};
+
+const submitUserForm = async () => {
+  const wasEditMode = isEditMode();
+  const rawEmail = readString(newUserEmailInput?.value);
   const name = readString(newUserNameInput?.value);
   const password = String(newUserPasswordInput?.value || "");
-  const role = readString(newUserRoleInput?.value) || "user";
+  const roleRaw = normalizeRole(newUserRoleInput?.value || "");
+  const role = normalizeAllowedRole(roleRaw, "");
   const isActive = newUserActiveInput?.value === "1";
+  const selectedSiteIds = getSelectedCreateSiteIds();
+  const typedEmail = normalizeEmail(rawEmail);
+  const email = wasEditMode ? typedEmail || normalizeEmail(editingEmail) : typedEmail;
 
-  if (!email || !name || !password) {
-    setMessage("กรุณากรอกข้อมูล Email, Name และ Password ให้ครบ", "error");
+  if (!email || !name) {
+    setMessage("กรุณากรอกข้อมูล Email และ Name ให้ครบ", "error");
     return;
   }
-  if (password.length < 8) {
+  if (!email.includes("@")) {
+    setMessage("กรุณากรอก Email ให้ถูกต้อง", "error");
+    return;
+  }
+  if (password && password.length < 8) {
     setMessage("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "error");
     return;
   }
-
+  if (!wasEditMode && !password) {
+    setMessage("กรุณากรอกรหัสผ่านสำหรับผู้ใช้ใหม่", "error");
+    return;
+  }
+  if (!role) {
+    setMessage("Role ต้องเป็น admin หรือ superadmin เท่านั้น", "error");
+    return;
+  }
   createSubmitBtn.disabled = true;
   createSubmitBtn.textContent = "กำลังบันทึก...";
   setMessage("");
@@ -469,33 +834,46 @@ const createUser = async () => {
   const payload = {
     email,
     name,
-    password,
     role,
     is_active: isActive ? 1 : 0,
     isActive: isActive ? 1 : 0
   };
+  if (password) {
+    payload.password = password;
+  }
+  if (role === "admin") {
+    payload.siteIds = selectedSiteIds;
+    payload.site_ids = selectedSiteIds;
+  }
 
   try {
-    const response = await fetchWithTimeout("/api/users", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
+    const response = wasEditMode
+      ? await requestUpdateUser(editingUserId, payload)
+      : await fetchWithTimeout("/api/users", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
     const body = await parseResponsePayload(response);
     if (!response.ok) {
-      throw new Error(responseMessage(body, "เพิ่มผู้ใช้ไม่สำเร็จ"));
+      throw new Error(
+        responseMessage(body, wasEditMode ? "แก้ไขผู้ใช้ไม่สำเร็จ" : "เพิ่มผู้ใช้ไม่สำเร็จ")
+      );
     }
     closeCreateModal();
-    setMessage("เพิ่มผู้ใช้สำเร็จ", "success");
+    setMessage(wasEditMode ? "แก้ไขผู้ใช้สำเร็จ" : "เพิ่มผู้ใช้สำเร็จ", "success");
     await fetchUsers();
   } catch (error) {
-    setMessage(friendlyErrorMessage(error, "เพิ่มผู้ใช้ไม่สำเร็จ"), "error");
+    setMessage(
+      friendlyErrorMessage(error, wasEditMode ? "แก้ไขผู้ใช้ไม่สำเร็จ" : "เพิ่มผู้ใช้ไม่สำเร็จ"),
+      "error"
+    );
   } finally {
     createSubmitBtn.disabled = false;
-    createSubmitBtn.textContent = "บันทึก";
+    createSubmitBtn.textContent = isEditMode() ? "บันทึกการแก้ไข" : "บันทึก";
   }
 };
 
@@ -558,14 +936,34 @@ const logout = async () => {
 refreshBtn?.addEventListener("click", () => {
   void fetchUsers();
 });
-openCreateBtn?.addEventListener("click", openCreateModal);
+openCreateBtn?.addEventListener("click", () => {
+  void openCreateModal();
+});
 createSubmitBtn?.addEventListener("click", () => {
-  void createUser();
+  void submitUserForm();
 });
 createForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  void createUser();
+  void submitUserForm();
 });
+newUserSitesList?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.type !== "checkbox") return;
+  const siteId = toPositiveInt(target.getAttribute("data-site-id"));
+  if (!siteId) return;
+  if (target.checked) {
+    selectedCreateSiteIds.add(siteId);
+  } else {
+    selectedCreateSiteIds.delete(siteId);
+  }
+});
+newUserSitesSearchInput?.addEventListener("input", () => {
+  siteSearchQuery = normalizeSearchText(newUserSitesSearchInput.value);
+  renderCreateSiteOptions();
+  syncCreateSiteFieldState();
+});
+newUserRoleInput?.addEventListener("change", syncCreateSiteFieldState);
 createCancelBtn?.addEventListener("click", closeCreateModal);
 createCloseBtn?.addEventListener("click", closeCreateModal);
 createModal?.addEventListener("click", (event) => {
@@ -584,4 +982,6 @@ const startUsersPage = async () => {
 };
 
 renderUsers();
+setUserFormMode("create");
+syncCreateSiteFieldState();
 startUsersPage();

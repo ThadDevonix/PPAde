@@ -31,7 +31,6 @@
     <section class="users-toolbar">
       <div>
         <h1>จัดการผู้ใช้</h1>
-        <p class="muted">เพิ่มและลบผู้ใช้ผ่าน API `/api/users`</p>
       </div>
       <div class="users-toolbar-actions">
         <button id="refresh-users" type="button">รีเฟรช</button>
@@ -49,7 +48,7 @@
             <th style="width: 130px;">Role</th>
             <th style="width: 110px;">Status</th>
             <th style="width: 190px;">Last Login</th>
-            <th style="width: 130px;">Action</th>
+            <th style="width: 220px;">Action</th>
           </tr>
         </thead>
         <tbody id="user-rows">
@@ -64,7 +63,10 @@
   <div class="modal hidden" id="user-create-modal" role="dialog" aria-modal="true">
     <div class="modal-content small">
       <div class="modal-header">
-        <h3>เพิ่มผู้ใช้</h3>
+        <div class="users-modal-title-wrap">
+          <h3 id="user-modal-title">เพิ่มผู้ใช้</h3>
+          <p id="user-edit-id" class="muted users-edit-id hidden"></p>
+        </div>
         <button class="ghost icon-btn" id="user-create-close" aria-label="ปิด">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -77,20 +79,30 @@
           <input id="new-user-email" type="email" autocomplete="email" required />
         </div>
         <div class="field">
-          <label for="new-user-name">Name <span class="req-star">*</span></label>
-          <input id="new-user-name" type="text" autocomplete="name" required />
+          <label for="new-user-password" id="new-user-password-label">Password <span class="req-star">*</span></label>
+          <input id="new-user-password" type="password" autocomplete="new-password" required />
         </div>
         <div class="field">
-          <label for="new-user-password">Password <span class="req-star">*</span></label>
-          <input id="new-user-password" type="password" autocomplete="new-password" required />
+          <label for="new-user-name">Name <span class="req-star">*</span></label>
+          <input id="new-user-name" type="text" autocomplete="name" required />
         </div>
         <div class="field">
           <label for="new-user-role">Role</label>
           <select id="new-user-role">
             <option value="admin">admin</option>
             <option value="superadmin">superadmin</option>
-            <option value="user">user</option>
           </select>
+        </div>
+        <div class="field" id="new-user-sites-field">
+          <label>Plant (สำหรับ admin)</label>
+          <input
+            id="new-user-sites-search"
+            type="search"
+            placeholder="ค้นหา"
+            autocomplete="off"
+          />
+          <div id="new-user-sites-list" class="users-sites-list" role="group" aria-describedby="new-user-sites-hint"></div>
+          <p class="muted users-sites-hint" id="new-user-sites-hint"></p>
         </div>
         <div class="field">
           <label for="new-user-active">สถานะ</label>

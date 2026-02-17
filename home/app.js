@@ -335,12 +335,10 @@ const setSitesCacheBadge = (status = "", detail = "") => {
     return;
   }
 
-  if (normalized === "MISS") {
-    badge.textContent = "API: MISS";
-    badge.classList.add("cache-miss");
-  } else if (normalized === "HIT") {
-    badge.textContent = "API: HIT";
-    badge.classList.add("cache-hit");
+  if (normalized === "MISS" || normalized === "HIT") {
+    badge.textContent = "";
+    badge.classList.add("hidden");
+    return;
   } else if (normalized === "STALE") {
     badge.textContent = "API: STALE";
     badge.classList.add("cache-stale");
@@ -1075,7 +1073,7 @@ const openPlantModal = (mode = "create", plant = null) => {
     plantDelete?.classList.remove("hidden");
     if (plantNameInput) plantNameInput.value = plant.name || "";
     if (plantLocationInput) plantLocationInput.value = plant.location || "";
-    setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
+    setPlantLocationHint("");
     const meters = Array.isArray(plant.devices) ? plant.devices : [];
     pendingMeters = meters.map((m) => {
       const addressGroups = getAddressGroupsFromMeter(m);
@@ -1094,7 +1092,7 @@ const openPlantModal = (mode = "create", plant = null) => {
     plantDelete?.classList.add("hidden");
     if (plantNameInput) plantNameInput.value = "";
     if (plantLocationInput) plantLocationInput.value = "";
-    setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
+    setPlantLocationHint("");
     pendingMeters = [];
   }
   renderMeterList();
@@ -1106,7 +1104,7 @@ const closePlantModal = () => {
   isPlantModalOpen = false;
   if (plantNameInput) plantNameInput.value = "";
   if (plantLocationInput) plantLocationInput.value = "";
-  setPlantLocationHint("ระบบจะส่งค่าในช่องนี้ไปที่ฟิลด์ location ของ API");
+  setPlantLocationHint("");
   setPlantLocationLoading(false);
   pendingMeters = [];
   editingPlantId = null;

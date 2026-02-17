@@ -1,18 +1,10 @@
-import { createHash, randomBytes } from "crypto";
 import { createServer } from "http";
 import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { sendResetPasswordEmail } from "./auth/mailer.js";
-import { hashPassword, validatePassword, verifyPassword } from "./auth/password.js";
+import { validatePassword, verifyPassword } from "./auth/password.js";
 import { createSession, deleteSession, getSession } from "./auth/sessionStore.js";
-import {
-  getUserByEmail,
-  getUserByResetTokenHash,
-  sanitizeUser,
-  setResetTokenForEmail,
-  updatePasswordForUserId
-} from "./auth/userStore.js";
+import { getUserByEmail, sanitizeUser } from "./auth/userStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "home");
@@ -24,12 +16,9 @@ const upstreamUsersApi = "https://solarmdb.devonix.co.th/api/users";
 const upstreamAuthLoginApi = "https://solarmdb.devonix.co.th/api/auth/login";
 const upstreamAuthLogoutApi = "https://solarmdb.devonix.co.th/api/auth/logout";
 const upstreamAuthMeApi = "https://solarmdb.devonix.co.th/api/auth/me";
-const upstreamAuthForgotPasswordApi = "https://solarmdb.devonix.co.th/api/auth/forgot-password";
-const upstreamAuthResetPasswordApi = "https://solarmdb.devonix.co.th/api/auth/reset-password";
 
 const sessionCookieName = "ppade_session";
 const configuredSessionHours = Number(process.env.AUTH_SESSION_HOURS);
-const configuredResetMinutes = Number(process.env.AUTH_RESET_MINUTES);
 const sessionTtlMs =
   (Number.isFinite(configuredSessionHours) && configuredSessionHours > 0
     ? configuredSessionHours
@@ -37,16 +26,10 @@ const sessionTtlMs =
   60 *
   60 *
   1000;
-const resetTokenTtlMs =
-  (Number.isFinite(configuredResetMinutes) && configuredResetMinutes > 0
-    ? configuredResetMinutes
-    : 15) *
-  60 *
-  1000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization"
 };
 
@@ -185,18 +168,6 @@ const readJsonBody = async (req) => {
   }
 };
 
-const getRequestOrigin = (req) => {
-  const protoHeader = req.headers["x-forwarded-proto"];
-  const proto =
-    typeof protoHeader === "string"
-      ? protoHeader.split(",")[0].trim()
-      : req.socket?.encrypted
-      ? "https"
-      : "http";
-  const host = req.headers.host || "localhost:3000";
-  return `${proto}://${host}`;
-};
-
 const getSessionFromRequest = (req) => {
   const cookies = parseCookies(req.headers.cookie || "");
   const sessionId = cookies[sessionCookieName] || "";
@@ -236,9 +207,15 @@ const buildProxyRequestHeaders = (req, method, extraHeaders = {}) => {
   return headers;
 };
 
-const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
+const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}, options = {}) => {
   const method = String(req.method || "GET").toUpperCase();
-  const requestBody = method === "GET" || method === "HEAD" ? null : await readBodyBuffer(req);
+  const preparedBody = Buffer.isBuffer(options?.bodyBuffer) ? options.bodyBuffer : null;
+  const transformResponseBody =
+    typeof options?.transformResponseBody === "function" ? options.transformResponseBody : null;
+  const requestBody =
+    method === "GET" || method === "HEAD"
+      ? null
+      : preparedBody || (await readBodyBuffer(req));
 
   const headers = buildProxyRequestHeaders(req, method, extraHeaders);
 
@@ -251,7 +228,12 @@ const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
         : requestBody
   });
 
-  const body = await upstreamRes.text();
+  const rawBody = await upstreamRes.text();
+  const body = applyJsonBodyTransform(
+    rawBody,
+    upstreamRes.headers.get("content-type"),
+    transformResponseBody
+  );
   res.writeHead(upstreamRes.status, {
     ...corsHeaders,
     "Content-Type": upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
@@ -261,7 +243,12 @@ const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}) => {
 
 const buildSitesCacheKey = (session, upstreamUrl) => {
   const identity = String(session?.userId || session?.email || "anonymous");
-  return `${identity}:${upstreamUrl}`;
+  const role = String(session?.role || "").trim().toLowerCase();
+  const isSuperadminScope = session?.canViewAllSites === true || role === "superadmin";
+  const scopedSiteIds = isSuperadminScope
+    ? "all"
+    : normalizeSiteIds(Array.isArray(session?.siteIds) ? session.siteIds : []).join(",");
+  return `${identity}:${role}:${scopedSiteIds}:${upstreamUrl}`;
 };
 
 const sendCachedSitesResponse = (res, cached, cacheStatus) => {
@@ -273,8 +260,17 @@ const sendCachedSitesResponse = (res, cached, cacheStatus) => {
   res.end(cached.body || "[]");
 };
 
-const proxySitesGetWithCache = async (req, res, session, upstreamUrl, extraHeaders = {}) => {
+const proxySitesGetWithCache = async (
+  req,
+  res,
+  session,
+  upstreamUrl,
+  extraHeaders = {},
+  options = {}
+) => {
   const now = Date.now();
+  const transformResponseBody =
+    typeof options?.transformResponseBody === "function" ? options.transformResponseBody : null;
   const cacheKey = buildSitesCacheKey(session, upstreamUrl);
   const cached = sitesResponseCache.get(cacheKey) || null;
 
@@ -298,9 +294,10 @@ const proxySitesGetWithCache = async (req, res, session, upstreamUrl, extraHeade
     throw error;
   }
 
-  const body = await upstreamRes.text();
+  const rawBody = await upstreamRes.text();
   const contentType =
     upstreamRes.headers.get("content-type") || "application/json; charset=utf-8";
+  const body = applyJsonBodyTransform(rawBody, contentType, transformResponseBody);
   if (upstreamRes.ok) {
     sitesResponseCache.set(cacheKey, {
       body,
@@ -331,7 +328,7 @@ const proxySitesGetWithCache = async (req, res, session, upstreamUrl, extraHeade
 const serviceAuthToken =
   String(process.env.UPSTREAM_AUTH_TOKEN || process.env.UPSTREAM_API_TOKEN || "").trim();
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 
 const readPayloadMessage = (payload, fallbackMessage) => {
   if (!payload || typeof payload !== "object") return fallbackMessage;
@@ -422,10 +419,412 @@ const readUserField = (...values) => {
   return "";
 };
 
+const normalizeRole = (value) => readUserField(value).toLowerCase();
+const allowedCreateRoles = new Set(["admin", "superadmin"]);
+
+const toPositiveInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : null;
+};
+
+const normalizeSiteIds = (values) => {
+  if (!Array.isArray(values)) return [];
+  const dedup = new Set();
+  values.forEach((item) => {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      const nestedId = toPositiveInt(item.id ?? item.site_id ?? item.siteId);
+      if (nestedId) dedup.add(nestedId);
+      return;
+    }
+    const siteId = toPositiveInt(item);
+    if (siteId) dedup.add(siteId);
+  });
+  return Array.from(dedup);
+};
+
+const parsePositiveIdsFromParamValues = (values) => {
+  const rawParts = [];
+  (Array.isArray(values) ? values : []).forEach((value) => {
+    String(value || "")
+      .split(",")
+      .forEach((part) => {
+        rawParts.push(part);
+      });
+  });
+  return normalizeSiteIds(rawParts);
+};
+
+const collectSiteIdsFromSearchParams = (searchParams, keys = ["site_id", "siteId", "id"]) => {
+  if (!searchParams) return [];
+  const values = [];
+  keys.forEach((key) => {
+    values.push(...searchParams.getAll(key));
+  });
+  return parsePositiveIdsFromParamValues(values);
+};
+
+const collectSiteIdFromPathSuffix = (pathname, basePath) => {
+  if (typeof pathname !== "string" || !pathname.startsWith(basePath)) return null;
+  const suffix = pathname.slice(basePath.length).replace(/^\/+/, "");
+  if (!suffix) return null;
+  const firstSegment = suffix.split("/")[0] || "";
+  if (!firstSegment || firstSegment === "search") return null;
+  try {
+    return toPositiveInt(decodeURIComponent(firstSegment));
+  } catch {
+    return toPositiveInt(firstSegment);
+  }
+};
+
+const collectPathIdFromSuffix = (pathname, basePath) => {
+  if (typeof pathname !== "string" || !pathname.startsWith(basePath)) return "";
+  const suffix = pathname.slice(basePath.length).replace(/^\/+/, "");
+  if (!suffix) return "";
+  const firstSegment = suffix.split("/")[0] || "";
+  if (!firstSegment || firstSegment === "search") return "";
+  try {
+    return decodeURIComponent(firstSegment).trim();
+  } catch {
+    return String(firstSegment).trim();
+  }
+};
+
+const normalizeEntityId = (value) => {
+  if (value === undefined || value === null) return "";
+  return String(value).trim();
+};
+
+const readEntityIdFromSearchParams = (searchParams, keys = ["id"]) => {
+  if (!searchParams) return "";
+  for (const key of keys) {
+    const values = searchParams.getAll(key);
+    for (const value of values) {
+      const normalized = normalizeEntityId(value);
+      if (normalized) return normalized;
+    }
+  }
+  return "";
+};
+
+const readEntityIdFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  return normalizeEntityId(payload.id ?? payload.user_id ?? payload.userId);
+};
+
+const resolveUsersTargetId = (method, pathId, queryId, payloadId) => {
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  if (normalizedMethod === "POST") return "";
+  return (
+    normalizeEntityId(pathId) || normalizeEntityId(queryId) || normalizeEntityId(payloadId) || ""
+  );
+};
+
+const isSameEntityId = (left, right) => {
+  const leftId = normalizeEntityId(left);
+  const rightId = normalizeEntityId(right);
+  if (!leftId || !rightId) return false;
+  if (leftId === rightId) return true;
+
+  const leftNumber = Number(leftId);
+  const rightNumber = Number(rightId);
+  return (
+    Number.isFinite(leftNumber) &&
+    Number.isFinite(rightNumber) &&
+    Math.trunc(leftNumber) === Math.trunc(rightNumber)
+  );
+};
+
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+const isSuperadminSession = (session) => {
+  const role = normalizeRole(session?.role);
+  return session?.canViewAllSites === true || role === "superadmin";
+};
+
+const isAdminSession = (session) => normalizeRole(session?.role) === "admin";
+
+const shouldRestrictSitesBySession = (session) => isAdminSession(session) && !isSuperadminSession(session);
+
+const getAllowedSiteIdSetFromSession = (session) =>
+  new Set(normalizeSiteIds(Array.isArray(session?.siteIds) ? session.siteIds : []));
+
+const isAllowedSiteIdForSet = (siteId, allowedSiteIdSet) => {
+  const normalized = toPositiveInt(siteId);
+  if (!normalized) return true;
+  if (!(allowedSiteIdSet instanceof Set)) return true;
+  return allowedSiteIdSet.has(normalized);
+};
+
+const extractSiteIdFromSiteRow = (row) => toPositiveInt(row?.id ?? row?.site_id ?? row?.siteId);
+const extractSiteIdFromDeviceRow = (row) => toPositiveInt(row?.site_id ?? row?.siteId ?? row?.id);
+
+const filterPayloadListByAllowedSites = (payload, allowedSiteIdSet, siteIdReader, keys = []) => {
+  const filterRows = (rows) =>
+    rows.filter((row) => {
+      const siteId = siteIdReader(row);
+      return isAllowedSiteIdForSet(siteId, allowedSiteIdSet);
+    });
+
+  if (Array.isArray(payload)) {
+    return filterRows(payload);
+  }
+  if (!payload || typeof payload !== "object") return payload;
+
+  const nextPayload = { ...payload };
+  let changed = false;
+  const allKeys = Array.from(
+    new Set(["data", "items", "rows", "list", "result", "sites", "devices", ...keys])
+  );
+
+  for (const key of allKeys) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      nextPayload[key] = filterRows(value);
+      changed = true;
+      continue;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const nested = { ...value };
+    let nestedChanged = false;
+    for (const nestedKey of allKeys) {
+      if (!Array.isArray(value[nestedKey])) continue;
+      nested[nestedKey] = filterRows(value[nestedKey]);
+      nestedChanged = true;
+    }
+    if (!nestedChanged) {
+      const nestedDirectSiteId = siteIdReader(value);
+      if (nestedDirectSiteId && !isAllowedSiteIdForSet(nestedDirectSiteId, allowedSiteIdSet)) {
+        nextPayload[key] = {};
+        changed = true;
+      }
+      continue;
+    }
+    if (nestedChanged) {
+      nextPayload[key] = nested;
+      changed = true;
+    }
+  }
+
+  if (changed) return nextPayload;
+  const directSiteId = siteIdReader(payload);
+  if (directSiteId && !isAllowedSiteIdForSet(directSiteId, allowedSiteIdSet)) return {};
+  return payload;
+};
+
+const applyJsonBodyTransform = (rawBody, contentType, transformFn) => {
+  if (typeof transformFn !== "function") return rawBody;
+  const type = String(contentType || "").toLowerCase();
+  if (!type.includes("json")) return rawBody;
+
+  const bodyText = typeof rawBody === "string" ? rawBody : String(rawBody || "");
+  if (!bodyText.trim()) return bodyText;
+
+  try {
+    const parsed = JSON.parse(bodyText);
+    const transformed = transformFn(parsed);
+    if (transformed === undefined) return bodyText;
+    return JSON.stringify(transformed);
+  } catch {
+    return bodyText;
+  }
+};
+
+const extractUserSiteIds = (user) => {
+  if (!user || typeof user !== "object") return [];
+  const rawValues = [];
+  const collect = (candidate) => {
+    if (Array.isArray(candidate)) {
+      rawValues.push(...candidate);
+      return;
+    }
+    if (candidate !== undefined && candidate !== null) {
+      rawValues.push(candidate);
+    }
+  };
+
+  collect(user.siteIds);
+  collect(user.site_ids);
+  collect(user.allowedSiteIds);
+  collect(user.allowed_site_ids);
+  collect(user.sites);
+  collect(user.permissions?.siteIds);
+  collect(user.permissions?.site_ids);
+  collect(user.data?.siteIds);
+  collect(user.data?.site_ids);
+
+  return normalizeSiteIds(rawValues);
+};
+
+const normalizeCreateUserPayload = (payload, context = {}) => {
+  const method = String(context.method || "POST").toUpperCase();
+  const hasRoleField =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? ["role", "user_role", "userRole"].some((key) => hasOwn(payload, key))
+      : false;
+  const hasEmailField =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? [
+          "email",
+          "user_email",
+          "userEmail",
+          "username",
+          "user_name",
+          "userName"
+        ].some((key) => hasOwn(payload, key))
+      : false;
+  const safePayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? { ...payload }
+      : {};
+  const requestedRole = normalizeRole(
+    readUserField(safePayload.role, safePayload.user_role, safePayload.userRole)
+  );
+  const role = allowedCreateRoles.has(requestedRole) ? requestedRole : "";
+  if (role) {
+    safePayload.role = role;
+  } else {
+    delete safePayload.role;
+    delete safePayload.user_role;
+    delete safePayload.userRole;
+  }
+
+  const email = normalizeEmail(
+    readUserField(
+      safePayload.email,
+      safePayload.user_email,
+      safePayload.userEmail,
+      safePayload.username,
+      safePayload.user_name,
+      safePayload.userName
+    )
+  );
+  let emailError = "";
+  if (method === "POST" && !email) {
+    emailError = "กรุณากรอก Email";
+  } else if (method !== "POST" && hasEmailField && !email) {
+    emailError = "กรุณากรอก Email";
+    delete safePayload.email;
+    delete safePayload.user_email;
+    delete safePayload.userEmail;
+    delete safePayload.username;
+    delete safePayload.user_name;
+    delete safePayload.userName;
+  }
+  if ((method === "POST" || hasEmailField) && email) {
+    safePayload.email = email;
+    delete safePayload.user_email;
+    delete safePayload.userEmail;
+    safePayload.username = email;
+    delete safePayload.user_name;
+    delete safePayload.userName;
+  }
+  if ((method === "POST" || hasEmailField) && email && !email.includes("@")) {
+    emailError = "กรุณากรอก Email ให้ถูกต้อง";
+  }
+
+  const siteIds = normalizeSiteIds([
+    ...(Array.isArray(safePayload.siteIds) ? safePayload.siteIds : []),
+    ...(Array.isArray(safePayload.site_ids) ? safePayload.site_ids : [])
+  ]);
+
+  if (role === "admin") {
+    safePayload.siteIds = siteIds;
+    safePayload.site_ids = siteIds;
+  } else if (role === "superadmin") {
+    delete safePayload.siteIds;
+    delete safePayload.site_ids;
+  }
+
+  const hasPasswordField = ["password", "new_password", "newPassword"].some((key) =>
+    hasOwn(safePayload, key)
+  );
+  const passwordCandidates = [
+    safePayload.password,
+    safePayload.new_password,
+    safePayload.newPassword
+  ];
+  const passwordValue =
+    passwordCandidates.find((value) => typeof value === "string") ?? "";
+  delete safePayload.new_password;
+  delete safePayload.newPassword;
+
+  let passwordError = "";
+  let isPasswordWriteRequested = false;
+  if (method === "POST") {
+    if (!passwordValue) {
+      passwordError = "กรุณากรอกรหัสผ่าน";
+      delete safePayload.password;
+    } else {
+      passwordError = validatePassword(passwordValue);
+      if (passwordError) {
+        delete safePayload.password;
+      } else {
+        safePayload.password = passwordValue;
+        isPasswordWriteRequested = true;
+      }
+    }
+  } else if (hasPasswordField) {
+    if (!passwordValue) {
+      delete safePayload.password;
+    } else {
+      passwordError = validatePassword(passwordValue);
+      if (passwordError) {
+        delete safePayload.password;
+      } else {
+        safePayload.password = passwordValue;
+        isPasswordWriteRequested = true;
+      }
+    }
+  }
+
+  let passwordPermissionError = "";
+  if (method !== "POST" && isPasswordWriteRequested) {
+    const session = context.session || null;
+    const targetUserId = normalizeEntityId(context.targetUserId);
+    const actorUserId = normalizeEntityId(session?.userId ?? session?.id);
+    if (isSuperadminSession(session)) {
+      // superadmin can change password for any user.
+    } else if (isAdminSession(session)) {
+      if (!targetUserId || !actorUserId || !isSameEntityId(targetUserId, actorUserId)) {
+        passwordPermissionError = "admin สามารถเปลี่ยนรหัสผ่านได้เฉพาะบัญชีของตัวเอง";
+      }
+    } else {
+      passwordPermissionError = "ไม่มีสิทธิ์เปลี่ยนรหัสผ่าน";
+    }
+  }
+
+  const isRoleAllowed = method === "POST" ? Boolean(role) : !hasRoleField || Boolean(role);
+
+  return {
+    payload: safePayload,
+    role,
+    email,
+    siteIds,
+    isRoleAllowed,
+    emailError,
+    passwordError,
+    passwordPermissionError
+  };
+};
+
 const normalizeUserFromApi = (user, fallbackEmail = "") => {
   if (!user || typeof user !== "object") return null;
-  const email = normalizeEmail(readUserField(user.email, fallbackEmail));
+  const email = normalizeEmail(
+    readUserField(
+      user.email,
+      user.user_email,
+      user.userEmail,
+      user.username,
+      user.user_name,
+      user.userName,
+      fallbackEmail
+    )
+  );
   if (!email) return null;
+  const role = normalizeRole(readUserField(user.role, user.user_role, user.userRole));
+  const siteIds = extractUserSiteIds(user);
 
   const normalized = {
     id: user.id ?? user.user_id ?? user.userId ?? email,
@@ -439,7 +838,9 @@ const normalizeUserFromApi = (user, fallbackEmail = "") => {
         user.displayName,
         user.username
       ) || email,
-    role: readUserField(user.role, user.user_role, user.userRole),
+    role,
+    siteIds,
+    canViewAllSites: role === "superadmin",
     isActive: Number(user.is_active ?? user.isActive ?? user.active ?? 1) !== 0
   };
   return normalized;
@@ -553,7 +954,7 @@ const fetchUserFromUsersApi = async (email, token, cookieHeader = "") => {
     if (!response.ok) return null;
     const payload = await parseJsonResponse(response);
     const users = extractList(payload).map((item) => normalizeUserFromApi(item)).filter(Boolean);
-    return users.find((user) => user.email === targetEmail) || null;
+    return users.find((user) => normalizeEmail(user.email) === targetEmail) || null;
   } catch {
     return null;
   }
@@ -587,7 +988,16 @@ const tryUpstreamLogin = async (email, password) => {
   const meUser = await fetchCurrentUserFromUpstream(token, upstreamCookie);
   const usersApiUser = await fetchUserFromUsersApi(email, token, upstreamCookie);
   const normalizedUser =
-    usersApiUser || meUser || payloadUser || { id: email, email: normalizeEmail(email), name: email, role: "" };
+    usersApiUser ||
+    meUser ||
+    payloadUser || {
+      id: email,
+      email: normalizeEmail(email),
+      name: email,
+      role: "",
+      siteIds: [],
+      canViewAllSites: false
+    };
   if (!normalizedUser?.isActive) {
     return {
       ok: false,
@@ -625,7 +1035,7 @@ const handleAuthApi = async (req, res, url) => {
       throw error;
     }
 
-    const email = String(payload.email || "").trim().toLowerCase();
+    const email = normalizeEmail(readUserField(payload.email, payload.username));
     const password = String(payload.password || "");
     if (!email || !password) {
       sendApiError(res, 400, "กรุณากรอกอีเมลและรหัสผ่าน");
@@ -654,7 +1064,9 @@ const handleAuthApi = async (req, res, url) => {
             id: upstreamLogin.user.id,
             email: upstreamLogin.user.email,
             name: upstreamLogin.user.name,
-            role: upstreamLogin.user.role
+            role: upstreamLogin.user.role,
+            siteIds: Array.isArray(upstreamLogin.user.siteIds) ? upstreamLogin.user.siteIds : [],
+            canViewAllSites: upstreamLogin.user.canViewAllSites === true
           },
           expiresAt: new Date(expiresAt).toISOString()
         },
@@ -751,174 +1163,11 @@ const handleAuthApi = async (req, res, url) => {
           id: session.userId,
           email: session.email,
           name: session.name,
-          role: session.role || ""
+          role: session.role || "",
+          siteIds: Array.isArray(session.siteIds) ? session.siteIds : [],
+          canViewAllSites: session.canViewAllSites === true
         },
         expiresAt: new Date(session.expiresAt).toISOString()
-      },
-      corsHeaders
-    );
-    return;
-  }
-
-  if (url.pathname === "/api/auth/forgot-password") {
-    if (method !== "POST") {
-      sendApiError(res, 405, "Method Not Allowed");
-      return;
-    }
-
-    let payload;
-    try {
-      payload = await readJsonBody(req);
-    } catch (error) {
-      if (error.code === "INVALID_JSON") {
-        sendApiError(res, 400, "รูปแบบ JSON ไม่ถูกต้อง");
-        return;
-      }
-      throw error;
-    }
-
-    const email = String(payload.email || "").trim().toLowerCase();
-    const genericMessage =
-      "หากอีเมลนี้มีอยู่ในระบบ เราจะส่งลิงก์รีเซ็ตรหัสผ่านไปให้ทางอีเมล";
-
-    if (email) {
-      try {
-        const upstreamResponse = await fetch(upstreamAuthForgotPasswordApi, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ email })
-        });
-        const upstreamPayload = await parseJsonResponse(upstreamResponse);
-        if (upstreamResponse.ok) {
-          sendJson(
-            res,
-            200,
-            {
-              message: readPayloadMessage(upstreamPayload, genericMessage)
-            },
-            corsHeaders
-          );
-          return;
-        }
-      } catch {
-        // fallback to local implementation
-      }
-    }
-
-    if (email) {
-      const user = await getUserByEmail(email);
-      if (user) {
-        const token = randomBytes(32).toString("hex");
-        const tokenHash = createHash("sha256").update(token).digest("hex");
-        const expiresAt = new Date(Date.now() + resetTokenTtlMs).toISOString();
-        await setResetTokenForEmail(user.email, tokenHash, expiresAt);
-
-        const resetUrl = `${getRequestOrigin(req)}/login/reset-password.html?token=${encodeURIComponent(token)}`;
-        try {
-          await sendResetPasswordEmail({
-            to: user.email,
-            name: user.name,
-            resetUrl
-          });
-        } catch (error) {
-          console.error("[AUTH] Failed to send reset password email", error);
-        }
-      }
-    }
-
-    sendJson(
-      res,
-      200,
-      {
-        message: genericMessage
-      },
-      corsHeaders
-    );
-    return;
-  }
-
-  if (url.pathname === "/api/auth/reset-password") {
-    if (method !== "POST") {
-      sendApiError(res, 405, "Method Not Allowed");
-      return;
-    }
-
-    let payload;
-    try {
-      payload = await readJsonBody(req);
-    } catch (error) {
-      if (error.code === "INVALID_JSON") {
-        sendApiError(res, 400, "รูปแบบ JSON ไม่ถูกต้อง");
-        return;
-      }
-      throw error;
-    }
-
-    const token = String(payload.token || "").trim();
-    const password = String(payload.password || "");
-
-    if (!token) {
-      sendApiError(res, 400, "ไม่พบ token สำหรับรีเซ็ตรหัสผ่าน");
-      return;
-    }
-
-    const passwordError = validatePassword(password);
-    if (passwordError) {
-      sendApiError(res, 400, passwordError);
-      return;
-    }
-
-    try {
-      const upstreamResponse = await fetch(upstreamAuthResetPasswordApi, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          token,
-          password,
-          new_password: password,
-          newPassword: password
-        })
-      });
-      const upstreamPayload = await parseJsonResponse(upstreamResponse);
-      if (upstreamResponse.ok) {
-        sendJson(
-          res,
-          200,
-          {
-            message: readPayloadMessage(upstreamPayload, "รีเซ็ตรหัสผ่านเรียบร้อยแล้ว")
-          },
-          corsHeaders
-        );
-        return;
-      }
-    } catch {
-      // fallback to local implementation
-    }
-
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-    const user = await getUserByResetTokenHash(tokenHash);
-    const expiresAtMs = Date.parse(user?.resetToken?.expiresAt || "");
-    const isExpired = !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now();
-
-    if (!user || isExpired) {
-      sendApiError(res, 400, "ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว");
-      return;
-    }
-
-    const nextPassword = hashPassword(password);
-    await updatePasswordForUserId(user.id, nextPassword);
-
-    sendJson(
-      res,
-      200,
-      {
-        message: "รีเซ็ตรหัสผ่านเรียบร้อยแล้ว"
       },
       corsHeaders
     );
@@ -997,8 +1246,21 @@ export const handleRequest = async (req, res) => {
       if (!session) return;
       const authHeader = resolveUpstreamAuthHeader(req, session);
       const upstreamCookie = resolveUpstreamCookieHeader(req, session);
+      const restrictSites = shouldRestrictSitesBySession(session);
+      const allowedSiteIdSet = restrictSites ? getAllowedSiteIdSetFromSession(session) : null;
 
       if (url.pathname === "/api/energy") {
+        const requestedSiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
+          "site_id",
+          "siteId"
+        ]);
+        if (
+          restrictSites &&
+          requestedSiteIds.some((siteId) => !isAllowedSiteIdForSet(siteId, allowedSiteIdSet))
+        ) {
+          sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+          return;
+        }
         const upstreamUrl = `${upstreamEnergyApi}${url.search}`;
         await proxyRequest(req, res, upstreamUrl, {
           Authorization: authHeader,
@@ -1009,11 +1271,36 @@ export const handleRequest = async (req, res) => {
 
       if (url.pathname === "/api/sites" || url.pathname.startsWith("/api/sites/")) {
         const suffix = url.pathname.slice("/api/sites".length);
+        const pathSiteId = collectSiteIdFromPathSuffix(url.pathname, "/api/sites");
+        const querySiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
+          "site_id",
+          "siteId",
+          "id"
+        ]);
+        const requestedSiteIds = normalizeSiteIds([pathSiteId, ...querySiteIds]);
+        if (
+          restrictSites &&
+          requestedSiteIds.some((siteId) => !isAllowedSiteIdForSet(siteId, allowedSiteIdSet))
+        ) {
+          sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+          return;
+        }
         const upstreamUrl = `${upstreamSitesApi}${suffix}${url.search}`;
         if (method === "GET") {
+          const transformSitesPayload = restrictSites
+            ? (payload) =>
+                filterPayloadListByAllowedSites(
+                  payload,
+                  allowedSiteIdSet,
+                  extractSiteIdFromSiteRow,
+                  ["sites"]
+                )
+            : null;
           await proxySitesGetWithCache(req, res, session, upstreamUrl, {
             Authorization: authHeader,
             Cookie: upstreamCookie
+          }, {
+            transformResponseBody: transformSitesPayload
           });
           return;
         }
@@ -1026,17 +1313,109 @@ export const handleRequest = async (req, res) => {
 
       if (url.pathname === "/api/devices" || url.pathname.startsWith("/api/devices/")) {
         const suffix = url.pathname.slice("/api/devices".length);
+        const requestedSiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
+          "site_id",
+          "siteId"
+        ]);
+        if (
+          restrictSites &&
+          requestedSiteIds.some((siteId) => !isAllowedSiteIdForSet(siteId, allowedSiteIdSet))
+        ) {
+          sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+          return;
+        }
         const upstreamUrl = `${upstreamDevicesApi}${suffix}${url.search}`;
-        await proxyRequest(req, res, upstreamUrl, {
-          Authorization: authHeader,
-          Cookie: upstreamCookie
-        });
+        const transformDevicesPayload =
+          restrictSites && method === "GET"
+            ? (payload) =>
+                filterPayloadListByAllowedSites(
+                  payload,
+                  allowedSiteIdSet,
+                  extractSiteIdFromDeviceRow,
+                  ["devices"]
+                )
+            : null;
+        await proxyRequest(
+          req,
+          res,
+          upstreamUrl,
+          {
+            Authorization: authHeader,
+            Cookie: upstreamCookie
+          },
+          {
+            transformResponseBody: transformDevicesPayload
+          }
+        );
         return;
       }
 
       if (url.pathname === "/api/users" || url.pathname.startsWith("/api/users/")) {
         const suffix = url.pathname.slice("/api/users".length);
         const upstreamUrl = `${upstreamUsersApi}${suffix}${url.search}`;
+        const shouldNormalizeUsersWritePayload = ["POST", "PUT", "PATCH"].includes(method);
+        if (shouldNormalizeUsersWritePayload) {
+          let payload = {};
+          try {
+            payload = await readJsonBody(req);
+          } catch (error) {
+            if (error.code === "INVALID_JSON") {
+              sendApiError(res, 400, "รูปแบบ JSON ไม่ถูกต้อง");
+              return;
+            }
+            throw error;
+          }
+
+          const pathUserId = collectPathIdFromSuffix(url.pathname, "/api/users");
+          const queryUserId = readEntityIdFromSearchParams(url.searchParams, [
+            "id",
+            "user_id",
+            "userId"
+          ]);
+          const payloadUserId = readEntityIdFromPayload(payload);
+          const targetUserId = resolveUsersTargetId(method, pathUserId, queryUserId, payloadUserId);
+
+          const normalizedUserWrite = normalizeCreateUserPayload(payload, {
+            method,
+            session,
+            targetUserId
+          });
+          if (!normalizedUserWrite.isRoleAllowed) {
+            const roleErrorMessage =
+              method === "POST"
+                ? "role ต้องเป็น admin หรือ superadmin เท่านั้น"
+                : "role ต้องเป็น admin หรือ superadmin เมื่อมีการระบุค่า";
+            sendApiError(res, 400, roleErrorMessage);
+            return;
+          }
+          if (normalizedUserWrite.emailError) {
+            sendApiError(res, 400, normalizedUserWrite.emailError);
+            return;
+          }
+          if (normalizedUserWrite.passwordError) {
+            sendApiError(res, 400, normalizedUserWrite.passwordError);
+            return;
+          }
+          if (normalizedUserWrite.passwordPermissionError) {
+            sendApiError(res, 403, normalizedUserWrite.passwordPermissionError);
+            return;
+          }
+
+          await proxyRequest(
+            req,
+            res,
+            upstreamUrl,
+            {
+              Authorization: authHeader,
+              Cookie: upstreamCookie,
+              "Content-Type": "application/json; charset=utf-8"
+            },
+            {
+              bodyBuffer: Buffer.from(JSON.stringify(normalizedUserWrite.payload))
+            }
+          );
+          return;
+        }
         await proxyRequest(req, res, upstreamUrl, {
           Authorization: authHeader,
           Cookie: upstreamCookie
