@@ -187,3 +187,73 @@
     justify-content: flex-end;
   }
 }
+
+/* Users Page Theme */
+body.users-page .users-toolbar {
+  border-radius: 18px;
+  border: 1px solid rgba(153, 181, 232, 0.45);
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(244, 248, 255, 0.96));
+  box-shadow: 0 14px 30px rgba(21, 42, 88, 0.12);
+}
+body.users-page .users-toolbar h1 {
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: #1a2d4d;
+}
+body.users-page .users-toolbar-actions {
+  gap: 10px;
+}
+body.users-page .users-toolbar-actions button {
+  border-radius: 10px;
+  min-width: 88px;
+}
+body.users-page .users-table-wrap {
+  margin-top: 12px;
+}
+body.users-page .users-message {
+  margin: 10px 2px 0;
+  font-size: 13px;
+}
+body.users-page .status-badge {
+  font-size: 11px;
+  letter-spacing: 0.25px;
+}
+body.users-page .status-badge.active {
+  background: #e8f8ef;
+  color: #127b44;
+  border: 1px solid #bde7cf;
+}
+body.users-page .status-badge.inactive {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+body.users-page .role-chip {
+  font-size: 11px;
+  background: #eef3ff;
+  color: #1e40af;
+  border: 1px solid #c9d8ff;
+}
+body.users-page .users-action-group {
+  gap: 8px;
+}
+body.users-page .users-edit-btn,
+body.users-page .users-delete-btn {
+  border-radius: 9px;
+}
+body.users-page .users-sites-list {
+  border: 1px solid #d1def6;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+body.users-page .users-site-option:hover {
+  background: #edf4ff;
+}
+@media (max-width: 760px) {
+  body.users-page .users-toolbar {
+    border-radius: 14px;
+    padding: 12px;
+  }
+}

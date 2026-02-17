@@ -1,11 +1,11 @@
 :root {
   --bg-start: #eef4ff;
-  --bg-end: #f8fafc;
+  --bg-end: #f6f9ff;
   --card: #ffffff;
-  --border: #dbe3f0;
+  --border: #d7e4fb;
   --text: #1f2937;
-  --muted: #64748b;
-  --primary: #2563eb;
+  --muted: #60739a;
+  --primary: #3b82f6;
   --danger: #dc2626;
   --success: #059669;
 }
@@ -14,14 +14,41 @@
   box-sizing: border-box;
 }
 
-body {
+body.login-page {
+  position: relative;
   margin: 0;
   font-family: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   background:
-    radial-gradient(1200px 600px at 50% -20%, #dbeafe 0%, rgba(219, 234, 254, 0) 60%),
+    radial-gradient(1200px 620px at -8% -10%, rgba(37, 99, 235, 0.22), transparent 58%),
+    radial-gradient(980px 540px at 108% 0%, rgba(14, 165, 233, 0.2), transparent 62%),
     linear-gradient(180deg, var(--bg-start), var(--bg-end));
   color: var(--text);
   min-height: 100vh;
+  overflow: hidden;
+}
+
+body.login-page::before,
+body.login-page::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+}
+body.login-page::before {
+  width: 420px;
+  height: 420px;
+  top: -220px;
+  right: -140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.22), rgba(59, 130, 246, 0));
+}
+body.login-page::after {
+  width: 360px;
+  height: 360px;
+  left: -120px;
+  bottom: -200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.18), rgba(14, 165, 233, 0));
 }
 
 .auth-shell {
@@ -29,24 +56,28 @@ body {
   display: grid;
   place-items: center;
   padding: 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .auth-card {
   width: min(420px, 100%);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
-  padding: 26px 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 255, 0.96));
+  border: 1px solid rgba(153, 181, 232, 0.48);
+  border-radius: 20px;
+  box-shadow: 0 24px 44px rgba(15, 30, 62, 0.18);
+  backdrop-filter: blur(8px);
+  padding: 24px 22px;
 }
 
 h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: clamp(24px, 2.2vw, 30px);
+  color: #1a2d4d;
 }
 
 .subtitle {
-  margin: 8px 0 18px;
+  margin: 8px 0 16px;
   color: var(--muted);
   font-size: 14px;
 }
@@ -57,21 +88,27 @@ h1 {
 }
 
 label {
-  font-size: 14px;
-  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.28px;
+  font-weight: 800;
+  color: #5f7397;
 }
 
 input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 11px 12px;
+  padding: 10px 11px;
   font-size: 14px;
+  background: #fbfdff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 input:focus {
-  outline: 2px solid rgba(37, 99, 235, 0.2);
+  outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
 }
 
 button {
@@ -86,7 +123,8 @@ button {
 button.primary {
   margin-top: 8px;
   color: #fff;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: linear-gradient(135deg, #60a5fa, #3b82f6 45%, #2563eb);
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.3);
 }
 
 button:disabled {
@@ -118,4 +156,14 @@ button:disabled {
 
 .link:hover {
   text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .auth-shell {
+    padding: 12px;
+  }
+  .auth-card {
+    border-radius: 16px;
+    padding: 18px 16px;
+  }
 }

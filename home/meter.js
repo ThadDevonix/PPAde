@@ -1437,6 +1437,42 @@ const bindChartPointTooltip = () => {
     point.addEventListener("mousemove", (event) => showTooltip(event, point));
   });
 };
+const resolveChartViewWidth = (viewHeight) => {
+  const renderedHeight = 360;
+  const targetHeight = Number(viewHeight);
+  const svgHeight =
+    Number.isFinite(targetHeight) && targetHeight > 0 ? targetHeight : renderedHeight;
+
+  const rectWidth = Number(chartBox?.getBoundingClientRect?.().width);
+  const clientWidth = Number(chartBox?.clientWidth);
+  const offsetWidth = Number(chartBox?.offsetWidth);
+  const measuredWidth =
+    [rectWidth, clientWidth, offsetWidth].find(
+      (value) => Number.isFinite(value) && value > 0
+    ) || 0;
+
+  let horizontalPadding = 0;
+  if (typeof window !== "undefined" && chartBox) {
+    try {
+      const computed = window.getComputedStyle(chartBox);
+      horizontalPadding =
+        parseNumber(computed.paddingLeft) + parseNumber(computed.paddingRight);
+    } catch {
+      horizontalPadding = 0;
+    }
+  }
+
+  const viewportWidth =
+    typeof window !== "undefined" ? Number(window.innerWidth) : 0;
+  const fallbackWidth = Number.isFinite(viewportWidth) && viewportWidth > 0
+    ? viewportWidth - 64
+    : 960;
+  const targetWidth = measuredWidth > 0
+    ? measuredWidth - horizontalPadding
+    : fallbackWidth;
+  const safeTargetWidth = Math.max(320, targetWidth);
+  return Math.round((safeTargetWidth * svgHeight) / renderedHeight);
+};
 const renderChart = (rows, options = {}) => {
   if (!chartBox) return;
   const isEnergyMode =
@@ -1488,12 +1524,12 @@ const renderChart = (rows, options = {}) => {
     min = yAxis.min;
     max = yAxis.max;
     const labels = rows.map((row) => row.label);
-    const width = 920;
-    const height = 300;
-    const padLeft = 52;
-    const padRight = 18;
-    const padTop = 16;
-    const padBottom = 46;
+    const height = 340;
+    const width = resolveChartViewWidth(height);
+    const padLeft = 48;
+    const padRight = 14;
+    const padTop = 14;
+    const padBottom = 48;
     const innerWidth = width - padLeft - padRight;
     const innerHeight = height - padTop - padBottom;
     const xAt = (index) =>
@@ -1595,12 +1631,12 @@ const renderChart = (rows, options = {}) => {
   min = yAxis.min;
   max = yAxis.max;
 
-  const width = 920;
-  const height = 300;
-  const padLeft = 52;
-  const padRight = 18;
-  const padTop = 16;
-  const padBottom = 46;
+  const height = 340;
+  const width = resolveChartViewWidth(height);
+  const padLeft = 48;
+  const padRight = 14;
+  const padTop = 14;
+  const padBottom = 48;
   const innerWidth = width - padLeft - padRight;
   const innerHeight = height - padTop - padBottom;
   const xAt = (index) =>
