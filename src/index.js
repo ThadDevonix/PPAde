@@ -545,7 +545,11 @@ const isSuperadminSession = (session) => {
 
 const isAdminSession = (session) => normalizeRole(session?.role) === "admin";
 
-const shouldRestrictSitesBySession = (session) => isAdminSession(session) && !isSuperadminSession(session);
+const shouldRestrictSitesBySession = (session) => {
+  if (!isAdminSession(session) || isSuperadminSession(session)) return false;
+  const scopedSiteIds = normalizeSiteIds(Array.isArray(session?.siteIds) ? session.siteIds : []);
+  return scopedSiteIds.length > 0;
+};
 
 const getAllowedSiteIdSetFromSession = (session) =>
   new Set(normalizeSiteIds(Array.isArray(session?.siteIds) ? session.siteIds : []));
@@ -846,6 +850,52 @@ const normalizeUserFromApi = (user, fallbackEmail = "") => {
   return normalized;
 };
 
+const mergeNormalizedUsers = (...users) => {
+  const candidates = users.filter((user) => user && typeof user === "object");
+  if (!candidates.length) return null;
+
+  let id = "";
+  let email = "";
+  let name = "";
+  let role = "";
+  let isActive = true;
+  let canViewAllSites = false;
+  const collectedSiteIds = [];
+
+  candidates.forEach((user) => {
+    if (!id && user.id !== undefined && user.id !== null) {
+      id = String(user.id).trim();
+    }
+    if (!email) {
+      const candidateEmail = normalizeEmail(user.email);
+      if (candidateEmail) email = candidateEmail;
+    }
+    if (!name) {
+      const candidateName = readUserField(user.name);
+      if (candidateName) name = candidateName;
+    }
+    if (!role) {
+      const candidateRole = normalizeRole(user.role);
+      if (candidateRole) role = candidateRole;
+    }
+    if (user.isActive === false) isActive = false;
+    if (user.canViewAllSites === true) canViewAllSites = true;
+    if (Array.isArray(user.siteIds)) collectedSiteIds.push(...user.siteIds);
+  });
+
+  if (!email) return null;
+  const siteIds = normalizeSiteIds(collectedSiteIds);
+  return {
+    id: id || email,
+    email,
+    name: name || email,
+    role,
+    siteIds,
+    canViewAllSites: canViewAllSites || role === "superadmin",
+    isActive
+  };
+};
+
 const buildAuthHeader = (token) => (token ? `Bearer ${token}` : "");
 
 const splitCombinedSetCookieHeader = (rawValue) => {
@@ -939,25 +989,52 @@ const fetchCurrentUserFromUpstream = async (token, cookieHeader = "") => {
 const fetchUserFromUsersApi = async (email, token, cookieHeader = "") => {
   const targetEmail = normalizeEmail(email);
   if (!targetEmail) return null;
-  const authHeader = token ? buildAuthHeader(token) : buildAuthHeader(serviceAuthToken);
-  if (!authHeader && !cookieHeader) return null;
-  try {
-    const headers = {
-      Accept: "application/json"
-    };
-    if (authHeader) headers.Authorization = authHeader;
-    if (cookieHeader) headers.Cookie = cookieHeader;
-    const response = await fetch(upstreamUsersApi, {
-      method: "GET",
-      headers
-    });
-    if (!response.ok) return null;
-    const payload = await parseJsonResponse(response);
-    const users = extractList(payload).map((item) => normalizeUserFromApi(item)).filter(Boolean);
-    return users.find((user) => normalizeEmail(user.email) === targetEmail) || null;
-  } catch {
-    return null;
+  const sessionAuthHeader = buildAuthHeader(token);
+  const serviceAuthHeader = buildAuthHeader(serviceAuthToken);
+  const authHeaders = [];
+  if (sessionAuthHeader) authHeaders.push(sessionAuthHeader);
+  if (serviceAuthHeader && serviceAuthHeader !== sessionAuthHeader) {
+    authHeaders.push(serviceAuthHeader);
   }
+  if (!authHeaders.length && cookieHeader) {
+    authHeaders.push("");
+  }
+  if (!authHeaders.length && !cookieHeader) return null;
+
+  let bestMatch = null;
+
+  for (const authHeader of authHeaders) {
+    try {
+      const headers = {
+        Accept: "application/json"
+      };
+      if (authHeader) headers.Authorization = authHeader;
+      if (cookieHeader) headers.Cookie = cookieHeader;
+      const response = await fetch(upstreamUsersApi, {
+        method: "GET",
+        headers
+      });
+      if (!response.ok) continue;
+      const payload = await parseJsonResponse(response);
+      const users = extractList(payload).map((item) => normalizeUserFromApi(item)).filter(Boolean);
+      const matched = users.find((user) => normalizeEmail(user.email) === targetEmail) || null;
+      if (!matched) continue;
+
+      if (!bestMatch) {
+        bestMatch = matched;
+      } else {
+        const currentCount = Array.isArray(bestMatch.siteIds) ? bestMatch.siteIds.length : 0;
+        const nextCount = Array.isArray(matched.siteIds) ? matched.siteIds.length : 0;
+        if (nextCount > currentCount) bestMatch = matched;
+      }
+
+      if (Array.isArray(bestMatch.siteIds) && bestMatch.siteIds.length > 0) break;
+    } catch {
+      // try next auth candidate
+    }
+  }
+
+  return bestMatch;
 };
 
 const tryUpstreamLogin = async (email, password) => {
@@ -985,19 +1062,22 @@ const tryUpstreamLogin = async (email, password) => {
 
   const token = extractAuthToken(payload);
   const payloadUser = normalizeUserFromApi(extractAuthUser(payload), email);
+  const payloadRootUser = normalizeUserFromApi(payload, email);
   const meUser = await fetchCurrentUserFromUpstream(token, upstreamCookie);
   const usersApiUser = await fetchUserFromUsersApi(email, token, upstreamCookie);
-  const normalizedUser =
-    usersApiUser ||
-    meUser ||
-    payloadUser || {
-      id: email,
-      email: normalizeEmail(email),
-      name: email,
-      role: "",
-      siteIds: [],
-      canViewAllSites: false
-    };
+  const normalizedUser = mergeNormalizedUsers(
+    usersApiUser,
+    meUser,
+    payloadUser,
+    payloadRootUser
+  ) || {
+    id: email,
+    email: normalizeEmail(email),
+    name: email,
+    role: "",
+    siteIds: [],
+    canViewAllSites: false
+  };
   if (!normalizedUser?.isActive) {
     return {
       ok: false,

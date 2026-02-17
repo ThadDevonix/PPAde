@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 </head>
-<body>
+<body class="meter-page">
   <div class="shell">
     <button class="ghost back-btn icon-btn" id="back-meter" type="button" aria-label="กลับหน้า plant" title="กลับหน้า plant">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -20,12 +20,8 @@
     <section class="plant-hero">
       <div>
         <p class="eyebrow">Meter</p>
+        <p class="meter-kicker">Realtime Energy Intelligence</p>
         <h1 id="meter-name">ชื่อมิเตอร์</h1>
-        <div class="chips">
-          <span class="chip" id="meter-status">Status</span>
-          <span class="chip" id="meter-sn">Serial</span>
-          <span class="chip" id="plant-ref">Plant</span>
-        </div>
       </div>
     </section>
 
@@ -55,14 +51,8 @@
           <label for="chart-day">วัน</label>
           <select id="chart-day"></select>
         </div>
-        <button class="primary small-btn" id="chart-load-btn" type="button">แสดงกราฟ</button>
       </div>
       <div class="chart-box" id="chart-box">Graph placeholder</div>
-      <div class="meter-meta">
-        <div class="kv"><span>Plant</span><strong id="meta-plant">-</strong></div>
-        <div class="kv"><span>Serial</span><strong id="meta-sn">-</strong></div>
-        <div class="kv"><span>Status</span><strong id="meta-status">-</strong></div>
-      </div>
     </section>
   </div>
 

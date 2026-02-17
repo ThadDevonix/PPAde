@@ -19,12 +19,6 @@ const plantData = (() => {
 })();
 
 const meterNameEl = document.getElementById("meter-name");
-const chipStatus = document.getElementById("meter-status");
-const chipSn = document.getElementById("meter-sn");
-const plantRef = document.getElementById("plant-ref");
-const metaPlant = document.getElementById("meta-plant");
-const metaSn = document.getElementById("meta-sn");
-const metaStatus = document.getElementById("meta-status");
 const chartBox = document.getElementById("chart-box");
 const totalKwhValue = document.getElementById("total-kwh-value");
 
@@ -37,7 +31,6 @@ const monthSelect = document.getElementById("chart-month");
 const daySelect = document.getElementById("chart-day");
 const monthWrap = document.getElementById("chart-month-wrap");
 const dayWrap = document.getElementById("chart-day-wrap");
-const chartLoadBtn = document.getElementById("chart-load-btn");
 
 const energyApiCandidates = ["/api/energy"];
 const fallbackPlantName = "CNX_PPA";
@@ -104,6 +97,20 @@ const readLooseValue = (row, keys) => {
 const parseNumber = (value) => {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : 0;
+};
+const parseFiniteNumber = (value) => {
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? num : null;
+};
+const collectFiniteNumbers = (values) =>
+  (Array.isArray(values) ? values : []).filter((value) => Number.isFinite(value));
+const findLastFiniteNumber = (values) => {
+  const source = Array.isArray(values) ? values : [];
+  for (let idx = source.length - 1; idx >= 0; idx -= 1) {
+    const value = source[idx];
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 };
 const readLooseNumber = (row, keys) => {
   const value = readLooseValue(row, keys);
@@ -189,6 +196,17 @@ const selectedSiteId =
   parseLoosePositiveId(plantData?.siteId) ||
   parseLoosePositiveId(plantData?.site_id) ||
   parseLoosePositiveId(plantData?.id);
+const selectedSiteCodeKey = normalizeIdentityToken(
+  readText(
+    plantData?.siteCode,
+    plantData?.site_code,
+    meterData?.siteCode,
+    meterData?.site_code
+  )
+);
+const selectedSiteNameKey = normalizeIdentityToken(
+  readText(plantData?.name, meterData?.siteName, meterData?.site_name)
+);
 const selectedEnergyName = readText(
   meterData?.sn,
   meterData?.name,
@@ -238,6 +256,59 @@ const formatMetric = (value) =>
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
   });
+const formatYAxisMetric = (value) =>
+  Math.round(parseNumber(value)).toLocaleString("th-TH", {
+    maximumFractionDigits: 0
+  });
+const resolveNiceIntegerStep = (range, segments = 4) => {
+  const safeRange = Number(range);
+  if (!Number.isFinite(safeRange) || safeRange <= 0) return 1;
+  const roughStep = safeRange / Math.max(1, segments);
+  const exponent = Math.floor(Math.log10(roughStep));
+  const base = 10 ** exponent;
+  const fraction = roughStep / base;
+  if (fraction <= 1) return Math.max(1, base);
+  if (fraction <= 2) return Math.max(1, 2 * base);
+  if (fraction <= 5) return Math.max(1, 5 * base);
+  return Math.max(1, 10 * base);
+};
+const buildIntegerYAxis = (rawMin, rawMax, segments = 4) => {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return {
+      min: 0,
+      max: 1,
+      values: [1, 0]
+    };
+  }
+  if (min > max) {
+    const swap = min;
+    min = max;
+    max = swap;
+  }
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const range = max - min;
+  const step = resolveNiceIntegerStep(range, segments);
+  let axisMin = Math.floor(min / step) * step;
+  let axisMax = Math.ceil(max / step) * step;
+  if (axisMin === axisMax) axisMax = axisMin + step;
+
+  const values = [];
+  for (let value = axisMax; value >= axisMin - step * 0.5; value -= step) {
+    values.push(Math.round(value));
+  }
+  if (values.length < 2) values.push(Math.round(axisMin));
+
+  return {
+    min: axisMin,
+    max: axisMax,
+    values
+  };
+};
 const formatTotalKwh = (value) => `${formatMetric(value)} kWh`;
 const datePartFormatterCache = new Map();
 const getDatePartFormatter = (timeZone = chartTimeZone) => {
@@ -366,6 +437,32 @@ const readRowDeviceId = (row) =>
   parseLoosePositiveId(
     readLooseValue(row, ["device_id", "deviceId", "meter_id", "meterId"])
   );
+const readRowSiteId = (row) =>
+  parseLoosePositiveId(
+    readLooseValue(row, ["site_id", "siteId", "site"])
+  );
+const readRowSiteCodeKey = (row) =>
+  normalizeIdentityToken(readLooseValue(row, ["site_code", "siteCode", "code"]));
+const readRowSiteNameKey = (row) =>
+  normalizeIdentityToken(readLooseValue(row, ["site_name", "siteName", "plant_name", "plantName"]));
+const rowMatchesSelectedSite = (row) => {
+  const rowSiteId = readRowSiteId(row);
+  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0 && Number.isFinite(rowSiteId)) {
+    return rowSiteId === selectedSiteId;
+  }
+
+  const rowSiteCodeKey = readRowSiteCodeKey(row);
+  if (selectedSiteCodeKey && rowSiteCodeKey) {
+    return rowSiteCodeKey === selectedSiteCodeKey;
+  }
+
+  const rowSiteNameKey = readRowSiteNameKey(row);
+  if (selectedSiteNameKey && rowSiteNameKey) {
+    return rowSiteNameKey === selectedSiteNameKey;
+  }
+
+  return true;
+};
 const rowsContainExplicitDeviceId = (rows) =>
   (Array.isArray(rows) ? rows : []).some((row) => {
     const id = readRowDeviceId(row);
@@ -373,17 +470,9 @@ const rowsContainExplicitDeviceId = (rows) =>
   });
 const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
   const strictDeviceId = Boolean(options.strictDeviceId);
+  if (!rowMatchesSelectedSite(row)) return false;
+
   const rowDeviceId = readRowDeviceId(row);
-  if (
-    Number.isFinite(wantedDeviceId) &&
-    wantedDeviceId > 0 &&
-    Number.isFinite(rowDeviceId)
-  ) {
-    return rowDeviceId === wantedDeviceId;
-  }
-  if (strictDeviceId && Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) {
-    return false;
-  }
   const rowDeviceName = normalizeIdentityToken(
     readLooseValue(row, ["device_name", "deviceName", "meter_name", "meterName", "name"])
   );
@@ -393,6 +482,27 @@ const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
       ["device_sn", "deviceSn", "sn", "serial", "modbus_address_in", "modbusAddressIn"]
     )
   );
+
+  if (
+    Number.isFinite(wantedDeviceId) &&
+    wantedDeviceId > 0 &&
+    Number.isFinite(rowDeviceId)
+  ) {
+    return rowDeviceId === wantedDeviceId;
+  }
+
+  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) {
+    if (strictDeviceId) return false;
+    if (row?.__queryDeviceScoped === true) {
+      const scopedId = parseLoosePositiveId(row.__queryDeviceId);
+      if (Number.isFinite(scopedId) && scopedId > 0) return scopedId === wantedDeviceId;
+      return true;
+    }
+    if (selectedMeterSnKey && rowDeviceSn) return rowDeviceSn === selectedMeterSnKey;
+    if (selectedMeterNameKey && rowDeviceName) return rowDeviceName === selectedMeterNameKey;
+    return false;
+  }
+
   if (selectedMeterNameKey && rowDeviceName) {
     if (
       rowDeviceName === selectedMeterNameKey ||
@@ -414,21 +524,8 @@ const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
   const rowDeviceTypeKey = normalizeKeyToken(
     readLooseValue(row, ["device_type", "deviceType", "type"])
   );
-  const hasRowIdentity = Boolean(
-    (Number.isFinite(rowDeviceId) && rowDeviceId > 0) ||
-      rowDeviceName ||
-      rowDeviceSn ||
-      rowDeviceTypeKey
-  );
   if (selectedMeterTypeKey && rowDeviceTypeKey) {
     return rowDeviceTypeKey === selectedMeterTypeKey;
-  }
-  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) {
-    if (!hasRowIdentity) return true;
-    const hasIdentityHints = Boolean(
-      selectedMeterNameKey || selectedMeterSnKey || selectedMeterTypeKey
-    );
-    return !hasIdentityHints;
   }
   return true;
 };
@@ -481,8 +578,94 @@ const rowHasEnergyTotal = (row) =>
   typeof row === "object" &&
   !Array.isArray(row) &&
   readEnergyTotalValue(row) !== null;
-const extractSeriesRows = (payload) => {
+const rowHasTemporalHint = (row) =>
+  row &&
+  typeof row === "object" &&
+  !Array.isArray(row) &&
+  Boolean(
+    readLooseValue(row, [
+      "datetime",
+      "timestamp",
+      "ts",
+      "time",
+      "created_at",
+      "createdAt",
+      "date",
+      "day",
+      "label",
+      "hour",
+      "month",
+      "year"
+    ])
+  );
+const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
   if (!payload || typeof payload !== "object") return [];
+  const queue = [payload];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+    const period = normalizeIdentityToken(readLooseValue(current, ["period"]));
+    const timeseries = Array.isArray(current.timeseries) ? current.timeseries : [];
+    if (timeseries.length && (period === "day" || readLooseValue(current, ["date", "day"]))) {
+      const baseDate = normalizeDateKey(readLooseValue(current, ["date", "day"]));
+      const baseSiteId = parseLoosePositiveId(readLooseValue(current, ["site_id", "siteId"]));
+      return timeseries
+        .filter((row) => row && typeof row === "object" && !Array.isArray(row))
+        .map((row) => {
+          const next = { ...row };
+          const existingDate = normalizeDateKey(readLooseValue(next, ["date", "day"]));
+          const dateKey = existingDate || baseDate;
+          if (dateKey && !existingDate) next.date = dateKey;
+          const existingStamp = readLooseValue(next, [
+            "datetime",
+            "timestamp",
+            "ts",
+            "time",
+            "created_at",
+            "createdAt"
+          ]);
+          if (!existingStamp && dateKey) {
+            const rawHour = Number(readLooseValue(next, ["hour"]));
+            const label = readText(readLooseValue(next, ["label", "time", "time_label", "timeLabel"]));
+            let hh = Number.isFinite(rawHour) ? Math.trunc(rawHour) : NaN;
+            let mm = 0;
+            if (!Number.isFinite(hh)) {
+              const match = label.match(/(\d{1,2}):(\d{2})/);
+              if (match) {
+                hh = Number(match[1]);
+                mm = Number(match[2]);
+              }
+            }
+            if (Number.isFinite(hh) && hh >= 0 && hh <= 23) {
+              const safeMinute = Number.isFinite(mm) && mm >= 0 && mm <= 59 ? mm : 0;
+              next.datetime = `${dateKey}T${pad2(hh)}:${pad2(safeMinute)}:00`;
+            }
+          }
+          if (baseSiteId && !readLooseValue(next, ["site_id", "siteId"])) {
+            next.site_id = baseSiteId;
+          }
+          if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
+            next.__queryDeviceScoped = true;
+            next.__queryDeviceId = scopedDeviceId;
+          }
+          return next;
+        });
+    }
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === "object") queue.push(value);
+    });
+  }
+  return [];
+};
+const extractSeriesRows = (payload, context = {}) => {
+  if (!payload || typeof payload !== "object") return [];
+  const scopedDeviceId = parseLoosePositiveId(context.scopedDeviceId);
+  const dayRows = extractDayTimeseriesRows(payload, scopedDeviceId);
+  if (dayRows.length) return dayRows;
   const queue = [payload];
   const rows = [];
   while (queue.length) {
@@ -492,15 +675,26 @@ const extractSeriesRows = (payload) => {
       queue.push(...current);
       continue;
     }
-    if (rowHasSeries(current)) rows.push(current);
+    if (rowHasSeries(current) && rowHasTemporalHint(current)) {
+      if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
+        rows.push({
+          ...current,
+          __queryDeviceScoped: true,
+          __queryDeviceId: scopedDeviceId
+        });
+      } else {
+        rows.push(current);
+      }
+    }
     Object.values(current).forEach((value) => {
       if (value && typeof value === "object") queue.push(value);
     });
   }
   return rows;
 };
-const extractEnergyRows = (payload) => {
+const extractEnergyRows = (payload, context = {}) => {
   if (!payload || typeof payload !== "object") return [];
+  const scopedDeviceId = parseLoosePositiveId(context.scopedDeviceId);
   const queue = [payload];
   const rows = [];
   while (queue.length) {
@@ -510,7 +704,17 @@ const extractEnergyRows = (payload) => {
       queue.push(...current);
       continue;
     }
-    if (rowHasEnergyTotal(current)) rows.push(current);
+    if (rowHasEnergyTotal(current) && rowHasTemporalHint(current)) {
+      if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
+        rows.push({
+          ...current,
+          __queryDeviceScoped: true,
+          __queryDeviceId: scopedDeviceId
+        });
+      } else {
+        rows.push(current);
+      }
+    }
     Object.values(current).forEach((value) => {
       if (value && typeof value === "object") queue.push(value);
     });
@@ -600,6 +804,7 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
 
   const strictResult = normalizeWithFilterMode(strictDeviceId);
   if (strictResult.length || !strictDeviceId) return strictResult;
+  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) return [];
   return normalizeWithFilterMode(false);
 };
 const normalizeDailyEnergyRows = (rows, { dateKey, deviceId } = {}) => {
@@ -668,6 +873,7 @@ const normalizeDailyEnergyRows = (rows, { dateKey, deviceId } = {}) => {
 
   const strictResult = normalizeWithFilterMode(strictDeviceId);
   if (strictResult.length || !strictDeviceId) return strictResult;
+  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) return [];
   return normalizeWithFilterMode(false);
 };
 const normalizeChartRows = (
@@ -745,6 +951,7 @@ const normalizeChartRows = (
 
   const strictResult = normalizeWithFilterMode(strictDeviceId);
   if (strictResult.length || !strictDeviceId) return strictResult;
+  if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) return [];
   return normalizeWithFilterMode(false);
 };
 const aggregateYearSeriesRowsByMonth = (rows, { year } = {}) => {
@@ -796,21 +1003,440 @@ const aggregateYearSeriesRowsByMonth = (rows, { year } = {}) => {
       };
     });
 };
+const fullDayHourLabels = Array.from({ length: 24 }, (_, hour) => `${pad2(hour)}:00`);
+const parseHourFromValue = (value) => {
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber)) {
+    const normalized = Math.trunc(asNumber);
+    if (normalized >= 0 && normalized <= 23) return normalized;
+  }
+  const text = readText(value);
+  if (!text) return null;
+  const match = text.match(/(\d{1,2})\s*:\s*(\d{2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+  return Math.trunc(hour);
+};
+const resolveHourFromRow = (row) => {
+  if (!row || typeof row !== "object") return null;
+  const directHour = parseHourFromValue(readLooseValue(row, ["hour"]));
+  if (Number.isFinite(directHour)) return directHour;
+
+  const labelHour = parseHourFromValue(row.label);
+  if (Number.isFinite(labelHour)) return labelHour;
+
+  const stampValue =
+    Number.isFinite(Number(row.stampMs)) && Number(row.stampMs) > 0
+      ? Number(row.stampMs)
+      : readLooseValue(row, [
+          "datetime",
+          "timestamp",
+          "ts",
+          "time",
+          "created_at",
+          "createdAt"
+        ]);
+  const parts = getDatePartsInTimeZone(stampValue, chartTimeZone);
+  if (!parts || !Number.isFinite(parts.hour)) return null;
+  const hour = Math.trunc(parts.hour);
+  return hour >= 0 && hour <= 23 ? hour : null;
+};
+const resolveDayKeyForHourRows = (rows, fallbackDateKey = "") => {
+  const fallback = normalizeDateKey(fallbackDateKey);
+  if (fallback) return fallback;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = normalizeDateKey(
+      row?.dateKey || readLooseValue(row, ["date", "day"])
+    );
+    if (key) return key;
+  }
+  return "";
+};
+const buildHourStampMs = (dateKey, hour) => {
+  const normalizedDate = normalizeDateKey(dateKey);
+  if (!normalizedDate) return null;
+  const stamp = toDate(`${normalizedDate}T${pad2(hour)}:00:00`);
+  return stamp ? stamp.getTime() : null;
+};
+const resolveVisibleHourLimitForDateKey = (dateKey) => {
+  const normalizedDate = normalizeDateKey(dateKey);
+  if (!normalizedDate) return null;
+  const todayKey = formatDateKey(new Date(), chartTimeZone);
+  if (!todayKey || normalizedDate !== todayKey) return null;
+  const nowParts = getDatePartsInTimeZone(new Date(), chartTimeZone);
+  const hour = Number(nowParts?.hour);
+  if (!Number.isFinite(hour)) return null;
+  const normalizedHour = Math.trunc(hour);
+  if (normalizedHour < 0 || normalizedHour > 23) return null;
+  return normalizedHour;
+};
+const normalizeRowsForFullDayXAxis = (rows, options = {}) => {
+  const mode = options.mode === "energy" ? "energy" : "series";
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  if (!sourceRows.length) return [];
+
+  const axisHourLabels = fullDayHourLabels;
+  const targetDateKey = resolveDayKeyForHourRows(sourceRows, options.dateKey);
+  const visibleHourLimit = resolveVisibleHourLimitForDateKey(targetDateKey);
+  const buckets = Array.from({ length: axisHourLabels.length }, () => []);
+  sourceRows.forEach((row) => {
+    const hour = resolveHourFromRow(row);
+    if (!Number.isFinite(hour)) return;
+    if (hour < 0 || hour > 23) return;
+    buckets[hour].push(row);
+  });
+
+  if (mode === "energy") {
+    return axisHourLabels.map((label, hour) => {
+      const isFutureHour =
+        Number.isFinite(visibleHourLimit) && hour > visibleHourLimit;
+      const bucket = buckets[hour];
+      let chosen = null;
+      if (!isFutureHour) {
+        bucket.forEach((row) => {
+          if (!chosen) {
+            chosen = row;
+            return;
+          }
+          const left = Number(chosen?.stampMs);
+          const right = Number(row?.stampMs);
+          if (Number.isFinite(right) && (!Number.isFinite(left) || right >= left)) {
+            chosen = row;
+          }
+        });
+      }
+      const rawStamp = Number(chosen?.stampMs);
+      const stampMs =
+        Number.isFinite(rawStamp) && rawStamp > 0
+          ? rawStamp
+          : buildHourStampMs(targetDateKey, hour);
+      const dateKey = normalizeDateKey(chosen?.dateKey) || targetDateKey;
+      const energyValue = parseFiniteNumber(chosen?.energyKwh);
+      return {
+        idx: hour,
+        stampMs,
+        dateKey,
+        label,
+        energyKwh: Number.isFinite(energyValue) ? Math.max(0, energyValue) : null
+      };
+    });
+  }
+
+  return axisHourLabels.map((label, hour) => {
+    const isFutureHour =
+      Number.isFinite(visibleHourLimit) && hour > visibleHourLimit;
+    const bucket = buckets[hour];
+    let solarSum = 0;
+    let solarCount = 0;
+    let selfUseSum = 0;
+    let selfUseCount = 0;
+    let latestStampMs = null;
+    let dateKey = targetDateKey;
+
+    if (!isFutureHour) {
+      bucket.forEach((row) => {
+        const solarValue = parseFiniteNumber(row?.solarIn);
+        if (Number.isFinite(solarValue)) {
+          solarSum += solarValue;
+          solarCount += 1;
+        }
+        const selfUseValue = parseFiniteNumber(row?.selfUse);
+        if (Number.isFinite(selfUseValue)) {
+          selfUseSum += selfUseValue;
+          selfUseCount += 1;
+        }
+        const rawStamp = Number(row?.stampMs);
+        if (Number.isFinite(rawStamp) && rawStamp > 0) {
+          latestStampMs = Number.isFinite(latestStampMs)
+            ? Math.max(latestStampMs, rawStamp)
+            : rawStamp;
+        }
+        if (!dateKey) {
+          const rowDateKey = normalizeDateKey(row?.dateKey);
+          if (rowDateKey) dateKey = rowDateKey;
+        }
+      });
+    }
+
+    return {
+      idx: hour,
+      stampMs: Number.isFinite(latestStampMs) ? latestStampMs : buildHourStampMs(dateKey, hour),
+      dateKey,
+      label,
+      solarIn: solarCount > 0 ? solarSum / solarCount : null,
+      selfUse: selfUseCount > 0 ? selfUseSum / selfUseCount : null
+    };
+  });
+};
 const escapeText = (value) =>
   String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-const buildPath = (series, xAt, yAt) =>
-  series.map((value, idx) => `${idx ? "L" : "M"} ${xAt(idx)} ${yAt(value)}`).join(" ");
-const buildDots = (series, xAt, yAt, color) =>
+const buildPath = (series, xAt, yAt) => {
+  let path = "";
+  let inSegment = false;
+  (Array.isArray(series) ? series : []).forEach((value, idx) => {
+    const numericValue = parseFiniteNumber(value);
+    if (!Number.isFinite(numericValue)) {
+      inSegment = false;
+      return;
+    }
+    path += `${inSegment ? "L" : "M"} ${xAt(idx)} ${yAt(numericValue)} `;
+    inSegment = true;
+  });
+  return path.trim();
+};
+const buildDots = (series, xAt, yAt, color, tooltipBuilder = null) =>
   series
-    .map(
-      (value, idx) =>
-        `<circle cx="${xAt(idx)}" cy="${yAt(value)}" r="3.6" fill="${color}" stroke="#ffffff" stroke-width="1.4"></circle>`
-    )
+    .map((value, idx) => {
+      const numericValue = parseFiniteNumber(value);
+      if (!Number.isFinite(numericValue)) return "";
+      const tooltipText =
+        typeof tooltipBuilder === "function"
+          ? readText(tooltipBuilder(numericValue, idx))
+          : "";
+      const pointIndexAttr = ` data-point-index="${idx}"`;
+      const tooltipAttr = tooltipText
+        ? ` class="meter-chart-point" data-tooltip="${escapeText(tooltipText)}"`
+        : "";
+      return `<circle cx="${xAt(idx)}" cy="${yAt(numericValue)}" r="3.6" fill="${color}" stroke="#ffffff" stroke-width="1.4"${pointIndexAttr}${tooltipAttr}></circle>`;
+    })
     .join("");
+const getOrCreatePointTooltip = (chartRoot) => {
+  if (!chartRoot) return null;
+  let tooltip = chartRoot.querySelector(".meter-point-tooltip");
+  if (tooltip) return tooltip;
+  tooltip = document.createElement("div");
+  tooltip.className = "meter-point-tooltip";
+  chartRoot.appendChild(tooltip);
+  return tooltip;
+};
+const positionTooltipByAnchor = (anchorLeft, anchorTop, chartRoot, tooltip) => {
+  if (!chartRoot || !tooltip) return false;
+  const leftValue = Number(anchorLeft);
+  const topValue = Number(anchorTop);
+  if (!Number.isFinite(leftValue) || !Number.isFinite(topValue)) return false;
+
+  const chartRect = chartRoot.getBoundingClientRect();
+  if (!chartRect || chartRect.width <= 0 || chartRect.height <= 0) return false;
+
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const tooltipWidth = Math.max(0, Number(tooltipRect?.width) || 0);
+  const tooltipHeight = Math.max(0, Number(tooltipRect?.height) || 0);
+  const edgePadding = 8;
+  const pointGap = 12;
+
+  let left = leftValue - tooltipWidth / 2;
+  left = clampInRange(left, edgePadding, Math.max(edgePadding, chartRect.width - tooltipWidth - edgePadding));
+
+  let top = topValue - tooltipHeight - pointGap;
+  if (top < edgePadding) {
+    top = topValue + pointGap;
+  }
+  if (top + tooltipHeight > chartRect.height - edgePadding) {
+    top = Math.max(edgePadding, chartRect.height - tooltipHeight - edgePadding);
+  }
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+  tooltip.style.transform = "none";
+  return true;
+};
+const positionPointTooltip = (event, chartRoot, tooltip) => {
+  if (!event || !chartRoot || !tooltip) return;
+  const rect = chartRoot.getBoundingClientRect();
+  const left = event.clientX - rect.left;
+  const top = event.clientY - rect.top;
+  positionTooltipByAnchor(left, top, chartRoot, tooltip);
+};
+const positionPointTooltipAtPoint = (point, chartRoot, tooltip) => {
+  if (!point || !chartRoot || !tooltip) return false;
+  const pointRect = point.getBoundingClientRect();
+  const chartRect = chartRoot.getBoundingClientRect();
+  if (!pointRect || !chartRect) return false;
+  const left = pointRect.left + pointRect.width / 2 - chartRect.left;
+  const top = pointRect.top + pointRect.height / 2 - chartRect.top;
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return false;
+  return positionTooltipByAnchor(left, top, chartRoot, tooltip);
+};
+const clampInRange = (value, min, max) => {
+  const numericValue = Number(value);
+  const numericMin = Number(min);
+  const numericMax = Number(max);
+  if (!Number.isFinite(numericValue)) return numericMin;
+  if (!Number.isFinite(numericMin) && !Number.isFinite(numericMax)) return numericValue;
+  if (!Number.isFinite(numericMin)) return Math.min(numericValue, numericMax);
+  if (!Number.isFinite(numericMax)) return Math.max(numericValue, numericMin);
+  if (numericMin > numericMax) return clampInRange(numericValue, numericMax, numericMin);
+  return Math.min(Math.max(numericValue, numericMin), numericMax);
+};
+const bindChartPointTooltip = () => {
+  const chartRoot = chartBox?.querySelector(".meter-chart");
+  if (!chartRoot) return;
+  const chartSvg = chartRoot.querySelector(".meter-chart-svg");
+  const points = Array.from(chartRoot.querySelectorAll(".meter-chart-point[data-tooltip]"));
+  const pointCoordinates = points
+    .map((point) => {
+      const cx = Number(point?.getAttribute("cx"));
+      const cy = Number(point?.getAttribute("cy"));
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+      return { point, cx, cy };
+    })
+    .filter(Boolean);
+  const tooltip = points.length ? getOrCreatePointTooltip(chartRoot) : null;
+  const crosshairVertical = chartSvg?.querySelector(".meter-crosshair-v");
+  const crosshairHorizontal = chartSvg?.querySelector(".meter-crosshair-h");
+  const plotLeft = Number(chartSvg?.dataset?.plotLeft);
+  const plotRight = Number(chartSvg?.dataset?.plotRight);
+  const plotTop = Number(chartSvg?.dataset?.plotTop);
+  const plotBottom = Number(chartSvg?.dataset?.plotBottom);
+  const canDrawCrosshair =
+    Boolean(chartSvg && crosshairVertical && crosshairHorizontal) &&
+    Number.isFinite(plotLeft) &&
+    Number.isFinite(plotRight) &&
+    Number.isFinite(plotTop) &&
+    Number.isFinite(plotBottom);
+
+  const hideTooltip = () => {
+    tooltip?.classList.remove("is-visible");
+  };
+  const hideCrosshair = () => {
+    crosshairVertical?.classList.remove("is-visible");
+    crosshairHorizontal?.classList.remove("is-visible");
+  };
+  const isInsidePlotArea = (x, y) =>
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    x >= plotLeft &&
+    x <= plotRight &&
+    y >= plotTop &&
+    y <= plotBottom;
+  const findNearestPoint = (x, y) => {
+    if (!pointCoordinates.length) return null;
+    let nearest = null;
+    let shortestDistanceSq = Number.POSITIVE_INFINITY;
+    pointCoordinates.forEach((entry) => {
+      const dx = entry.cx - x;
+      const dy = entry.cy - y;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq < shortestDistanceSq) {
+        shortestDistanceSq = distanceSq;
+        nearest = entry;
+      }
+    });
+    return nearest;
+  };
+  const buildTooltipTextForPoint = (point) => {
+    const fallbackText = readText(point?.dataset?.tooltip);
+    const pointIndex = readText(point?.dataset?.pointIndex);
+    if (!pointIndex) return fallbackText;
+
+    const sameIndexTexts = points
+      .filter((item) => readText(item?.dataset?.pointIndex) === pointIndex)
+      .map((item) => readText(item?.dataset?.tooltip))
+      .filter(Boolean);
+
+    if (!sameIndexTexts.length) return fallbackText;
+    if (sameIndexTexts.length === 1) return sameIndexTexts[0];
+
+    let timeLabel = "";
+    const metricLines = [];
+    sameIndexTexts.forEach((text) => {
+      const parts = text
+        .split("|")
+        .map((part) => readText(part))
+        .filter(Boolean);
+      if (!parts.length) return;
+      const head = parts[0];
+      if (!timeLabel && head.startsWith("เวลา")) timeLabel = head;
+      if (parts.length > 1) {
+        metricLines.push(parts.slice(1).join(" | "));
+      } else if (!head.startsWith("เวลา")) {
+        metricLines.push(head);
+      }
+    });
+
+    const uniqueMetrics = [...new Set(metricLines.filter(Boolean))];
+    const lines = [];
+    if (timeLabel) lines.push(timeLabel);
+    lines.push(...uniqueMetrics);
+    return lines.length ? lines.join("\n") : sameIndexTexts.join("\n");
+  };
+  const showTooltipForPoint = (point, event) => {
+    if (!tooltip || !point || !event) return;
+    const text = buildTooltipTextForPoint(point);
+    if (!text) {
+      hideTooltip();
+      return;
+    }
+    tooltip.textContent = text;
+    const positionedOnPoint = positionPointTooltipAtPoint(point, chartRoot, tooltip);
+    if (!positionedOnPoint) positionPointTooltip(event, chartRoot, tooltip);
+    tooltip.classList.add("is-visible");
+  };
+  const setCrosshair = (x, y) => {
+    if (!canDrawCrosshair) return;
+    const crossX = clampInRange(x, plotLeft, plotRight);
+    const crossY = clampInRange(y, plotTop, plotBottom);
+    crosshairVertical.setAttribute("x1", String(crossX));
+    crosshairVertical.setAttribute("x2", String(crossX));
+    crosshairVertical.setAttribute("y1", String(plotTop));
+    crosshairVertical.setAttribute("y2", String(plotBottom));
+    crosshairHorizontal.setAttribute("x1", String(plotLeft));
+    crosshairHorizontal.setAttribute("x2", String(plotRight));
+    crosshairHorizontal.setAttribute("y1", String(crossY));
+    crosshairHorizontal.setAttribute("y2", String(crossY));
+    crosshairVertical.classList.add("is-visible");
+    crosshairHorizontal.classList.add("is-visible");
+  };
+  const positionCrosshairByMouse = (event) => {
+    if (!canDrawCrosshair || !event || !chartSvg) return;
+    const rect = chartSvg.getBoundingClientRect();
+    const viewBox = chartSvg.viewBox?.baseVal;
+    if (!rect || !viewBox || rect.width <= 0 || rect.height <= 0) return;
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const svgX = viewBox.x + (offsetX / rect.width) * viewBox.width;
+    const svgY = viewBox.y + (offsetY / rect.height) * viewBox.height;
+    if (!isInsidePlotArea(svgX, svgY)) {
+      hideTooltip();
+      hideCrosshair();
+      return;
+    }
+    const nearest = findNearestPoint(svgX, svgY);
+    if (nearest) {
+      setCrosshair(nearest.cx, nearest.cy);
+      showTooltipForPoint(nearest.point, event);
+      return;
+    }
+    setCrosshair(svgX, svgY);
+    hideTooltip();
+  };
+
+  chartSvg?.addEventListener("mouseenter", positionCrosshairByMouse);
+  chartSvg?.addEventListener("mousemove", positionCrosshairByMouse);
+  chartSvg?.addEventListener("mouseleave", () => {
+    hideTooltip();
+    hideCrosshair();
+  });
+
+  if (!points.length || !tooltip) return;
+
+  const showTooltip = (event, point) => {
+    const cx = Number(point?.getAttribute("cx"));
+    const cy = Number(point?.getAttribute("cy"));
+    if (Number.isFinite(cx) && Number.isFinite(cy)) setCrosshair(cx, cy);
+    showTooltipForPoint(point, event);
+  };
+
+  points.forEach((point) => {
+    point.addEventListener("mouseenter", (event) => showTooltip(event, point));
+    point.addEventListener("mousemove", (event) => showTooltip(event, point));
+  });
+};
 const renderChart = (rows, options = {}) => {
   if (!chartBox) return;
   const isEnergyMode =
@@ -818,18 +1444,20 @@ const renderChart = (rows, options = {}) => {
     options.mode === "day-energy" ||
     rows.some((row) => Number.isFinite(Number(row?.energyKwh)));
   if (isEnergyMode) {
-    const energySeries = rows.map((row) => parseNumber(row.energyKwh));
+    const forceFullDayXAxis = options.forceFullDayXAxis === true;
+    const energySeries = rows.map((row) => parseFiniteNumber(row?.energyKwh));
+    const energyValues = collectFiniteNumbers(energySeries);
     const totalStrategy = readText(options.totalStrategy) || "sum";
     const totalEnergy =
-      totalStrategy === "delta" && energySeries.length
+      totalStrategy === "delta" && energyValues.length
         ? (() => {
-            const maxValue = Math.max(...energySeries);
-            const minValue = Math.min(...energySeries);
+            const maxValue = Math.max(...energyValues);
+            const minValue = Math.min(...energyValues);
             const delta = Math.max(0, maxValue - minValue);
             if (delta > 0) return delta;
-            return Math.max(0, energySeries[energySeries.length - 1] || 0);
+            return Math.max(0, findLastFiniteNumber(energySeries) || 0);
           })()
-        : energySeries.reduce((sum, value) => sum + value, 0);
+        : energyValues.reduce((sum, value) => sum + value, 0);
     const emptyMessage =
       readText(options.emptyMessage) ||
       (options.mode === "day-energy"
@@ -849,17 +1477,16 @@ const renderChart = (rows, options = {}) => {
     const ariaLabel =
       readText(options.ariaLabel) || "กราฟพลังงานรายวันจาก energy_total ของเดือนที่เลือก";
     if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(totalEnergy);
-    if (!rows.length) {
+    if (!rows.length || !energyValues.length) {
       chartBox.textContent = emptyMessage;
       return;
     }
 
-    let min = Math.min(...energySeries);
-    let max = Math.max(...energySeries);
-    if (min === max) {
-      min -= 1;
-      max += 1;
-    }
+    let min = Math.min(...energyValues);
+    let max = Math.max(...energyValues);
+    const yAxis = buildIntegerYAxis(min, max, 4);
+    min = yAxis.min;
+    max = yAxis.max;
     const labels = rows.map((row) => row.label);
     const width = 920;
     const height = 300;
@@ -874,30 +1501,36 @@ const renderChart = (rows, options = {}) => {
       (labels.length <= 1 ? innerWidth / 2 : (index * innerWidth) / (labels.length - 1));
     const yAt = (value) => padTop + ((max - value) * innerHeight) / (max - min);
 
-    const ticks = 4;
-    const yTicks = Array.from({ length: ticks + 1 }, (_, idx) => {
-      const ratio = idx / ticks;
-      const value = max - (max - min) * ratio;
-      const y = padTop + ratio * innerHeight;
-      return { y, value };
-    });
+    const yTicks = yAxis.values.map((value) => ({
+      value,
+      y: yAt(value)
+    }));
     const maxXLabels = 7;
     const xStep = Math.max(1, Math.ceil(labels.length / maxXLabels));
-    const xTicks = labels
-      .map((label, idx) => ({ label, idx }))
-      .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+    const xTicks = forceFullDayXAxis
+      ? labels.map((label, idx) => ({ label, idx }))
+      : labels
+        .map((label, idx) => ({ label, idx }))
+        .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+    const xTickFontSize = forceFullDayXAxis ? 9 : 11;
 
     const energyColor = "#0f63d4";
     const energyPath = buildPath(energySeries, xAt, yAt);
-    const energyDots = buildDots(energySeries, xAt, yAt, energyColor);
-    const latest = energySeries[energySeries.length - 1] || 0;
+    const energyDots = buildDots(
+      energySeries,
+      xAt,
+      yAt,
+      energyColor,
+      (value, idx) => `เวลา ${labels[idx]} | ${formatMetric(value)} kWh`
+    );
+    const latest = findLastFiniteNumber(energySeries) || 0;
 
     chartBox.innerHTML = `
       <div class="meter-chart">
         <div class="meter-chart-legend">
           <span><i style="background:${energyColor}"></i>${escapeText(legendLabel)}</span>
         </div>
-        <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" role="img" aria-label="${escapeText(
+        <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" data-plot-left="${padLeft}" data-plot-right="${width - padRight}" data-plot-top="${padTop}" data-plot-bottom="${height - padBottom}" role="img" aria-label="${escapeText(
           ariaLabel
         )}">
           <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
@@ -905,7 +1538,7 @@ const renderChart = (rows, options = {}) => {
             .map(
               ({ y, value }) => `
               <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="#dbe4f5" stroke-width="1"></line>
-              <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatMetric(
+              <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatYAxisMetric(
                 value
               )}</text>
             `
@@ -915,7 +1548,7 @@ const renderChart = (rows, options = {}) => {
           ${xTicks
             .map(
               ({ label, idx }) => `
-              <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="11" fill="#6b7280">${escapeText(
+              <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="${xTickFontSize}" fill="#6b7280">${escapeText(
                 label
               )}</text>
             `
@@ -923,6 +1556,8 @@ const renderChart = (rows, options = {}) => {
             .join("")}
           <path d="${energyPath}" fill="none" stroke="${energyColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
           ${energyDots}
+          <line class="meter-crosshair-line meter-crosshair-v" x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - padBottom}"></line>
+          <line class="meter-crosshair-line meter-crosshair-h" x1="${padLeft}" y1="${padTop}" x2="${width - padRight}" y2="${padTop}"></line>
         </svg>
         <div class="meter-chart-summary">
           <span>${escapeText(totalLabel)}: <strong>${formatMetric(totalEnergy)}</strong></span>
@@ -930,6 +1565,7 @@ const renderChart = (rows, options = {}) => {
         </div>
       </div>
     `;
+    bindChartPointTooltip();
     return;
   }
 
@@ -944,16 +1580,20 @@ const renderChart = (rows, options = {}) => {
     return;
   }
 
+  const forceFullDayXAxis = options.forceFullDayXAxis === true;
   const labels = rows.map((row) => row.label);
-  const solarSeries = rows.map((row) => row.solarIn);
-  const selfUseSeries = rows.map((row) => row.selfUse);
-  const allValues = [...solarSeries, ...selfUseSeries];
+  const solarSeries = rows.map((row) => parseFiniteNumber(row?.solarIn));
+  const selfUseSeries = rows.map((row) => parseFiniteNumber(row?.selfUse));
+  const allValues = collectFiniteNumbers([...solarSeries, ...selfUseSeries]);
+  if (!allValues.length) {
+    chartBox.textContent = "ไม่พบข้อมูลในช่วงที่เลือก";
+    return;
+  }
   let min = Math.min(...allValues);
   let max = Math.max(...allValues);
-  if (min === max) {
-    min -= 1;
-    max += 1;
-  }
+  const yAxis = buildIntegerYAxis(min, max, 4);
+  min = yAxis.min;
+  max = yAxis.max;
 
   const width = 920;
   const height = 300;
@@ -967,25 +1607,37 @@ const renderChart = (rows, options = {}) => {
     padLeft + (labels.length <= 1 ? innerWidth / 2 : (index * innerWidth) / (labels.length - 1));
   const yAt = (value) => padTop + ((max - value) * innerHeight) / (max - min);
 
-  const ticks = 4;
-  const yTicks = Array.from({ length: ticks + 1 }, (_, idx) => {
-    const ratio = idx / ticks;
-    const value = max - (max - min) * ratio;
-    const y = padTop + ratio * innerHeight;
-    return { y, value };
-  });
+  const yTicks = yAxis.values.map((value) => ({
+    value,
+    y: yAt(value)
+  }));
   const maxXLabels = 7;
   const xStep = Math.max(1, Math.ceil(labels.length / maxXLabels));
-  const xTicks = labels
-    .map((label, idx) => ({ label, idx }))
-    .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+  const xTicks = forceFullDayXAxis
+    ? labels.map((label, idx) => ({ label, idx }))
+    : labels
+      .map((label, idx) => ({ label, idx }))
+      .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+  const xTickFontSize = forceFullDayXAxis ? 9 : 11;
 
   const solarColor = "#f59e0b";
   const selfUseColor = "#0f63d4";
   const solarPath = buildPath(solarSeries, xAt, yAt);
   const selfUsePath = buildPath(selfUseSeries, xAt, yAt);
-  const solarDots = buildDots(solarSeries, xAt, yAt, solarColor);
-  const selfUseDots = buildDots(selfUseSeries, xAt, yAt, selfUseColor);
+  const solarDots = buildDots(
+    solarSeries,
+    xAt,
+    yAt,
+    solarColor,
+    (value, idx) => `เวลา ${labels[idx]} | โซลาร์ผลิต ${formatMetric(value)} kW`
+  );
+  const selfUseDots = buildDots(
+    selfUseSeries,
+    xAt,
+    yAt,
+    selfUseColor,
+    (value, idx) => `เวลา ${labels[idx]} | ใช้ไฟจากการไฟฟ้า ${formatMetric(value)} kW`
+  );
 
   chartBox.innerHTML = `
     <div class="meter-chart">
@@ -993,13 +1645,13 @@ const renderChart = (rows, options = {}) => {
         <span><i style="background:${solarColor}"></i>โซลาร์ผลิต (kW)</span>
         <span><i style="background:${selfUseColor}"></i>ใช้ไฟจากการไฟฟ้า (kW)</span>
       </div>
-      <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" role="img" aria-label="กราฟโซลาร์ผลิตและใช้ไฟจากการไฟฟ้า">
+      <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" data-plot-left="${padLeft}" data-plot-right="${width - padRight}" data-plot-top="${padTop}" data-plot-bottom="${height - padBottom}" role="img" aria-label="กราฟโซลาร์ผลิตและใช้ไฟจากการไฟฟ้า">
         <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
         ${yTicks
           .map(
             ({ y, value }) => `
             <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="#dbe4f5" stroke-width="1"></line>
-            <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatMetric(
+            <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatYAxisMetric(
               value
             )}</text>
           `
@@ -1009,7 +1661,7 @@ const renderChart = (rows, options = {}) => {
         ${xTicks
           .map(
             ({ label, idx }) => `
-            <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="11" fill="#6b7280">${escapeText(
+            <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="${xTickFontSize}" fill="#6b7280">${escapeText(
               label
             )}</text>
           `
@@ -1019,13 +1671,12 @@ const renderChart = (rows, options = {}) => {
         <path d="${selfUsePath}" fill="none" stroke="${selfUseColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
         ${solarDots}
         ${selfUseDots}
+        <line class="meter-crosshair-line meter-crosshair-v" x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - padBottom}"></line>
+        <line class="meter-crosshair-line meter-crosshair-h" x1="${padLeft}" y1="${padTop}" x2="${width - padRight}" y2="${padTop}"></line>
       </svg>
-      <div class="meter-chart-summary">
-        <span>โซลาร์ผลิตล่าสุด: <strong>${formatMetric(solarSeries[solarSeries.length - 1])}</strong></span>
-        <span>ใช้ไฟจากการไฟฟ้าล่าสุด: <strong>${formatMetric(selfUseSeries[selfUseSeries.length - 1])}</strong></span>
-      </div>
     </div>
   `;
+  bindChartPointTooltip();
 };
 
 const requestRowsFromCandidates = async (queryCandidates, extractor) => {
@@ -1045,7 +1696,17 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         hadOkResponse = true;
         const payload = await response.json();
-        const rows = typeof extractor === "function" ? extractor(payload) : [];
+        const params = new URLSearchParams(query);
+        const scopedDeviceId = parseLoosePositiveId(
+          params.get("device_id") || params.get("meter_id")
+        );
+        const rows = typeof extractor === "function"
+          ? extractor(payload, {
+              query,
+              url,
+              scopedDeviceId
+            })
+          : [];
         if (rows.length) return rows;
       } catch (error) {
         errors.push(`${url}: ${error?.message || "unknown error"}`);
@@ -1060,6 +1721,20 @@ const buildMonthQueryCandidates = (year, month) => {
   const monthToken = `${year}-${pad2(month)}`;
   const queryCandidates = [];
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
+    if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&device_id=${encodeURIComponent(selectedMeterId)}&period=month&month=${monthToken}`
+      );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&device_id=${encodeURIComponent(
+          selectedMeterId
+        )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
+      );
+    }
     queryCandidates.push(
       `site_id=${encodeURIComponent(selectedSiteId)}&period=month&month=${monthToken}`
     );
@@ -1067,6 +1742,13 @@ const buildMonthQueryCandidates = (year, month) => {
       `site_id=${encodeURIComponent(
         selectedSiteId
       )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
+    );
+  }
+  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+    queryCandidates.push(
+      `period=month&name=${encodeURIComponent(
+        selectedEnergyName
+      )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
   }
   queryCandidates.push(
@@ -1085,9 +1767,6 @@ const fetchMonthEnergyRows = async (year, month) => {
 const buildDayQueryCandidates = (dateKey, year, month, day) => {
   const queryCandidates = [];
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
-    queryCandidates.push(
-      `site_id=${encodeURIComponent(selectedSiteId)}&period=day&date=${dateKey}`
-    );
     if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
       queryCandidates.push(
         `site_id=${encodeURIComponent(
@@ -1095,10 +1774,27 @@ const buildDayQueryCandidates = (dateKey, year, month, day) => {
         )}&period=day&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
       );
     }
+    queryCandidates.push(
+      `site_id=${encodeURIComponent(selectedSiteId)}&period=day&date=${dateKey}`
+    );
+  }
+  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+    queryCandidates.push(
+      `period=day&name=${encodeURIComponent(
+        selectedEnergyName
+      )}&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
+    );
   }
   queryCandidates.push(
     `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
   );
+  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+    queryCandidates.push(
+      `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
+        month
+      )}&day=${encodeURIComponent(day)}&device_id=${encodeURIComponent(selectedMeterId)}`
+    );
+  }
   queryCandidates.push(
     `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
       month
@@ -1339,6 +2035,21 @@ const loadChartBySelection = async () => {
       }
     }
 
+    if (selectedPeriod === "day" && rows.length) {
+      const dayKey = `${year}-${pad2(month)}-${pad2(day)}`;
+      const isDayEnergyRows =
+        chartOptions.mode === "day-energy" ||
+        rows.some((row) => Number.isFinite(Number(row?.energyKwh)));
+      rows = normalizeRowsForFullDayXAxis(rows, {
+        mode: isDayEnergyRows ? "energy" : "series",
+        dateKey: dayKey
+      });
+      chartOptions = {
+        ...chartOptions,
+        forceFullDayXAxis: true
+      };
+    }
+
     renderChart(rows, chartOptions);
   } catch (error) {
     chartBox.textContent = `โหลดกราฟไม่สำเร็จ (${error.message})`;
@@ -1378,20 +2089,8 @@ const initDateControls = () => {
 
 if (!meterData) {
   meterNameEl.textContent = "ไม่พบข้อมูลมิเตอร์";
-  chipStatus.textContent = "N/A";
-  chipSn.textContent = "-";
-  plantRef.textContent = plantData?.name || fallbackPlantName;
-  metaPlant.textContent = plantData?.name || fallbackPlantName;
-  metaSn.textContent = "-";
-  metaStatus.textContent = "-";
 } else {
   meterNameEl.textContent = meterData.name || "Meter";
-  chipStatus.textContent = meterData.status || "unknown";
-  chipSn.textContent = meterData.sn || "-";
-  plantRef.textContent = plantData?.name || fallbackPlantName;
-  metaPlant.textContent = plantData?.name || fallbackPlantName;
-  metaSn.textContent = meterData.sn || "-";
-  metaStatus.textContent = meterData.status || "-";
 }
 
 initDateControls();
@@ -1408,11 +2107,13 @@ periodButtons.forEach((button) => {
 });
 yearSelect?.addEventListener("change", () => {
   updateDayOptions();
+  loadChartBySelection();
 });
 monthSelect?.addEventListener("change", () => {
   updateDayOptions();
+  loadChartBySelection();
 });
-chartLoadBtn?.addEventListener("click", () => {
+daySelect?.addEventListener("change", () => {
   loadChartBySelection();
 });
 
