@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/index.js",
     "lint": "eslint .",
-    "add-user": "node src/scripts/add-user.js"
+    "add-user": "node src/scripts/add-user.js",
+    "vercel:dev": "npx vercel dev",
+    "deploy:vercel": "npx vercel --prod"
   },
   "keywords": [],
   "author": "",

@@ -976,7 +976,7 @@ const serveStaticFile = async (res, pathname) => {
   res.end(data);
 };
 
-const server = createServer(async (req, res) => {
+export const handleRequest = async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const method = String(req.method || "GET").toUpperCase();
@@ -1091,9 +1091,25 @@ const server = createServer(async (req, res) => {
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("เกิดข้อผิดพลาดภายในระบบ");
   }
-});
+};
 
-const port = process.env.PORT || 3000;
-server.listen(port, () => {
-  console.log(`PPAde พร้อมใช้งานที่ http://localhost:${port}`);
-});
+export const createHttpServer = () => createServer((req, res) => void handleRequest(req, res));
+
+const isMainModule = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return path.resolve(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMainModule) {
+  const port = process.env.PORT || 3000;
+  createHttpServer().listen(port, () => {
+    console.log(`PPAde พร้อมใช้งานที่ http://localhost:${port}`);
+  });
+}
+
+export default handleRequest;

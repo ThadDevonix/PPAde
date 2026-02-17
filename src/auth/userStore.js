@@ -4,8 +4,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(__dirname, "..", "data");
-export const usersFilePath = path.join(dataDir, "users.json");
+const configuredUsersFilePath = String(process.env.AUTH_USERS_FILE_PATH || "").trim();
+const isVercelRuntime = process.env.VERCEL === "1";
+const defaultUsersDataDir = isVercelRuntime ? "/tmp/ppade-data" : path.join(__dirname, "..", "data");
+const usersDataDir = configuredUsersFilePath
+  ? path.dirname(configuredUsersFilePath)
+  : defaultUsersDataDir;
+export const usersFilePath = configuredUsersFilePath || path.join(usersDataDir, "users.json");
 
 let writeQueue = Promise.resolve();
 
@@ -15,7 +20,7 @@ export const normalizeEmail = (email) =>
     .toLowerCase();
 
 const ensureUsersFile = async () => {
-  await mkdir(dataDir, { recursive: true });
+  await mkdir(usersDataDir, { recursive: true });
   try {
     await access(usersFilePath);
   } catch {

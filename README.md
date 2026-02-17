@@ -12,6 +12,36 @@ npm start
 `npm start` spins up a tiny static server on http://localhost:3000 and serves `home/index.html`.
 Open that URL to interact with the plan-selection UI for setting up meter projects.
 
+## Deploy on Vercel
+
+This repo is configured for Vercel using:
+
+- `api/index.js` as the serverless entrypoint
+- `vercel.json` rewrite so every route is handled by the same Node handler
+- `home/**` bundled into the function so static pages/assets still work
+
+Deploy:
+
+```bash
+vercel
+vercel --prod
+```
+
+Recommended environment variables on Vercel:
+
+```bash
+UPSTREAM_AUTH_TOKEN=...
+AUTH_SESSION_HOURS=8
+AUTH_RESET_MINUTES=15
+RESEND_API_KEY=...
+AUTH_MAIL_FROM=no-reply@your-domain.com
+```
+
+Notes:
+
+- Local fallback user storage uses `/tmp/ppade-data/users.json` on Vercel (ephemeral, not persistent).
+- For production, prefer upstream auth/users APIs as the source of truth.
+
 ## Authentication (Login only)
 
 This project now uses session-based authentication.
