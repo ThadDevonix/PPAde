@@ -128,6 +128,25 @@ const canCurrentUserChangePassword = (targetUserId) => {
   return isSameEntityId(currentUser?.id, targetUserId);
 };
 
+const syncRoleFieldPermission = () => {
+  if (!newUserRoleInput) return;
+  const superadminOption = Array.from(newUserRoleInput.options).find(
+    (option) => normalizeRole(option.value) === "superadmin"
+  );
+  if (!superadminOption) return;
+
+  const currentRole = normalizeRole(currentUser?.role);
+  const selectedRole = normalizeRole(newUserRoleInput.value);
+  const allowSuperadminSelection =
+    currentRole === "superadmin" || (isEditMode() && selectedRole === "superadmin");
+
+  superadminOption.hidden = !allowSuperadminSelection;
+  superadminOption.disabled = !allowSuperadminSelection;
+  if (!allowSuperadminSelection && selectedRole === "superadmin") {
+    newUserRoleInput.value = "admin";
+  }
+};
+
 const syncPasswordFieldState = () => {
   if (!newUserPasswordInput || !newUserPasswordLabel) return;
   if (userFormMode !== "edit") {
@@ -160,6 +179,7 @@ const setUserFormMode = (mode, user = null) => {
   if (createSubmitBtn) {
     createSubmitBtn.textContent = userFormMode === "edit" ? "บันทึกการแก้ไข" : "บันทึก";
   }
+  syncRoleFieldPermission();
   syncPasswordFieldState();
   if (userEditIdEl) {
     const hasId = editingUserId !== null && editingUserId !== undefined && editingUserId !== "";
@@ -505,6 +525,7 @@ const ensureAuthenticated = async () => {
     }
     currentUser = payload.user;
     setAuthUser(currentUser);
+    syncRoleFieldPermission();
     syncPasswordFieldState();
     return currentUser;
   } catch {
@@ -656,6 +677,7 @@ const renderCreateSiteOptions = () => {
 
 const syncCreateSiteFieldState = () => {
   if (!newUserRoleInput || !newUserSitesField) return;
+  syncRoleFieldPermission();
   const role = normalizeAllowedRole(newUserRoleInput.value || "admin", "admin");
   if (newUserSitesHint) {
     newUserSitesHint.textContent = "";
@@ -747,6 +769,7 @@ const openEditModal = async (targetUser) => {
   if (newUserRoleInput) {
     newUserRoleInput.value = normalizeAllowedRole(targetUser.role, "admin");
   }
+  syncRoleFieldPermission();
   if (newUserActiveInput) {
     newUserActiveInput.value = targetUser.isActive ? "1" : "0";
   }
@@ -825,6 +848,10 @@ const submitUserForm = async () => {
   }
   if (!role) {
     setMessage("Role ต้องเป็น admin หรือ superadmin เท่านั้น", "error");
+    return;
+  }
+  if (!wasEditMode && role === "superadmin" && normalizeRole(currentUser?.role) !== "superadmin") {
+    setMessage("admin ไม่สามารถสร้างบัญชี superadmin ได้", "error");
     return;
   }
   createSubmitBtn.disabled = true;

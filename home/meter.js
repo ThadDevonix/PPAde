@@ -48,6 +48,20 @@ const thaiMonthShort = [
   "พ.ย.",
   "ธ.ค."
 ];
+const thaiMonthFull = [
+  "มกราคม",
+  "กุมภาพันธ์",
+  "มีนาคม",
+  "เมษายน",
+  "พฤษภาคม",
+  "มิถุนายน",
+  "กรกฎาคม",
+  "สิงหาคม",
+  "กันยายน",
+  "ตุลาคม",
+  "พฤศจิกายน",
+  "ธันวาคม"
+];
 
 let selectedPeriod = "day";
 const readStrictPositiveId = (value) => {
@@ -470,8 +484,7 @@ const rowsContainExplicitDeviceId = (rows) =>
   });
 const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
   const strictDeviceId = Boolean(options.strictDeviceId);
-  if (!rowMatchesSelectedSite(row)) return false;
-
+  const ignoreMeterIdentity = options.ignoreMeterIdentity === true;
   const rowDeviceId = readRowDeviceId(row);
   const rowDeviceName = normalizeIdentityToken(
     readLooseValue(row, ["device_name", "deviceName", "meter_name", "meterName", "name"])
@@ -482,25 +495,21 @@ const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
       ["device_sn", "deviceSn", "sn", "serial", "modbus_address_in", "modbusAddressIn"]
     )
   );
-
-  if (
-    Number.isFinite(wantedDeviceId) &&
-    wantedDeviceId > 0 &&
-    Number.isFinite(rowDeviceId)
-  ) {
-    return rowDeviceId === wantedDeviceId;
-  }
-
+  if (!rowMatchesSelectedSite(row)) return false;
   if (Number.isFinite(wantedDeviceId) && wantedDeviceId > 0) {
-    if (strictDeviceId) return false;
+    if (Number.isFinite(rowDeviceId)) return rowDeviceId === wantedDeviceId;
     if (row?.__queryDeviceScoped === true) {
       const scopedId = parseLoosePositiveId(row.__queryDeviceId);
       if (Number.isFinite(scopedId) && scopedId > 0) return scopedId === wantedDeviceId;
-      return true;
     }
+    if (strictDeviceId) return false;
+    if (ignoreMeterIdentity) return true;
     if (selectedMeterSnKey && rowDeviceSn) return rowDeviceSn === selectedMeterSnKey;
     if (selectedMeterNameKey && rowDeviceName) return rowDeviceName === selectedMeterNameKey;
-    return false;
+    return true;
+  }
+  if (ignoreMeterIdentity) {
+    return true;
   }
 
   if (selectedMeterNameKey && rowDeviceName) {
@@ -543,6 +552,70 @@ const resolveRowDateKey = (row) => {
     ])
   );
   return stamp ? formatDateKey(stamp, chartTimeZone) : "";
+};
+const resolveYearMonthIndexFromLabel = (value) => {
+  const text = readText(value);
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  const numericMatch = normalized.match(/(\d{1,2})/);
+  if (numericMatch) {
+    const month = Number(numericMatch[1]);
+    if (Number.isFinite(month) && month >= 1 && month <= 12) return month;
+  }
+  const fullIndex = thaiMonthFull.findIndex((label) => normalized.includes(label.toLowerCase()));
+  if (fullIndex >= 0) return fullIndex + 1;
+  const shortIndex = thaiMonthShort.findIndex((label) => normalized.includes(label.toLowerCase()));
+  if (shortIndex >= 0) return shortIndex + 1;
+  return null;
+};
+const resolveDayIndexFromLabel = (value) => {
+  const text = readText(value);
+  if (!text) return null;
+  const numericMatch = text.match(/(\d{1,2})/);
+  if (!numericMatch) return null;
+  const day = Number(numericMatch[1]);
+  return Number.isFinite(day) && day >= 1 && day <= 31 ? day : null;
+};
+const resolveRowDayForMonth = (row) => {
+  const direct = Number(
+    readLooseValue(row, ["day", "day_no", "dayNo", "day_of_month", "dayOfMonth"])
+  );
+  if (Number.isFinite(direct) && direct >= 1 && direct <= 31) return Math.trunc(direct);
+  return resolveDayIndexFromLabel(
+    readLooseValue(row, ["label", "day_label", "dayLabel"])
+  );
+};
+const resolveRowMonthForYear = (row) => {
+  const direct = Number(
+    readLooseValue(row, ["month", "month_no", "monthNo", "month_index", "monthIndex"])
+  );
+  if (Number.isFinite(direct) && direct >= 1 && direct <= 12) return Math.trunc(direct);
+  return resolveYearMonthIndexFromLabel(
+    readLooseValue(row, ["label", "month_label", "monthLabel"])
+  );
+};
+const resolveRowYearForYear = (row, fallbackYear = NaN) => {
+  const direct = Number(readLooseValue(row, ["year"]));
+  if (Number.isFinite(direct) && direct > 0) return Math.trunc(direct);
+  const explicitDateKey = normalizeDateKey(readLooseValue(row, ["date", "day"]));
+  const explicitParts = parseDateKeyParts(explicitDateKey);
+  if (Number.isFinite(explicitParts?.year)) return Number(explicitParts.year);
+  const stamp = toDate(
+    readLooseValue(row, [
+      "datetime",
+      "timestamp",
+      "ts",
+      "time",
+      "created_at",
+      "createdAt"
+    ])
+  );
+  const stampParts = getDatePartsInTimeZone(stamp, chartTimeZone);
+  if (Number.isFinite(stampParts?.year)) return Number(stampParts.year);
+  if (Number.isFinite(Number(fallbackYear)) && Number(fallbackYear) > 0) {
+    return Math.trunc(Number(fallbackYear));
+  }
+  return NaN;
 };
 const formatAxisLabel = ({ dateKey, stampMs }, period, idx) => {
   const keyParts = parseDateKeyParts(dateKey);
@@ -721,7 +794,10 @@ const extractEnergyRows = (payload, context = {}) => {
   }
   return rows;
 };
-const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
+const normalizeMonthlyEnergyRows = (
+  rows,
+  { year, month, deviceId, ignoreMeterIdentity = false } = {}
+) => {
   const targetYear = Number(year);
   const targetMonth = Number(month);
   const wantedDeviceId = Number(deviceId);
@@ -734,6 +810,21 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
   const normalizeWithFilterMode = (useStrictDeviceId) => {
     const normalized = sourceRows
       .map((row, idx) => {
+        const dayIndex = resolveRowDayForMonth(row);
+        const resolvedDateKey = (() => {
+          const direct = resolveRowDateKey(row);
+          if (direct) return direct;
+          if (
+            Number.isFinite(targetYear) &&
+            Number.isFinite(targetMonth) &&
+            Number.isFinite(dayIndex) &&
+            dayIndex >= 1 &&
+            dayIndex <= 31
+          ) {
+            return `${targetYear}-${pad2(targetMonth)}-${pad2(dayIndex)}`;
+          }
+          return "";
+        })();
         const directStamp = toDate(
           readLooseValue(row, [
             "created_at",
@@ -744,18 +835,38 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
             "time"
           ])
         );
-        const dateKey = resolveRowDateKey(row);
-        const fallbackDate = dateKey ? toDate(`${dateKey}T00:00:00`) : null;
+        const fallbackDate = resolvedDateKey
+          ? toDate(`${resolvedDateKey}T00:00:00`)
+          : null;
         const stamp = directStamp || fallbackDate;
         const energyTotal = readEnergyTotalValue(row);
         const stampParts = getDatePartsInTimeZone(stamp, chartTimeZone);
+        const dateParts = parseDateKeyParts(resolvedDateKey);
+        const resolvedYear = Number.isFinite(stampParts?.year)
+          ? Number(stampParts.year)
+          : Number(dateParts?.year);
+        const resolvedMonth = Number.isFinite(stampParts?.month)
+          ? Number(stampParts.month)
+          : Number(dateParts?.month);
         if (!stamp || energyTotal === null) return null;
-        if (!stampParts) return null;
-        if (Number.isFinite(targetYear) && stampParts.year !== targetYear) return null;
-        if (Number.isFinite(targetMonth) && stampParts.month !== targetMonth) return null;
+        if (
+          Number.isFinite(targetYear) &&
+          Number.isFinite(resolvedYear) &&
+          resolvedYear !== targetYear
+        ) {
+          return null;
+        }
+        if (
+          Number.isFinite(targetMonth) &&
+          Number.isFinite(resolvedMonth) &&
+          resolvedMonth !== targetMonth
+        ) {
+          return null;
+        }
         if (
           !rowMatchesSelectedMeter(row, wantedDeviceId, {
-            strictDeviceId: useStrictDeviceId
+            strictDeviceId: useStrictDeviceId,
+            ignoreMeterIdentity
           })
         ) {
           return null;
@@ -763,7 +874,7 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
         return {
           idx,
           stampMs: stamp.getTime(),
-          dateKey: formatDateKey(stamp, chartTimeZone),
+          dateKey: resolvedDateKey || formatDateKey(stamp, chartTimeZone),
           energyTotal
         };
       })
@@ -778,13 +889,15 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
           dateKey: row.dateKey,
           stampMs: row.stampMs,
           min: row.energyTotal,
-          max: row.energyTotal
+          max: row.energyTotal,
+          count: 1
         });
         return;
       }
       current.stampMs = Math.max(current.stampMs, row.stampMs);
       current.min = Math.min(current.min, row.energyTotal);
       current.max = Math.max(current.max, row.energyTotal);
+      current.count += 1;
     });
 
     return Array.from(perDay.values())
@@ -798,7 +911,9 @@ const normalizeMonthlyEnergyRows = (rows, { year, month, deviceId } = {}) => {
           "month",
           idx
         ),
-        energyKwh: Math.max(0, row.max - row.min)
+        energyKwh: row.count > 1
+          ? Math.max(0, row.max - row.min)
+          : Math.max(0, row.max)
       }));
   };
 
@@ -878,7 +993,14 @@ const normalizeDailyEnergyRows = (rows, { dateKey, deviceId } = {}) => {
 };
 const normalizeChartRows = (
   rows,
-  { period = "month", limit = 120, deviceId = selectedMeterId } = {}
+  {
+    period = "month",
+    limit = 120,
+    deviceId = selectedMeterId,
+    ignoreMeterIdentity = false,
+    fallbackYear = NaN,
+    fallbackMonth = NaN
+  } = {}
 ) => {
   const wantedDeviceId = Number(deviceId);
   const sourceRows = Array.isArray(rows) ? rows : [];
@@ -892,12 +1014,44 @@ const normalizeChartRows = (
       .map((row, idx) => {
         if (
           !rowMatchesSelectedMeter(row, wantedDeviceId, {
-            strictDeviceId: useStrictDeviceId
+            strictDeviceId: useStrictDeviceId,
+            ignoreMeterIdentity
           })
         ) {
           return null;
         }
-        const stamp = toDate(
+        let dateKey = resolveRowDateKey(row);
+        if (!dateKey && period === "month") {
+          const dayValue = resolveRowDayForMonth(row);
+          if (
+            Number.isFinite(dayValue) &&
+            dayValue >= 1 &&
+            dayValue <= 31 &&
+            Number.isFinite(Number(fallbackYear)) &&
+            Number(fallbackYear) > 0 &&
+            Number.isFinite(Number(fallbackMonth)) &&
+            Number(fallbackMonth) >= 1 &&
+            Number(fallbackMonth) <= 12
+          ) {
+            dateKey = `${Math.trunc(Number(fallbackYear))}-${pad2(
+              Math.trunc(Number(fallbackMonth))
+            )}-${pad2(dayValue)}`;
+          }
+        }
+        if (!dateKey && period === "year") {
+          const monthValue = resolveRowMonthForYear(row);
+          const yearValue = resolveRowYearForYear(row, fallbackYear);
+          if (
+            Number.isFinite(monthValue) &&
+            monthValue >= 1 &&
+            monthValue <= 12 &&
+            Number.isFinite(yearValue) &&
+            yearValue > 0
+          ) {
+            dateKey = `${yearValue}-${pad2(monthValue)}-01`;
+          }
+        }
+        const directStamp = toDate(
           readLooseValue(row, [
             "datetime",
             "timestamp",
@@ -907,7 +1061,7 @@ const normalizeChartRows = (
             "createdAt"
           ])
         );
-        const dateKey = resolveRowDateKey(row);
+        const stamp = directStamp || (dateKey ? toDate(`${dateKey}T00:00:00`) : null);
         return {
           idx,
           stampMs: stamp ? stamp.getTime() : null,
@@ -989,19 +1143,27 @@ const aggregateYearSeriesRowsByMonth = (rows, { year } = {}) => {
     current.selfUse += parseNumber(row.selfUse);
     monthly.set(monthKey, current);
   });
-  return Array.from(monthly.values())
-    .sort((a, b) => (a.year === b.year ? a.month - b.month : a.year - b.year))
-    .map((row, idx) => {
-      const stamp = toDate(`${row.year}-${pad2(row.month)}-01T00:00:00`);
-      return {
-        idx,
-        stampMs: stamp ? stamp.getTime() : null,
-        dateKey: `${row.year}-${pad2(row.month)}-01`,
-        label: thaiMonthShort[row.month - 1] || `เดือน ${row.month}`,
-        solarIn: row.solarIn,
-        selfUse: row.selfUse
-      };
-    });
+  const firstRow = Array.from(monthly.values())[0];
+  const resolvedYear =
+    Number.isFinite(targetYear) && targetYear > 0
+      ? targetYear
+      : Number(firstRow?.year) > 0
+        ? Number(firstRow.year)
+        : new Date().getFullYear();
+  return Array.from({ length: 12 }, (_, idx) => {
+    const month = idx + 1;
+    const monthKey = `${resolvedYear}-${pad2(month)}`;
+    const row = monthly.get(monthKey) || null;
+    const stamp = toDate(`${resolvedYear}-${pad2(month)}-01T00:00:00`);
+    return {
+      idx,
+      stampMs: stamp ? stamp.getTime() : null,
+      dateKey: `${resolvedYear}-${pad2(month)}-01`,
+      label: thaiMonthShort[month - 1] || `เดือน ${month}`,
+      solarIn: row ? row.solarIn : null,
+      selfUse: row ? row.selfUse : null
+    };
+  });
 };
 const fullDayHourLabels = Array.from({ length: 24 }, (_, hour) => `${pad2(hour)}:00`);
 const parseHourFromValue = (value) => {
@@ -1169,25 +1331,143 @@ const normalizeRowsForFullDayXAxis = (rows, options = {}) => {
     };
   });
 };
+const normalizeRowsForFullMonthXAxis = (rows, options = {}) => {
+  const mode = options.mode === "energy" ? "energy" : "series";
+  const targetYear = Number(options.year);
+  const targetMonth = Number(options.month);
+  if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth)) {
+    return Array.isArray(rows) ? rows : [];
+  }
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+  if (!Number.isFinite(daysInMonth) || daysInMonth < 1) {
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const byDay = new Map();
+  sourceRows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const keyParts = parseDateKeyParts(row.dateKey);
+    const stampParts = keyParts
+      ? null
+      : getDatePartsInTimeZone(row.stampMs || row.dateKey, chartTimeZone);
+    const parts = keyParts || stampParts;
+    if (!parts) return;
+    if (parts.year !== targetYear || parts.month !== targetMonth) return;
+    const day = Number(parts.day);
+    if (!Number.isFinite(day) || day < 1 || day > daysInMonth) return;
+    const current = byDay.get(day);
+    if (!current) {
+      byDay.set(day, row);
+      return;
+    }
+    const left = Number(current?.stampMs);
+    const right = Number(row?.stampMs);
+    if (Number.isFinite(right) && (!Number.isFinite(left) || right >= left)) {
+      byDay.set(day, row);
+    }
+  });
+
+  return Array.from({ length: daysInMonth }, (_, idx) => {
+    const day = idx + 1;
+    const dateKey = `${targetYear}-${pad2(targetMonth)}-${pad2(day)}`;
+    const fallbackStamp = toDate(`${dateKey}T00:00:00`);
+    const row = byDay.get(day);
+    const rawStamp = Number(row?.stampMs);
+    const stampMs =
+      Number.isFinite(rawStamp) && rawStamp > 0
+        ? rawStamp
+        : fallbackStamp
+          ? fallbackStamp.getTime()
+          : null;
+    if (mode === "energy") {
+      const energyValue = parseFiniteNumber(row?.energyKwh);
+      return {
+        idx,
+        stampMs,
+        dateKey,
+        label: String(day),
+        energyKwh: Number.isFinite(energyValue) ? Math.max(0, energyValue) : null
+      };
+    }
+    const solarValue = parseFiniteNumber(row?.solarIn);
+    const selfUseValue = parseFiniteNumber(row?.selfUse);
+    return {
+      idx,
+      stampMs,
+      dateKey,
+      label: String(day),
+      solarIn: Number.isFinite(solarValue) ? solarValue : null,
+      selfUse: Number.isFinite(selfUseValue) ? selfUseValue : null
+    };
+  });
+};
 const escapeText = (value) =>
   String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-const buildPath = (series, xAt, yAt) => {
-  let path = "";
-  let inSegment = false;
+const buildSmoothSegmentPath = (points, tension = 0.18) => {
+  if (!Array.isArray(points) || !points.length) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let idx = 1; idx < points.length; idx += 1) {
+    const prev = points[idx - 1];
+    const current = points[idx];
+    const prevAnchor = points[idx - 2] || prev;
+    const nextAnchor = points[idx + 1] || current;
+    const cp1x = prev.x + (current.x - prevAnchor.x) * tension;
+    const cp1y = prev.y + (current.y - prevAnchor.y) * tension;
+    const cp2x = current.x - (nextAnchor.x - prev.x) * tension;
+    const cp2y = current.y - (nextAnchor.y - prev.y) * tension;
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${current.x} ${current.y}`;
+  }
+  return path;
+};
+const buildSeriesSegments = (series, xAt, yAt) => {
+  const segments = [];
+  let currentSegment = [];
   (Array.isArray(series) ? series : []).forEach((value, idx) => {
     const numericValue = parseFiniteNumber(value);
     if (!Number.isFinite(numericValue)) {
-      inSegment = false;
+      if (currentSegment.length) segments.push(currentSegment);
+      currentSegment = [];
       return;
     }
-    path += `${inSegment ? "L" : "M"} ${xAt(idx)} ${yAt(numericValue)} `;
-    inSegment = true;
+    currentSegment.push({
+      x: xAt(idx),
+      y: yAt(numericValue)
+    });
   });
-  return path.trim();
+  if (currentSegment.length) segments.push(currentSegment);
+  return segments;
+};
+const buildPath = (series, xAt, yAt) => {
+  return buildSeriesSegments(series, xAt, yAt)
+    .map((segment) => buildSmoothSegmentPath(segment))
+    .join(" ")
+    .trim();
+};
+const buildAreaPath = (series, xAt, yAt, baselineY) => {
+  const baseline = Number(baselineY);
+  if (!Number.isFinite(baseline)) return "";
+  return buildSeriesSegments(series, xAt, yAt)
+    .map((segment) => {
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      if (!first || !last) return "";
+      const smoothLine = buildSmoothSegmentPath(segment);
+      if (!smoothLine) return "";
+      return `${smoothLine} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
+    })
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 };
 const buildDots = (series, xAt, yAt, color, tooltipBuilder = null) =>
   series
@@ -1552,6 +1832,8 @@ const renderChart = (rows, options = {}) => {
 
     const energyColor = "#0f63d4";
     const energyPath = buildPath(energySeries, xAt, yAt);
+    const baselineY = height - padBottom;
+    const energyAreaPath = buildAreaPath(energySeries, xAt, yAt, baselineY);
     const energyDots = buildDots(
       energySeries,
       xAt,
@@ -1590,6 +1872,15 @@ const renderChart = (rows, options = {}) => {
             `
             )
             .join("")}
+          <defs>
+            <linearGradient id="energy-area-gradient" x1="0" y1="${padTop}" x2="0" y2="${baselineY}" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="${energyColor}" stop-opacity="0.12"></stop>
+              <stop offset="100%" stop-color="${energyColor}" stop-opacity="0.01"></stop>
+            </linearGradient>
+          </defs>
+          ${energyAreaPath
+            ? `<path d="${energyAreaPath}" fill="url(#energy-area-gradient)" stroke="none" pointer-events="none"></path>`
+            : ""}
           <path d="${energyPath}" fill="none" stroke="${energyColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
           ${energyDots}
           <line class="meter-crosshair-line meter-crosshair-v" x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - padBottom}"></line>
@@ -1660,6 +1951,9 @@ const renderChart = (rows, options = {}) => {
   const selfUseColor = "#0f63d4";
   const solarPath = buildPath(solarSeries, xAt, yAt);
   const selfUsePath = buildPath(selfUseSeries, xAt, yAt);
+  const baselineY = height - padBottom;
+  const solarAreaPath = buildAreaPath(solarSeries, xAt, yAt, baselineY);
+  const selfUseAreaPath = buildAreaPath(selfUseSeries, xAt, yAt, baselineY);
   const solarDots = buildDots(
     solarSeries,
     xAt,
@@ -1703,6 +1997,22 @@ const renderChart = (rows, options = {}) => {
           `
           )
           .join("")}
+        <defs>
+          <linearGradient id="solar-area-gradient" x1="0" y1="${padTop}" x2="0" y2="${baselineY}" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="${solarColor}" stop-opacity="0.1"></stop>
+            <stop offset="100%" stop-color="${solarColor}" stop-opacity="0.01"></stop>
+          </linearGradient>
+          <linearGradient id="grid-area-gradient" x1="0" y1="${padTop}" x2="0" y2="${baselineY}" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="${selfUseColor}" stop-opacity="0.08"></stop>
+            <stop offset="100%" stop-color="${selfUseColor}" stop-opacity="0.01"></stop>
+          </linearGradient>
+        </defs>
+        ${solarAreaPath
+          ? `<path d="${solarAreaPath}" fill="url(#solar-area-gradient)" stroke="none" pointer-events="none"></path>`
+          : ""}
+        ${selfUseAreaPath
+          ? `<path d="${selfUseAreaPath}" fill="url(#grid-area-gradient)" stroke="none" pointer-events="none"></path>`
+          : ""}
         <path d="${solarPath}" fill="none" stroke="${solarColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
         <path d="${selfUsePath}" fill="none" stroke="${selfUseColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
         ${solarDots}
@@ -1719,6 +2029,7 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
   const uniqueQueries = [...new Set((Array.isArray(queryCandidates) ? queryCandidates : []).filter(Boolean))];
   const errors = [];
   let hadOkResponse = false;
+  let scopedRowsWithoutExplicitDevice = [];
   for (let b = 0; b < energyApiCandidates.length; b += 1) {
     const base = energyApiCandidates[b];
     for (let i = 0; i < uniqueQueries.length; i += 1) {
@@ -1729,7 +2040,12 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
           method: "GET",
           credentials: "same-origin"
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new Error(`HTTP 429 (rate limited): ${url}`);
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         hadOkResponse = true;
         const payload = await response.json();
         const params = new URLSearchParams(query);
@@ -1743,21 +2059,72 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
               scopedDeviceId
             })
           : [];
-        if (rows.length) return rows;
+        if (rows.length) {
+          const scopedByDevice = Number.isFinite(scopedDeviceId) && scopedDeviceId > 0;
+          if (scopedByDevice && !rowsContainExplicitDeviceId(rows)) {
+            if (!scopedRowsWithoutExplicitDevice.length) {
+              scopedRowsWithoutExplicitDevice = rows;
+            }
+            continue;
+          }
+          return rows;
+        }
       } catch (error) {
-        errors.push(`${url}: ${error?.message || "unknown error"}`);
+        const message = `${error?.message || "unknown error"}`;
+        errors.push(`${url}: ${message}`);
+        if (message.includes("HTTP 429")) {
+          throw new Error(errors.slice(0, 8).join(" | "));
+        }
       }
     }
   }
+  if (scopedRowsWithoutExplicitDevice.length) return scopedRowsWithoutExplicitDevice;
   if (hadOkResponse) return [];
   if (errors.length) throw new Error(errors.slice(0, 8).join(" | "));
   return [];
 };
+const buildYearQueryCandidates = (year) => {
+  const queryCandidates = [];
+  const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
+    if (hasMeterId) {
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&device_id=${encodeURIComponent(selectedMeterId)}&period=year&year=${encodeURIComponent(year)}`
+      );
+    } else {
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&period=year&year=${encodeURIComponent(year)}`
+      );
+    }
+    queryCandidates.push(
+      `site_id=${encodeURIComponent(selectedSiteId)}&period=year&year=${encodeURIComponent(year)}`
+    );
+  }
+  if (hasMeterId) {
+    queryCandidates.push(
+      `period=year&name=${encodeURIComponent(
+        selectedEnergyName
+      )}&year=${encodeURIComponent(year)}&device_id=${encodeURIComponent(selectedMeterId)}`
+    );
+  }
+  queryCandidates.push(
+    `period=year&name=${encodeURIComponent(selectedEnergyName)}&year=${encodeURIComponent(year)}`
+  );
+  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
+    queryCandidates.push(
+      `site_id=${encodeURIComponent(selectedSiteId)}&period=month&year=${encodeURIComponent(year)}`
+    );
+  }
+  return queryCandidates;
+};
 const buildMonthQueryCandidates = (year, month) => {
   const monthToken = `${year}-${pad2(month)}`;
   const queryCandidates = [];
+  const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
-    if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+    if (hasMeterId) {
       queryCandidates.push(
         `site_id=${encodeURIComponent(
           selectedSiteId
@@ -1780,7 +2147,7 @@ const buildMonthQueryCandidates = (year, month) => {
       )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
     );
   }
-  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+  if (hasMeterId) {
     queryCandidates.push(
       `period=month&name=${encodeURIComponent(
         selectedEnergyName
@@ -1800,37 +2167,67 @@ const fetchMonthEnergyRows = async (year, month) => {
   const queryCandidates = buildMonthQueryCandidates(year, month);
   return requestRowsFromCandidates(queryCandidates, extractEnergyRows);
 };
+const fetchYearRows = async (year) => {
+  const queryCandidates = buildYearQueryCandidates(year);
+  return requestRowsFromCandidates(queryCandidates, extractSeriesRows);
+};
+const buildPrimaryMonthQueryForYearFallback = (year, month) => {
+  const monthToken = `${year}-${pad2(month)}`;
+  const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
+    if (hasMeterId) {
+      return `site_id=${encodeURIComponent(
+        selectedSiteId
+      )}&device_id=${encodeURIComponent(selectedMeterId)}&period=month&month=${monthToken}`;
+    }
+    return `site_id=${encodeURIComponent(selectedSiteId)}&period=month&month=${monthToken}`;
+  }
+  if (hasMeterId) {
+    return `period=month&name=${encodeURIComponent(
+      selectedEnergyName
+    )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`;
+  }
+  return `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`;
+};
+const fetchYearRowsByMonthFallback = async (year) => {
+  const collected = [];
+  for (let month = 1; month <= 12; month += 1) {
+    const primaryQuery = buildPrimaryMonthQueryForYearFallback(year, month);
+    const rows = await requestRowsFromCandidates([primaryQuery], extractSeriesRows);
+    if (rows.length) collected.push(...rows);
+  }
+  return collected;
+};
 const buildDayQueryCandidates = (dateKey, year, month, day) => {
   const queryCandidates = [];
+  const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
-    if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+    if (hasMeterId) {
       queryCandidates.push(
         `site_id=${encodeURIComponent(
-          selectedSiteId
-        )}&period=day&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
+        selectedSiteId
+      )}&period=day&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
       );
     }
     queryCandidates.push(
       `site_id=${encodeURIComponent(selectedSiteId)}&period=day&date=${dateKey}`
     );
   }
-  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
+  if (hasMeterId) {
     queryCandidates.push(
       `period=day&name=${encodeURIComponent(
         selectedEnergyName
       )}&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
-  }
-  queryCandidates.push(
-    `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
-  );
-  if (Number.isFinite(selectedMeterId) && selectedMeterId > 0) {
     queryCandidates.push(
       `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
         month
       )}&day=${encodeURIComponent(day)}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
   }
+  queryCandidates.push(
+    `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
+  );
   queryCandidates.push(
     `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
       month
@@ -1905,29 +2302,31 @@ const loadChartBySelection = async () => {
   try {
     let rows = [];
     let chartOptions = {};
+    const useSiteMonthAggregate =
+      Number.isFinite(selectedSiteId) && selectedSiteId > 0;
+    const monthDeviceIdFilter = selectedMeterId;
 
     if (selectedPeriod === "year") {
-      const raw = [];
-      const monthErrors = [];
-      for (let m = 1; m <= 12; m += 1) {
-        try {
-          const monthRows = await fetchMonthRows(year, m);
-          raw.push(...monthRows);
-        } catch (error) {
-          monthErrors.push(`${year}-${pad2(m)}: ${error.message}`);
-        }
-      }
-      if (!raw.length && monthErrors.length) {
-        throw new Error(monthErrors.join(" | "));
+      let raw = await fetchYearRows(year);
+      if (!raw.length) {
+        raw = await fetchYearRowsByMonthFallback(year);
       }
       const yearlyRows = normalizeChartRows(raw, {
         period: "year",
         limit: 0,
-        deviceId: selectedMeterId
+        deviceId: monthDeviceIdFilter,
+        ignoreMeterIdentity: useSiteMonthAggregate,
+        fallbackYear: year
       });
       rows = aggregateYearSeriesRowsByMonth(yearlyRows, { year });
       if (!rows.length) {
         rows = yearlyRows;
+      }
+      if (rows.length) {
+        chartOptions = {
+          ...chartOptions,
+          forceFullDayXAxis: true
+        };
       }
     }
 
@@ -1935,23 +2334,40 @@ const loadChartBySelection = async () => {
       const targetYear = year;
       const targetMonth = month;
       const targetMonthLabel = `${targetYear}-${pad2(targetMonth)}`;
-      const raw = await fetchMonthEnergyRows(targetYear, targetMonth);
-      rows = normalizeMonthlyEnergyRows(raw, {
-        year: targetYear,
-        month: targetMonth,
-        deviceId: selectedMeterId
+      const rawSeries = await fetchMonthRows(targetYear, targetMonth).catch(
+        () => []
+      );
+      rows = normalizeChartRows(rawSeries, {
+        period: "month",
+        limit: 62,
+        deviceId: monthDeviceIdFilter,
+        ignoreMeterIdentity: useSiteMonthAggregate,
+        fallbackYear: targetYear,
+        fallbackMonth: targetMonth
       });
       let summaryLabel = `รวมเดือน ${targetMonthLabel}`;
       let ariaLabel = `กราฟพลังงานรายวันจาก energy_total ของเดือน ${targetMonthLabel}`;
       let emptyMessage = `ไม่พบข้อมูลเดือน ${targetMonthLabel}`;
-      let useMonthEnergyMode = true;
+      let useMonthEnergyMode = false;
       if (!rows.length) {
+        const raw = await fetchMonthEnergyRows(targetYear, targetMonth).catch(
+          () => []
+        );
+        rows = normalizeMonthlyEnergyRows(raw, {
+          year: targetYear,
+          month: targetMonth,
+          deviceId: monthDeviceIdFilter,
+          ignoreMeterIdentity: useSiteMonthAggregate
+        });
+        useMonthEnergyMode = rows.length > 0;
         if (raw.length) {
           const fallbackRows = normalizeMonthlyEnergyRows(raw, {
-            deviceId: selectedMeterId
+            deviceId: monthDeviceIdFilter,
+            ignoreMeterIdentity: useSiteMonthAggregate
           });
           if (fallbackRows.length) {
             rows = fallbackRows;
+            useMonthEnergyMode = true;
             const fallbackMonth = summarizeMonthFromRows(fallbackRows);
             if (fallbackMonth) {
               summaryLabel = `รวมเดือน ${fallbackMonth}`;
@@ -1969,19 +2385,6 @@ const loadChartBySelection = async () => {
           }
         }
         if (!rows.length) {
-          const rawSeries = await fetchMonthRows(targetYear, targetMonth).catch(
-            () => []
-          );
-          if (rawSeries.length) {
-            rows = normalizeChartRows(rawSeries, {
-              period: "month",
-              limit: 62,
-              deviceId: selectedMeterId
-            });
-            useMonthEnergyMode = false;
-          }
-        }
-        if (!rows.length) {
           const fallbackDate = `${targetYear}-${pad2(targetMonth)}-${pad2(day)}`;
           const dayRows = await fetchDayRows(
             fallbackDate,
@@ -1993,7 +2396,8 @@ const loadChartBySelection = async () => {
             rows = normalizeChartRows(dayRows, {
               period: "day",
               limit: 288,
-              deviceId: selectedMeterId
+              deviceId: monthDeviceIdFilter,
+              ignoreMeterIdentity: useSiteMonthAggregate
             });
             useMonthEnergyMode = false;
           }
@@ -2009,6 +2413,17 @@ const loadChartBySelection = async () => {
         };
       } else {
         chartOptions = {};
+      }
+      if (rows.length) {
+        rows = normalizeRowsForFullMonthXAxis(rows, {
+          year: targetYear,
+          month: targetMonth,
+          mode: useMonthEnergyMode ? "energy" : "series"
+        });
+        chartOptions = {
+          ...chartOptions,
+          forceFullDayXAxis: true
+        };
       }
     }
 
@@ -2112,10 +2527,8 @@ const initDateControls = () => {
   }).join("");
   yearSelect.value = String(currentYear);
 
-  monthSelect.innerHTML = thaiMonthShort
-    .map(
-      (label, idx) => `<option value="${idx + 1}">${idx + 1} - ${label}</option>`
-    )
+  monthSelect.innerHTML = thaiMonthFull
+    .map((label, idx) => `<option value="${idx + 1}">${label}</option>`)
     .join("");
   monthSelect.value = String(currentMonth);
 

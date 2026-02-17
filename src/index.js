@@ -663,6 +663,7 @@ const extractUserSiteIds = (user) => {
 
 const normalizeCreateUserPayload = (payload, context = {}) => {
   const method = String(context.method || "POST").toUpperCase();
+  const actorSession = context.session || null;
   const hasRoleField =
     payload && typeof payload === "object" && !Array.isArray(payload)
       ? ["role", "user_role", "userRole"].some((key) => hasOwn(payload, key))
@@ -785,18 +786,22 @@ const normalizeCreateUserPayload = (payload, context = {}) => {
 
   let passwordPermissionError = "";
   if (method !== "POST" && isPasswordWriteRequested) {
-    const session = context.session || null;
     const targetUserId = normalizeEntityId(context.targetUserId);
-    const actorUserId = normalizeEntityId(session?.userId ?? session?.id);
-    if (isSuperadminSession(session)) {
+    const actorUserId = normalizeEntityId(actorSession?.userId ?? actorSession?.id);
+    if (isSuperadminSession(actorSession)) {
       // superadmin can change password for any user.
-    } else if (isAdminSession(session)) {
+    } else if (isAdminSession(actorSession)) {
       if (!targetUserId || !actorUserId || !isSameEntityId(targetUserId, actorUserId)) {
         passwordPermissionError = "admin สามารถเปลี่ยนรหัสผ่านได้เฉพาะบัญชีของตัวเอง";
       }
     } else {
       passwordPermissionError = "ไม่มีสิทธิ์เปลี่ยนรหัสผ่าน";
     }
+  }
+
+  let rolePermissionError = "";
+  if (method === "POST" && role === "superadmin" && !isSuperadminSession(actorSession)) {
+    rolePermissionError = "admin ไม่สามารถสร้างบัญชี superadmin ได้";
   }
 
   const isRoleAllowed = method === "POST" ? Boolean(role) : !hasRoleField || Boolean(role);
@@ -807,6 +812,7 @@ const normalizeCreateUserPayload = (payload, context = {}) => {
     email,
     siteIds,
     isRoleAllowed,
+    rolePermissionError,
     emailError,
     passwordError,
     passwordPermissionError
@@ -1466,6 +1472,10 @@ export const handleRequest = async (req, res) => {
                 ? "role ต้องเป็น admin หรือ superadmin เท่านั้น"
                 : "role ต้องเป็น admin หรือ superadmin เมื่อมีการระบุค่า";
             sendApiError(res, 400, roleErrorMessage);
+            return;
+          }
+          if (normalizedUserWrite.rolePermissionError) {
+            sendApiError(res, 403, normalizedUserWrite.rolePermissionError);
             return;
           }
           if (normalizedUserWrite.emailError) {

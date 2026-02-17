@@ -2067,18 +2067,46 @@ body.plant-page .top-controls {
 }
 body.plant-page .back-btn {
   margin: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  border: 1px solid rgba(136, 166, 223, 0.46);
-  background: rgba(255, 255, 255, 0.74);
-  color: #184185;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(126, 156, 220, 0.5);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(237, 245, 255, 0.9));
+  color: #1b4ea3;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 10px 24px rgba(37, 99, 235, 0.18);
   backdrop-filter: blur(8px);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+}
+body.plant-page .back-btn svg {
+  display: block;
+  transition: transform 160ms ease;
 }
 body.plant-page .back-btn:hover {
-  background: rgba(237, 244, 255, 0.92);
+  transform: translateY(-1px);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.98), rgba(225, 238, 255, 0.95));
   color: #0f63d4;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 28px rgba(37, 99, 235, 0.24);
+}
+body.plant-page .back-btn:hover svg {
+  transform: translateX(-1px);
+}
+body.plant-page .back-btn:active {
+  transform: translateY(0);
+}
+body.plant-page .back-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 3px rgba(59, 130, 246, 0.26),
+    0 14px 28px rgba(37, 99, 235, 0.22);
 }
 body.plant-page .mode-toggle {
   border-radius: 12px;
@@ -2391,18 +2419,46 @@ body.meter-page .shell {
 }
 body.meter-page .back-btn {
   margin: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  border: 1px solid rgba(136, 166, 223, 0.46);
-  background: rgba(255, 255, 255, 0.74);
-  color: #184185;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(126, 156, 220, 0.5);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(237, 245, 255, 0.9));
+  color: #1b4ea3;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 10px 24px rgba(37, 99, 235, 0.18);
   backdrop-filter: blur(8px);
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+}
+body.meter-page .back-btn svg {
+  display: block;
+  transition: transform 160ms ease;
 }
 body.meter-page .back-btn:hover {
-  background: rgba(237, 244, 255, 0.92);
+  transform: translateY(-1px);
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.98), rgba(225, 238, 255, 0.95));
   color: #0f63d4;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 28px rgba(37, 99, 235, 0.24);
+}
+body.meter-page .back-btn:hover svg {
+  transform: translateX(-1px);
+}
+body.meter-page .back-btn:active {
+  transform: translateY(0);
+}
+body.meter-page .back-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 3px rgba(59, 130, 246, 0.26),
+    0 14px 28px rgba(37, 99, 235, 0.22);
 }
 body.meter-page .plant-hero {
   position: relative;
