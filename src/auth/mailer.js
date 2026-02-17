@@ -8,7 +8,7 @@ const renderResetEmailHtml = (name, resetUrl) => `
     <h2 style="margin:0 0 12px">รีเซ็ตรหัสผ่าน</h2>
     <p style="margin:0 0 10px">สวัสดี ${name},</p>
     <p style="margin:0 0 12px">
-      มีคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีนี้ กรุณากดลิงก์ด้านล่างเพื่อกำหนดรหัสผ่านใหม่
+      มีคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีนี้ TTกรุณากดลิงก์ด้านล่างเพื่อกำหนดรหัสผ่านใหม่
     </p>
     <p style="margin:0 0 14px">
       <a href="${resetUrl}" style="color:#2563eb;text-decoration:underline">ตั้งรหัสผ่านใหม่</a>
