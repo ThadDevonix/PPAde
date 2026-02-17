@@ -1,17 +1,32 @@
-import { randomUUID } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 
-const sessions = new Map();
+const configuredSessionSecret = String(
+  process.env.AUTH_SESSION_SECRET ||
+    process.env.SESSION_SECRET ||
+    process.env.UPSTREAM_AUTH_TOKEN ||
+    process.env.UPSTREAM_API_TOKEN ||
+    ""
+).trim();
+const sessionSecret = configuredSessionSecret || "ppade-dev-session-secret";
+if (!configuredSessionSecret) {
+  console.warn(
+    "[AUTH] AUTH_SESSION_SECRET ยังไม่ถูกตั้งค่า กำลังใช้คีย์สำหรับ dev เท่านั้น"
+  );
+}
 
-const pruneExpiredSessions = () => {
+const revokedSessions = new Map();
+const maxSessionTokenLength = 3800;
+
+const pruneExpiredRevocations = () => {
   const now = Date.now();
-  for (const [sessionId, session] of sessions.entries()) {
-    if (!session || session.expiresAt <= now) {
-      sessions.delete(sessionId);
+  for (const [token, expiresAt] of revokedSessions.entries()) {
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+      revokedSessions.delete(token);
     }
   }
 };
 
-const pruneTimer = setInterval(pruneExpiredSessions, 15 * 60 * 1000);
+const pruneTimer = setInterval(pruneExpiredRevocations, 15 * 60 * 1000);
 pruneTimer.unref();
 
 const toPositiveInt = (value) => {
@@ -62,39 +77,188 @@ const extractUserSiteIds = (user) => {
   return normalizeSiteIds(rawValues);
 };
 
-export const createSession = (user, ttlMs) => {
-  pruneExpiredSessions();
-  const sessionId = randomUUID();
-  const expiresAt = Date.now() + ttlMs;
-  const siteIds = extractUserSiteIds(user);
-  const role = String(user.role || "").trim().toLowerCase();
-  const email = String(user.email || user.username || "").trim().toLowerCase();
-  sessions.set(sessionId, {
-    userId: user.id,
+const encodeBase64UrlJson = (value) =>
+  Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+
+const decodeBase64UrlJson = (value) => {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+};
+
+const buildSignature = (value) => createHmac("sha256", sessionSecret).update(value).digest();
+
+const verifySignature = (value, signatureBase64Url) => {
+  if (typeof signatureBase64Url !== "string" || !signatureBase64Url) return false;
+  let actualSignature;
+  try {
+    actualSignature = Buffer.from(signatureBase64Url, "base64url");
+  } catch {
+    return false;
+  }
+  const expectedSignature = buildSignature(value);
+  if (actualSignature.length !== expectedSignature.length) return false;
+  return timingSafeEqual(actualSignature, expectedSignature);
+};
+
+const signPayload = (payload) => {
+  const header = {
+    alg: "HS256",
+    typ: "PPADE_SESSION",
+    v: 1
+  };
+  const encodedHeader = encodeBase64UrlJson(header);
+  const encodedPayload = encodeBase64UrlJson(payload);
+  const message = `${encodedHeader}.${encodedPayload}`;
+  const signature = buildSignature(message).toString("base64url");
+  return `${message}.${signature}`;
+};
+
+const decodeAndVerifyTokenPayload = (token) => {
+  if (typeof token !== "string" || !token) return null;
+  if (token.length > maxSessionTokenLength) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [encodedHeader, encodedPayload, signature] = parts;
+  const header = decodeBase64UrlJson(encodedHeader);
+  const payload = decodeBase64UrlJson(encodedPayload);
+  if (!header || !payload) return null;
+  if (header.alg !== "HS256") return null;
+  const message = `${encodedHeader}.${encodedPayload}`;
+  if (!verifySignature(message, signature)) return null;
+  return payload;
+};
+
+const readText = (value) => (typeof value === "string" ? value.trim() : "");
+
+const readExpiryMs = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed > 0 ? Math.trunc(parsed) : null;
+};
+
+const normalizeSession = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const expiresAt = readExpiryMs(payload.exp ?? payload.expiresAt);
+  if (!expiresAt || expiresAt <= Date.now()) return null;
+
+  const role = String(payload.rl ?? payload.role ?? "").trim().toLowerCase();
+  const email = String(payload.em ?? payload.email ?? payload.username ?? "")
+    .trim()
+    .toLowerCase();
+  const name = readText(payload.nm ?? payload.name) || email;
+  const siteIds = normalizeSiteIds(payload.sids ?? payload.siteIds ?? payload.site_ids);
+  const canViewAllSites =
+    payload.all === true || payload.canViewAllSites === true || role === "superadmin";
+
+  return {
+    userId: payload.uid ?? payload.userId ?? payload.id ?? email,
     email,
-    name: user.name || email,
+    name,
     role,
     siteIds,
-    canViewAllSites: role === "superadmin" || user.canViewAllSites === true,
-    upstreamToken: user.upstreamToken || "",
-    upstreamCookie: user.upstreamCookie || "",
+    canViewAllSites,
+    upstreamToken: readText(payload.ut ?? payload.upstreamToken),
+    upstreamCookie: readText(payload.uc ?? payload.upstreamCookie),
     expiresAt
-  });
+  };
+};
+
+const normalizeTokenCandidate = (value, maxLength) => {
+  const text = readText(value);
+  if (!text) return "";
+  if (!Number.isFinite(maxLength) || maxLength <= 0) return text;
+  return text.length <= maxLength ? text : "";
+};
+
+const buildTokenWithSizeLimit = (basePayload) => {
+  let payload = { ...basePayload };
+  let token = signPayload(payload);
+
+  if (token.length <= maxSessionTokenLength) return token;
+
+  if (payload.uc) {
+    payload = { ...payload, uc: "" };
+    token = signPayload(payload);
+  }
+  if (token.length <= maxSessionTokenLength) return token;
+
+  if (payload.ut) {
+    payload = { ...payload, ut: "" };
+    token = signPayload(payload);
+  }
+  if (token.length <= maxSessionTokenLength) return token;
+
+  if (Array.isArray(payload.sids) && payload.sids.length > 64) {
+    payload = { ...payload, sids: payload.sids.slice(0, 64) };
+    token = signPayload(payload);
+  }
+  if (token.length <= maxSessionTokenLength) return token;
+
+  const minimalPayload = {
+    v: 1,
+    exp: payload.exp,
+    uid: payload.uid,
+    em: payload.em,
+    nm: payload.nm,
+    rl: payload.rl,
+    sids: Array.isArray(payload.sids) ? payload.sids.slice(0, 16) : [],
+    all: payload.all === true
+  };
+  return signPayload(minimalPayload);
+};
+
+export const createSession = (user, ttlMs) => {
+  pruneExpiredRevocations();
+  const now = Date.now();
+  const safeTtl = Number.isFinite(Number(ttlMs)) && Number(ttlMs) > 0 ? Number(ttlMs) : 0;
+  const expiresAt = now + safeTtl;
+  const role = String(user?.role || "").trim().toLowerCase();
+  const email = String(user?.email || user?.username || "")
+    .trim()
+    .toLowerCase();
+  const name = readText(user?.name) || email;
+  const siteIds = extractUserSiteIds(user);
+  const canViewAllSites = role === "superadmin" || user?.canViewAllSites === true;
+
+  const payload = {
+    v: 1,
+    exp: expiresAt,
+    uid: user?.id ?? email,
+    em: email,
+    nm: name,
+    rl: role,
+    sids: siteIds,
+    all: canViewAllSites,
+    ut: normalizeTokenCandidate(user?.upstreamToken, 2500),
+    uc: normalizeTokenCandidate(user?.upstreamCookie, 1200)
+  };
+
+  const sessionId = buildTokenWithSizeLimit(payload);
   return { sessionId, expiresAt };
 };
 
 export const getSession = (sessionId) => {
+  pruneExpiredRevocations();
   if (!sessionId) return null;
-  const session = sessions.get(sessionId);
-  if (!session) return null;
-  if (session.expiresAt <= Date.now()) {
-    sessions.delete(sessionId);
-    return null;
+
+  const revokedExpiresAt = revokedSessions.get(sessionId);
+  if (Number.isFinite(revokedExpiresAt)) {
+    if (revokedExpiresAt > Date.now()) return null;
+    revokedSessions.delete(sessionId);
   }
-  return session;
+
+  const payload = decodeAndVerifyTokenPayload(sessionId);
+  return normalizeSession(payload);
 };
 
 export const deleteSession = (sessionId) => {
   if (!sessionId) return false;
-  return sessions.delete(sessionId);
+  const payload = decodeAndVerifyTokenPayload(sessionId);
+  const expiresAt = readExpiryMs(payload?.exp ?? payload?.expiresAt) || Date.now() + 5 * 60 * 1000;
+  revokedSessions.set(sessionId, expiresAt);
+  return true;
 };

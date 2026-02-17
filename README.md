@@ -32,6 +32,7 @@ Recommended environment variables on Vercel:
 ```bash
 UPSTREAM_AUTH_TOKEN=...
 AUTH_SESSION_HOURS=8
+AUTH_SESSION_SECRET=change-this-to-a-long-random-secret
 ```
 
 Notes:
