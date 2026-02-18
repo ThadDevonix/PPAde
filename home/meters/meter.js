@@ -40,7 +40,6 @@ const dayFallbackEnergyApiCandidates = ["/api/energy"];
 const deviceEnergyPayloadCache = new Map();
 const deviceEnergyPayloadTtlMs = 30 * 1000;
 const deviceEnergyRateLimitCooldownMs = 20 * 1000;
-const fallbackPlantName = "CNX_PPA";
 const thaiMonthShort = [
   "ม.ค.",
   "ก.พ.",
@@ -242,7 +241,7 @@ const selectedEnergyName = readText(
   plantData?.siteCode,
   plantData?.site_code,
   plantData?.name
-) || fallbackPlantName;
+);
 const selectedMeterNameKey = normalizeIdentityToken(
   readText(meterData?.name, meterData?.deviceName, meterData?.device_name)
 );
@@ -2414,6 +2413,7 @@ const requestRowsFromCandidates = async (
 const buildYearQueryCandidates = (year) => {
   const queryCandidates = [];
   const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  const hasEnergyName = Boolean(selectedEnergyName);
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
     if (hasMeterId) {
       queryCandidates.push(
@@ -2438,17 +2438,19 @@ const buildYearQueryCandidates = (year) => {
     }
   }
   if (hasMeterId) {
-    queryCandidates.push(
-      `period=year&name=${encodeURIComponent(
-        selectedEnergyName
-      )}&year=${encodeURIComponent(year)}&device_id=${encodeURIComponent(selectedMeterId)}`
-    );
+    if (hasEnergyName) {
+      queryCandidates.push(
+        `period=year&name=${encodeURIComponent(
+          selectedEnergyName
+        )}&year=${encodeURIComponent(year)}&device_id=${encodeURIComponent(selectedMeterId)}`
+      );
+    }
     queryCandidates.push(
       `period=year&device_id=${encodeURIComponent(selectedMeterId)}&year=${encodeURIComponent(
         year
       )}`
     );
-  } else {
+  } else if (hasEnergyName) {
     queryCandidates.push(
       `period=year&name=${encodeURIComponent(selectedEnergyName)}&year=${encodeURIComponent(year)}`
     );
@@ -2459,6 +2461,7 @@ const buildMonthQueryCandidates = (year, month) => {
   const monthToken = `${year}-${pad2(month)}`;
   const queryCandidates = [];
   const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  const hasEnergyName = Boolean(selectedEnergyName);
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
     if (hasMeterId) {
       queryCandidates.push(
@@ -2490,15 +2493,17 @@ const buildMonthQueryCandidates = (year, month) => {
     }
   }
   if (hasMeterId) {
-    queryCandidates.push(
-      `period=month&name=${encodeURIComponent(
-        selectedEnergyName
-      )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`
-    );
+    if (hasEnergyName) {
+      queryCandidates.push(
+        `period=month&name=${encodeURIComponent(
+          selectedEnergyName
+        )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`
+      );
+    }
     queryCandidates.push(
       `period=month&device_id=${encodeURIComponent(selectedMeterId)}&month=${monthToken}`
     );
-  } else {
+  } else if (hasEnergyName) {
     queryCandidates.push(
       `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`
     );
@@ -2674,6 +2679,7 @@ const fetchYearRows = async (year) => {
 const buildPrimaryMonthQueryForYearFallback = (year, month) => {
   const monthToken = `${year}-${pad2(month)}`;
   const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  const hasEnergyName = Boolean(selectedEnergyName);
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
     if (hasMeterId) {
       return `site_id=${encodeURIComponent(
@@ -2683,11 +2689,17 @@ const buildPrimaryMonthQueryForYearFallback = (year, month) => {
     return `site_id=${encodeURIComponent(selectedSiteId)}&period=month&month=${monthToken}`;
   }
   if (hasMeterId) {
-    return `period=month&name=${encodeURIComponent(
-      selectedEnergyName
-    )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`;
+    if (hasEnergyName) {
+      return `period=month&name=${encodeURIComponent(
+        selectedEnergyName
+      )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`;
+    }
+    return `period=month&device_id=${encodeURIComponent(selectedMeterId)}&month=${monthToken}`;
   }
-  return `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`;
+  if (hasEnergyName) {
+    return `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`;
+  }
+  return "";
 };
 const fetchYearRowsByMonthFallback = async (year) => {
   const collected = [];
@@ -2701,6 +2713,7 @@ const fetchYearRowsByMonthFallback = async (year) => {
 const buildDayQueryCandidates = (dateKey, year, month, day) => {
   const queryCandidates = [];
   const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  const hasEnergyName = Boolean(selectedEnergyName);
   if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
     if (hasMeterId) {
       queryCandidates.push(
@@ -2722,11 +2735,13 @@ const buildDayQueryCandidates = (dateKey, year, month, day) => {
     }
   }
   if (hasMeterId) {
-    queryCandidates.push(
-      `period=day&name=${encodeURIComponent(
-        selectedEnergyName
-      )}&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
-    );
+    if (hasEnergyName) {
+      queryCandidates.push(
+        `period=day&name=${encodeURIComponent(
+          selectedEnergyName
+        )}&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
+      );
+    }
     queryCandidates.push(
       `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
         month
@@ -2735,7 +2750,7 @@ const buildDayQueryCandidates = (dateKey, year, month, day) => {
     queryCandidates.push(
       `period=day&device_id=${encodeURIComponent(selectedMeterId)}&date=${dateKey}`
     );
-  } else {
+  } else if (hasEnergyName) {
     queryCandidates.push(
       `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
     );

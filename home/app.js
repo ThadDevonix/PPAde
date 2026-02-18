@@ -79,6 +79,40 @@ const normalizeSiteStatus = (value) => {
   }
   return "online";
 };
+const normalizeMeterToken = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+const parseLoosePositiveId = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+  if (typeof value !== "string") return null;
+  const match = value.match(/(\d+)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+};
+const getMeterIdentityKeyForCount = (meter, fallbackIndex) => {
+  const meterIdCandidates = [meter?.apiId, meter?.device_id, meter?.deviceId, meter?.id];
+  for (const candidate of meterIdCandidates) {
+    const id = parseLoosePositiveId(candidate);
+    if (Number.isFinite(id) && id > 0) return `id:${id}`;
+  }
+  const siteToken = normalizeMeterToken(
+    meter?.siteCode ?? meter?.site_code ?? meter?.siteId ?? meter?.site_id ?? ""
+  );
+  const nameToken = normalizeMeterToken(
+    meter?.name ?? meter?.deviceName ?? meter?.device_name ?? ""
+  );
+  const snToken = normalizeMeterToken(
+    meter?.sn ?? meter?.serial ?? meter?.device_sn ?? meter?.modbus_address_in ?? ""
+  );
+  if (siteToken || nameToken || snToken) {
+    return `${siteToken}:${nameToken}:${snToken}`;
+  }
+  return `fallback:${fallbackIndex}`;
+};
 const extractSiteRows = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -411,8 +445,23 @@ const getPlantSiteId = (plant) => {
   if (Number.isFinite(apiId) && apiId > 0) return String(apiId);
   return "-";
 };
-const getPlantMeterCount = (plant) =>
-  Array.isArray(plant?.devices) ? plant.devices.length : 0;
+const getPlantMeterCount = (plant) => {
+  const devices = Array.isArray(plant?.devices) ? plant.devices : [];
+  const seen = new Set();
+  let count = 0;
+  devices.forEach((device, idx) => {
+    if (!device || typeof device !== "object") return;
+    const status = normalizeSiteStatus(
+      device.is_active ?? device.active ?? device.isActive ?? device.status
+    );
+    if (status === "offline") return;
+    const key = getMeterIdentityKeyForCount(device, idx);
+    if (seen.has(key)) return;
+    seen.add(key);
+    count += 1;
+  });
+  return count;
+};
 const matchesPlantIdentity = (apiPlant, plant) => {
   const apiId = Number(apiPlant?.apiId);
   const plantApiId = Number(plant?.apiId);

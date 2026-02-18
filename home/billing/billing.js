@@ -79,7 +79,6 @@ const billingBtn = document.getElementById("mode-billing");
 const metersPanel = document.getElementById("meters-panel");
 const billingPanel = document.getElementById("billing-panel");
 
-const energyApiBase = "https://solarmdb.devonix.co.th/api/energy";
 const deviceEnergyApiCandidates = [
   "/api/device-energy",
   "http://localhost:3000/api/device-energy",
@@ -93,30 +92,35 @@ const devicesApiCandidates = [
   "https://solarmdb.devonix.co.th/api/devices"
 ];
 const calcMethodLabels = {
-  self_use: "Self Use (Meter 1)",
-  mdb_net: "MDB In - MDB Out (Meter 2)",
-  solar_in: "Solar In (Meter 1)",
-  mdb_in: "MDB In (Meter 2)",
-  mdb_out: "MDB Out (Meter 2)"
+  energy_in: "energy_in",
+  energy_out: "energy_out",
+  energy_net: "energy_in - energy_out",
+  self_use: "energy_out",
+  mdb_net: "energy_in - energy_out",
+  solar_in: "energy_in",
+  mdb_in: "energy_in",
+  mdb_out: "energy_out"
 };
 const formulaOperators = ["+", "-", "*", "/"];
 const formulaFieldDefs = [
-  { key: "solar_in", label: "Solar In" },
-  { key: "self_use", label: "Self Use" },
-  { key: "mdb_in", label: "MDB In" },
-  { key: "mdb_out", label: "MDB Out" }
+  { key: "energy_in", label: "energy_in" },
+  { key: "energy_out", label: "energy_out" }
 ];
 const formulaFieldLabelMap = formulaFieldDefs.reduce((acc, item) => {
   acc[item.key] = item.label;
   return acc;
 }, {});
-const defaultFormulaField = "self_use";
+const formulaFieldAliasMap = {
+  solar_in: "energy_in",
+  self_use: "energy_out",
+  mdb_in: "energy_in",
+  mdb_out: "energy_out"
+};
+const defaultFormulaField = "energy_out";
 const defaultCalcLabel = "ผลคำนวณ";
 const detailColumnDefs = [
-  { key: "solar_in", label: "Solar In (kWh)" },
-  { key: "self_use", label: "Self Use (kWh)" },
-  { key: "mdb_in", label: "MDB In (kWh)" },
-  { key: "mdb_out", label: "MDB Out (kWh)" },
+  { key: "energy_in", label: "energy_in (kWh)" },
+  { key: "energy_out", label: "energy_out (kWh)" },
   { key: "bill_units", label: "หน่วยคิดบิล (kWh)" }
 ];
 
@@ -313,25 +317,33 @@ const normalizeMeterRow = (row) => {
     row.modbus_in_1,
     row.modbusIn1,
     row.address_in_1,
-    row.addressIn1
+    row.addressIn1,
+    row.modbus_address_in,
+    row.modbusAddressIn
   );
   const modbusIn2 = readText(
     row.modbus_in_2,
     row.modbusIn2,
     row.address_in_2,
-    row.addressIn2
+    row.addressIn2,
+    row.modbus_address_in_2,
+    row.modbusAddressIn2
   );
   const modbusOut1 = readText(
     row.modbus_out_1,
     row.modbusOut1,
     row.address_out_1,
-    row.addressOut1
+    row.addressOut1,
+    row.modbus_address_out,
+    row.modbusAddressOut
   );
   const modbusOut2 = readText(
     row.modbus_out_2,
     row.modbusOut2,
     row.address_out_2,
-    row.addressOut2
+    row.addressOut2,
+    row.modbus_address_out_2,
+    row.modbusAddressOut2
   );
   const serial = readText(
     row.modbus_address_in,
@@ -433,52 +445,92 @@ const requestDeviceEnergyApi = async (search = "") => {
   if (lastNetworkError) throw lastNetworkError;
   throw new Error("GET /api/device-energy failed");
 };
-const deleteMeterInApi = async (meter) => {
-  const meterId = Number(meter?.id);
-  if (!Number.isFinite(meterId) || meterId <= 0) return "local";
-  const encodedMeterId = encodeURIComponent(String(meterId));
-  const attempts = [
-    {
-      path: `/${encodedMeterId}`,
-      init: { method: "DELETE", credentials: "same-origin" }
-    },
-    {
-      path: `?id=${encodedMeterId}`,
-      init: { method: "DELETE", credentials: "same-origin" }
-    },
-    {
-      path: "",
-      init: {
-        method: "DELETE",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: meterId })
-      }
-    }
-  ];
-  let firstError = null;
-  for (const attempt of attempts) {
-    let response = null;
-    try {
-      response = await fetch(`/api/devices${attempt.path}`, attempt.init);
-    } catch (error) {
-      if (!firstError) firstError = error;
-      continue;
-    }
-    if (response.ok) return "api";
+const deleteMeterInApi = async (meter, targetPlant = plant) => {
+  const parseLoosePositiveInt = (value) => {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && asNumber > 0) return Math.trunc(asNumber);
+    if (typeof value !== "string") return null;
+    const match = value.match(/(\d+)/);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+  };
+  const readMeterPersistId = (item) =>
+    parseLoosePositiveInt(item?.id ?? item?.apiId ?? item?.device_id ?? item?.deviceId);
+  const resolveMeterIdFromApi = async () => {
+    const remoteMeters = await fetchPlantDevicesFromApi(targetPlant).catch(() => []);
+    if (!remoteMeters.length) return null;
+    const targetName = normalizeSiteToken(readText(meter?.name, meter?.device_name, meter?.deviceName));
+    const targetSerial = normalizeSiteToken(
+      readText(meter?.sn, meter?.serial, meter?.modbus_address_in, meter?.modbusAddressIn)
+    );
+    const targetIn1 = normalizeSiteToken(readText(meter?.modbusIn1, meter?.modbus_in_1));
+    const targetIn2 = normalizeSiteToken(readText(meter?.modbusIn2, meter?.modbus_in_2));
+    const matched = remoteMeters.find((item) => {
+      const itemId = readMeterPersistId(item);
+      if (!Number.isFinite(itemId) || itemId <= 0) return false;
+      const itemName = normalizeSiteToken(readText(item?.name, item?.device_name, item?.deviceName));
+      const itemSerial = normalizeSiteToken(
+        readText(item?.sn, item?.serial, item?.modbus_address_in, item?.modbusAddressIn)
+      );
+      const itemIn1 = normalizeSiteToken(readText(item?.modbusIn1, item?.modbus_in_1));
+      const itemIn2 = normalizeSiteToken(readText(item?.modbusIn2, item?.modbus_in_2));
+      const nameMatches = Boolean(targetName && itemName && targetName === itemName);
+      const serialMatches = Boolean(targetSerial && itemSerial && targetSerial === itemSerial);
+      const inMatches = Boolean(
+        (targetIn1 && itemIn1 && targetIn1 === itemIn1) ||
+          (targetIn2 && itemIn2 && targetIn2 === itemIn2)
+      );
+      return serialMatches || inMatches || (nameMatches && (!targetSerial || !itemSerial));
+    });
+    return readMeterPersistId(matched);
+  };
+  const verifyMeterRemoved = async (meterId) => {
+    const refreshed = await fetchPlantDevicesFromApi(targetPlant).catch(() => null);
+    if (!Array.isArray(refreshed)) return null;
+    return !refreshed.some((item) => readMeterPersistId(item) === meterId);
+  };
 
-    const detail = await getResponseErrorText(response);
-    if (response.status === 403) {
-      throw new Error(detail.replace(/^:\s*/, "") || "ไม่มีสิทธิ์ลบมิเตอร์");
-    }
-    if (response.status === 401) {
-      throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
-    }
-    if (!firstError) {
-      firstError = new Error(`DELETE /api/devices failed (${response.status})${detail}`);
-    }
+  let meterId = readMeterPersistId(meter);
+  if (!Number.isFinite(meterId) || meterId <= 0) {
+    meterId = await resolveMeterIdFromApi();
   }
-  throw firstError || new Error("ลบมิเตอร์ผ่าน API ไม่สำเร็จ");
+  if (!Number.isFinite(meterId) || meterId <= 0) {
+    throw new Error("ไม่พบ id ของมิเตอร์ จึงยังลบที่หลังบ้านไม่ได้");
+  }
+
+  const encodedMeterId = encodeURIComponent(String(meterId));
+  let response = null;
+  try {
+    response = await fetch(`/api/devices?id=${encodedMeterId}`, {
+      method: "DELETE",
+      credentials: "same-origin"
+    });
+  } catch (error) {
+    throw error || new Error("DELETE /api/devices?id= failed");
+  }
+  if (response.ok) {
+    let removed = await verifyMeterRemoved(meterId);
+    if (removed === false) {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 280);
+      });
+      removed = await verifyMeterRemoved(meterId);
+    }
+    if (removed === false) {
+      throw new Error("API ตอบสำเร็จ แต่ข้อมูลยังไม่ถูกลบจากหลังบ้าน");
+    }
+    return "api";
+  }
+
+  const detail = await getResponseErrorText(response);
+  if (response.status === 403) {
+    throw new Error(detail.replace(/^:\s*/, "") || "ไม่มีสิทธิ์ลบมิเตอร์");
+  }
+  if (response.status === 401) {
+    throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+  }
+  throw new Error(`DELETE /api/devices?id= failed (${response.status})${detail}`);
 };
 const hydrateCurrentUserRole = async () => {
   currentUserRole = "";
@@ -552,12 +604,13 @@ const buildLegacyFormula = (method, meterPool = meterProfiles) => {
     field
   });
   if (method === "mdb_net") {
-    return [term(second, "mdb_in"), term(second, "mdb_out", "-")];
+    return [term(second, "energy_in"), term(second, "energy_out", "-")];
   }
-  if (method === "solar_in") return [term(first, "solar_in")];
-  if (method === "mdb_in") return [term(second, "mdb_in")];
-  if (method === "mdb_out") return [term(second, "mdb_out")];
-  return [term(first, "self_use")];
+  if (method === "solar_in" || method === "mdb_in" || method === "energy_in") {
+    return [term(first, "energy_in")];
+  }
+  if (method === "mdb_out" || method === "energy_out") return [term(second, "energy_out")];
+  return [term(first, "energy_out")];
 };
 const normalizeCalcFormula = (
   formula,
@@ -581,9 +634,10 @@ const normalizeCalcFormula = (
         ? rawMeterKey
         : rawMeterKey || fallbackKey;
       const meter = meterKeyMap.get(meterKey) || fallbackMeter;
-      const field = formulaFieldLabelMap[term.field]
-        ? term.field
-        : defaultFormulaField;
+      const rawField = String(term.field || "").trim().toLowerCase();
+      const field = formulaFieldLabelMap[rawField]
+        ? rawField
+        : formulaFieldAliasMap[rawField] || defaultFormulaField;
       const operator =
         index === 0
           ? "+"
@@ -648,6 +702,77 @@ const getSingleModeCalcLabel = () => {
     ? formulaValueLeft.value
     : defaultFormulaField;
   return formulaFieldLabelMap[fieldKey] || defaultCalcLabel;
+};
+const getFormulaFieldKeysForMeter = (meter) => {
+  if (!meter || typeof meter !== "object") return [];
+  return ["energy_in", "energy_out"];
+};
+const buildFormulaValueOptionsHtml = (fieldKeys = []) =>
+  fieldKeys.length
+    ? fieldKeys
+      .map((fieldKey) => {
+        const label = formulaFieldLabelMap[fieldKey] || fieldKey;
+        return `<option value="${fieldKey}">${label}</option>`;
+      })
+      .join("")
+    : '<option value="">เลือกมิเตอร์ก่อน</option>';
+const resolvePreferredFormulaField = (allowedFieldKeys, preferredValues = []) => {
+  const allowed = Array.isArray(allowedFieldKeys) ? allowedFieldKeys.filter(Boolean) : [];
+  const allFieldKeys = formulaFieldDefs.map((field) => field.key);
+  const safeAllowed = allowed.length ? allowed : allFieldKeys;
+  for (const candidate of preferredValues) {
+    const key = String(candidate || "").trim();
+    if (key && safeAllowed.includes(key)) return key;
+  }
+  if (safeAllowed.includes(defaultFormulaField)) return defaultFormulaField;
+  return safeAllowed[0] || defaultFormulaField;
+};
+const syncFormulaValueOptionsForMeterSelects = ({
+  leftPreferredField = "",
+  rightPreferredField = "",
+  preserveExisting = true
+} = {}) => {
+  const activeMeters = getSelectedMetersForFormula();
+  const meterByKey = new Map(
+    activeMeters
+      .map((meter) => [getMeterKey(meter), meter])
+      .filter(([key]) => key)
+  );
+  const leftMeter = meterByKey.get(String(formulaMeterLeft?.value || "").trim()) || null;
+  const rightMeter = meterByKey.get(String(formulaMeterRight?.value || "").trim()) || null;
+  const leftFieldKeys = getFormulaFieldKeysForMeter(leftMeter);
+  const rightFieldKeys = getFormulaFieldKeysForMeter(rightMeter);
+  if (formulaValueLeft) {
+    const html = buildFormulaValueOptionsHtml(leftFieldKeys);
+    formulaValueLeft.innerHTML = html;
+    formulaValueLeft.disabled = !leftMeter;
+    formulaValueLeft.value = leftMeter
+      ? resolvePreferredFormulaField(leftFieldKeys, [
+        leftPreferredField,
+        preserveExisting ? formulaValueLeft.value : "",
+        preserveExisting ? formulaValueLeft.dataset.lastValue : "",
+        defaultFormulaField
+      ])
+      : "";
+    formulaValueLeft.dataset.lastValue = formulaValueLeft.value;
+  }
+  if (formulaValueRight) {
+    const html = buildFormulaValueOptionsHtml(rightFieldKeys);
+    formulaValueRight.innerHTML = html;
+    formulaValueRight.disabled = !rightMeter;
+    formulaValueRight.value = rightMeter
+      ? resolvePreferredFormulaField(rightFieldKeys, [
+        rightPreferredField,
+        preserveExisting ? formulaValueRight.value : "",
+        preserveExisting ? formulaValueRight.dataset.lastValue : "",
+        defaultFormulaField
+      ])
+      : "";
+    formulaValueRight.dataset.lastValue = formulaValueRight.value;
+  }
+  if (calcInputMode === "single" && formulaResultName) {
+    formulaResultName.value = getSingleModeCalcLabel();
+  }
 };
 const setCalcInputMode = (mode, options = {}) => {
   const { skipPreview = false } = options;
@@ -738,13 +863,8 @@ const populateFormulaInputs = (formula, calcLabel = defaultCalcLabel) => {
       return `<option value="${key}">${getMeterLabel(meter)}</option>`;
     })
     .join("");
-  const valueOptions = formulaFieldDefs
-    .map((field) => `<option value="${field.key}">${field.label}</option>`)
-    .join("");
   if (formulaMeterLeft) formulaMeterLeft.innerHTML = meterOptions;
   if (formulaMeterRight) formulaMeterRight.innerHTML = meterOptions;
-  if (formulaValueLeft) formulaValueLeft.innerHTML = valueOptions;
-  if (formulaValueRight) formulaValueRight.innerHTML = valueOptions;
 
   const normalized = normalizeCalcFormula(formula, activeMeters, false);
   const leftTerm = normalized[0] || buildLegacyFormula("self_use", activeMeters)[0];
@@ -756,11 +876,16 @@ const populateFormulaInputs = (formula, calcLabel = defaultCalcLabel) => {
       meterKey: getMeterKey(activeMeters[1] || activeMeters[0] || null),
       meterName: (activeMeters[1] || activeMeters[0] || {}).name || ""
     };
-  if (formulaMeterLeft) formulaMeterLeft.value = leftTerm.meterKey || getMeterKey(activeMeters[0]);
-  if (formulaValueLeft) formulaValueLeft.value = leftTerm.field || defaultFormulaField;
+  const leftMeterKey = leftTerm.meterKey || getMeterKey(activeMeters[0]);
+  const rightMeterKey = rightTerm.meterKey || getMeterKey(activeMeters[1] || activeMeters[0]);
+  if (formulaMeterLeft) formulaMeterLeft.value = leftMeterKey;
   if (formulaOperator) formulaOperator.value = rightTerm.operator || "-";
-  if (formulaMeterRight) formulaMeterRight.value = rightTerm.meterKey || getMeterKey(activeMeters[1] || activeMeters[0]);
-  if (formulaValueRight) formulaValueRight.value = rightTerm.field || defaultFormulaField;
+  if (formulaMeterRight) formulaMeterRight.value = rightMeterKey;
+  syncFormulaValueOptionsForMeterSelects({
+    leftPreferredField: leftTerm.field || defaultFormulaField,
+    rightPreferredField: rightTerm.field || defaultFormulaField,
+    preserveExisting: false
+  });
   if (formulaResultName) formulaResultName.value = calcLabel || defaultCalcLabel;
   formulaTerms = buildFormulaFromInputs();
 };
@@ -813,18 +938,16 @@ const inferCalcMethodFromFormula = (formula) => {
   const terms = normalizeCalcFormula(formula, meterProfiles, false);
   if (!terms.length) return defaultSchedule.calcMethod;
   if (terms.length === 1) {
-    if (terms[0].field === "self_use") return "self_use";
-    if (terms[0].field === "solar_in") return "solar_in";
-    if (terms[0].field === "mdb_in") return "mdb_in";
-    if (terms[0].field === "mdb_out") return "mdb_out";
+    if (terms[0].field === "energy_in") return "energy_in";
+    if (terms[0].field === "energy_out") return "energy_out";
   }
   if (
     terms.length === 2 &&
-    terms[0].field === "mdb_in" &&
-    terms[1].field === "mdb_out" &&
+    terms[0].field === "energy_in" &&
+    terms[1].field === "energy_out" &&
     terms[1].operator === "-"
   ) {
-    return "mdb_net";
+    return "energy_net";
   }
   return defaultSchedule.calcMethod;
 };
@@ -850,25 +973,6 @@ const getMetersFromFormula = (formula, meterPool = meterProfiles) => {
     picked.push(meter);
   });
   return picked.length ? picked : [meterPool[0]];
-};
-
-const seedFromString = (value) => {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-};
-const seededRandom = (seed) => {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let x = t;
-    x = Math.imul(x ^ (x >>> 15), x | 1);
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
 };
 
 const updateColumnSelectedCount = () => {
@@ -1171,7 +1275,7 @@ const populateCutoffOptions = () => {
 const buildDefaultScheduleFields = () => ({
   defaultRate: 4.2,
   rateType: "flat",
-  calcMethod: "self_use",
+  calcMethod: "energy_out",
   calcFormula: [],
   calcLabel: defaultCalcLabel,
   detailColumns: detailColumnDefs.map((col) => col.key)
@@ -1188,7 +1292,6 @@ let meterProfiles = [];
 let historyKey = "billingHistory";
 let scheduleKey = "billingSchedule";
 let sequenceKey = "billingSequence";
-let mockScenarioKey = "billingMockScenario";
 
 const normalizeDetailColumns = (columns) => {
   if (!Array.isArray(columns) || !columns.length) {
@@ -1290,75 +1393,8 @@ const setDefaultRange = (cutoffDay = schedule.cutoffDay) => {
   if (billCutoff) billCutoff.value = String(cutoffDay);
 };
 
-const buildMeterProfiles = (meters) => {
-  const profileMap = new Map();
-  return meters.map((m) => {
-    const key = m.sn || m.name || "meter";
-    if (!profileMap.has(key)) {
-      const rng = seededRandom(seedFromString(key));
-      const baseDaily = roundTo(18 + rng() * 12, 1);
-      profileMap.set(key, baseDaily);
-    }
-    return {
-      ...m,
-      baseDaily: profileMap.get(key)
-    };
-  });
-};
-
-const buildMockEnergyRange = (startStr, endStr, seed) => {
-  const start = parseDateInput(startStr);
-  const end = parseDateInput(endStr);
-  if (!start || !end) return [];
-  const dates = listDatesInclusive(start, end);
-  const rng = seededRandom(seedFromString(seed || `${startStr}-${endStr}`));
-  const activeMeters = Array.isArray(meterProfiles) && meterProfiles.length
-    ? meterProfiles
-    : [{ name: "Meter", sn: "mock-meter", deviceType: "METER", baseDaily: 24 }];
-  return dates.map((date) => {
-    let totalSolar = 0;
-    let totalSelf = 0;
-    let totalMdbIn = 0;
-    let totalMdbOut = 0;
-    const by_meter = {};
-    activeMeters.forEach((meter) => {
-      const meterKey = getMeterKey(meter);
-      if (!meterKey) return;
-      const baseDaily = Number(meter?.baseDaily) || 24;
-      const variance = Math.max(2, baseDaily * 0.22);
-      const selfUse = roundTo(
-        Math.max(0, baseDaily + (rng() * 2 - 1) * variance),
-        1
-      );
-      const isSolar = String(meter?.deviceType || "")
-        .toUpperCase()
-        .includes("SOLAR");
-      const solarIn = isSolar
-        ? roundTo(selfUse + rng() * 4.2, 1)
-        : roundTo(Math.max(0, selfUse * 0.2 + rng() * 0.8), 1);
-      const mdbIn = roundTo(Math.max(0, selfUse * 0.22 + rng() * 1.1), 1);
-      const mdbOut = roundTo(Math.max(0, mdbIn * (0.25 + rng() * 0.35)), 1);
-      by_meter[meterKey] = {
-        solar_in: solarIn,
-        self_use: selfUse,
-        mdb_in: mdbIn,
-        mdb_out: mdbOut
-      };
-      totalSolar += solarIn;
-      totalSelf += selfUse;
-      totalMdbIn += mdbIn;
-      totalMdbOut += mdbOut;
-    });
-    return {
-      date,
-      solar_in: roundTo(totalSolar, 1),
-      self_use: roundTo(totalSelf, 1),
-      mdb_in: roundTo(totalMdbIn, 1),
-      mdb_out: roundTo(totalMdbOut, 1),
-      by_meter
-    };
-  });
-};
+const buildMeterProfiles = (meters) =>
+  (Array.isArray(meters) ? meters : []).map((meter) => ({ ...meter }));
 
 const extractDailyRows = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -1391,6 +1427,8 @@ const normalizeDailyRows = (rows) => {
     const mdbOut = parseNumber(row.mdb_out ?? row.mdbOut ?? row.mdb_out_kwh);
     map.set(date, {
       date,
+      energy_in: solarIn,
+      energy_out: selfUse,
       solar_in: solarIn,
       self_use: selfUse,
       mdb_in: mdbIn,
@@ -1400,148 +1438,77 @@ const normalizeDailyRows = (rows) => {
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 };
 
-const hasDailyUsage = (rows) =>
-  rows.some((row) =>
-    [row?.solar_in, row?.self_use, row?.mdb_in, row?.mdb_out].some(
-      (value) => Math.abs(parseNumber(value)) > 0
-    )
-  );
-
-const normalizeEnergyTotalRows = (rows) =>
-  (Array.isArray(rows) ? rows : [])
-    .map((row) => {
-      if (!row || typeof row !== "object") return null;
-      const date = normalizeDateValue(
-        row.created_at ?? row.createdAt ?? row.date ?? row.datetime ?? row.timestamp
-      );
-      if (!date) return null;
-      const createdRaw =
-        row.created_at ?? row.createdAt ?? row.datetime ?? row.timestamp ?? row.ts ?? "";
-      const createdTs = Date.parse(createdRaw);
-      const deviceId = Number(row.device_id ?? row.deviceId ?? row.id);
-      const energyTotal = parseNumber(
-        row.energy_total ?? row.energyTotal ?? row.total ?? row.value
-      );
-      if (!Number.isFinite(energyTotal)) return null;
-      return {
-        date,
-        createdTs: Number.isFinite(createdTs) ? createdTs : 0,
-        deviceId: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
-        deviceName: readText(
-          row.device_name,
-          row.deviceName,
-          row.name
-        ),
-        deviceType: readText(row.device_type, row.deviceType, row.type),
-        energyTotal
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.createdTs - b.createdTs);
-
-const buildDailyRowsFromEnergyTotals = (rows) => {
-  const records = normalizeEnergyTotalRows(rows);
-  if (!records.length) return [];
-  const activeMeters = Array.isArray(meterProfiles) ? meterProfiles : [];
-  const meterById = new Map(
-    activeMeters
-      .map((meter) => [Number(meter?.id), meter])
-      .filter(([id]) => Number.isFinite(id) && id > 0)
-  );
-  const resolveMeter = (record) => {
-    if (Number.isFinite(record.deviceId) && meterById.has(record.deviceId)) {
-      return meterById.get(record.deviceId);
-    }
-    if (record.deviceName) {
-      const byName = activeMeters.find((meter) => meter?.name === record.deviceName);
-      if (byName) return byName;
-    }
-    const byType = activeMeters.find((meter) => {
-      const meterType = String(meter?.deviceType || "").toUpperCase();
-      const recordType = String(record.deviceType || "").toUpperCase();
-      return meterType && recordType && meterType === recordType;
-    });
-    return byType || null;
-  };
-
-  const perDay = new Map();
-  records.forEach((record) => {
-    const meter = resolveMeter(record);
-    if (!meter) return;
-    const meterKey = getMeterKey(meter);
-    if (!meterKey) return;
-    if (!perDay.has(record.date)) perDay.set(record.date, new Map());
-    const meterMap = perDay.get(record.date);
-    const current = meterMap.get(meterKey);
-    if (!current) {
-      meterMap.set(meterKey, {
-        meter,
-        min: record.energyTotal,
-        max: record.energyTotal
-      });
-      return;
-    }
-    current.min = Math.min(current.min, record.energyTotal);
-    current.max = Math.max(current.max, record.energyTotal);
-  });
-
-  return Array.from(perDay.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, meterMap]) => {
-      let totalSolar = 0;
-      let totalSelf = 0;
-      let totalMdbIn = 0;
-      let totalMdbOut = 0;
-      const by_meter = {};
-      meterMap.forEach((value, meterKey) => {
-        const meter = value.meter;
-        const dailyEnergy = roundTo(Math.max(0, value.max - value.min), 1);
-        const isSolar = String(meter?.deviceType || "")
-          .toUpperCase()
-          .includes("SOLAR");
-        const rowValue = {
-          solar_in: isSolar ? dailyEnergy : 0,
-          self_use: dailyEnergy,
-          mdb_in: dailyEnergy,
-          mdb_out: 0
-        };
-        by_meter[meterKey] = rowValue;
-        totalSolar += rowValue.solar_in;
-        totalSelf += rowValue.self_use;
-        totalMdbIn += rowValue.mdb_in;
-        totalMdbOut += rowValue.mdb_out;
-      });
-      return {
-        date,
-        solar_in: roundTo(totalSolar, 1),
-        self_use: roundTo(totalSelf, 1),
-        mdb_in: roundTo(totalMdbIn, 1),
-        mdb_out: roundTo(totalMdbOut, 1),
-        by_meter
-      };
-    });
-};
-
-const fetchEnergyMonth = async (monthStr) => {
-  const url = `${energyApiBase}?period=month&month=${monthStr}`;
-  const response = await fetch(url, { method: "GET" });
-  if (!response.ok) {
-    throw new Error(`API error ${response.status}`);
+const normalizeKeyToken = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+const readLooseValue = (row, keys) => {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
+  const wanted = new Set((Array.isArray(keys) ? keys : []).map(normalizeKeyToken));
+  for (const [rawKey, value] of Object.entries(row)) {
+    if (wanted.has(normalizeKeyToken(rawKey))) return value;
   }
-  const payload = await response.json();
-  const rawRows = extractDailyRows(payload);
-  const rows = normalizeDailyRows(rawRows);
-  if (rows.length && hasDailyUsage(rows)) return rows;
-  const totalRows = buildDailyRowsFromEnergyTotals(rawRows);
-  return totalRows.length ? totalRows : rows;
+  return undefined;
 };
-
-const normalizeDailyUsageValue = (row) => ({
-  solar_in: roundTo(Math.max(0, parseNumber(row?.solar_in ?? row?.solarIn ?? row?.solar)), 1),
-  self_use: roundTo(Math.max(0, parseNumber(row?.self_use ?? row?.selfUse ?? row?.self)), 1),
-  mdb_in: roundTo(Math.max(0, parseNumber(row?.mdb_in ?? row?.mdbIn ?? row?.mdb_in_kwh)), 1),
-  mdb_out: roundTo(Math.max(0, parseNumber(row?.mdb_out ?? row?.mdbOut ?? row?.mdb_out_kwh)), 1)
-});
+const readLooseNumber = (row, keys) => {
+  const value = readLooseValue(row, keys);
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? num : null;
+};
+const normalizeDailyUsageValue = (row) => {
+  const energyIn = roundTo(
+    Math.max(
+      0,
+      parseNumber(
+        row?.energy_in ??
+          row?.energyIn ??
+          row?.solar_in ??
+          row?.solarIn ??
+          row?.solar ??
+          row?.pv
+      )
+    ),
+    1
+  );
+  const energyOut = roundTo(
+    Math.max(
+      0,
+      parseNumber(
+        row?.energy_out ??
+          row?.energyOut ??
+          row?.self_use ??
+          row?.selfUse ??
+          row?.self ??
+          row?.mdb_in ??
+          row?.mdbIn ??
+          row?.mdb_in_kwh
+      )
+    ),
+    1
+  );
+  const mdbOut = roundTo(
+    Math.max(
+      0,
+      parseNumber(
+        row?.mdb_out ??
+          row?.mdbOut ??
+          row?.mdb_out_kwh ??
+          row?.energy_export ??
+          row?.energyExport ??
+          row?.export
+      )
+    ),
+    1
+  );
+  return {
+    energy_in: energyIn,
+    energy_out: energyOut,
+    solar_in: energyIn,
+    self_use: energyOut,
+    mdb_in: energyOut,
+    mdb_out: mdbOut
+  };
+};
 const hasDailyUsageFields = (row) => {
   if (!row || typeof row !== "object") return false;
   return [
@@ -1553,9 +1520,197 @@ const hasDailyUsageFields = (row) => {
     row.self,
     row.mdb_in,
     row.mdbIn,
+    row.energy_in,
+    row.energyIn,
+    row.energy_out,
+    row.energyOut,
     row.mdb_out,
     row.mdbOut
   ].some((value) => value !== undefined && value !== null && value !== "");
+};
+const readSummaryUsageFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const candidates = [];
+  if (!Array.isArray(payload)) candidates.push(payload);
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+    candidates.push(payload.data);
+  }
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
+    candidates.push(payload.result);
+  }
+  for (const candidate of candidates) {
+    const summary = candidate?.summary;
+    if (!summary || typeof summary !== "object" || Array.isArray(summary)) continue;
+    const energyIn = readLooseNumber(summary, [
+      "energy_in",
+      "energyIn",
+      "solar_in",
+      "solarIn"
+    ]);
+    const energyOut = readLooseNumber(summary, [
+      "energy_out",
+      "energyOut",
+      "self_use",
+      "selfUse",
+      "mdb_in",
+      "mdbIn"
+    ]);
+    const mdbOut = readLooseNumber(summary, [
+      "mdb_out",
+      "mdbOut",
+      "energy_export",
+      "energyExport",
+      "export"
+    ]);
+    if (energyIn === null && energyOut === null && mdbOut === null) continue;
+    return normalizeDailyUsageValue({
+      solar_in: energyIn ?? 0,
+      self_use: energyOut ?? 0,
+      mdb_in: energyOut ?? 0,
+      mdb_out: mdbOut ?? 0
+    });
+  }
+  return null;
+};
+const extractTimeseriesRowsForDate = (payload, dateStr) => {
+  const targetDate = normalizeDateValue(dateStr);
+  if (!targetDate || !payload || typeof payload !== "object") return [];
+  const queue = [{ node: payload, baseDate: "" }];
+  const rows = [];
+  while (queue.length) {
+    const { node, baseDate } = queue.shift() || {};
+    const inheritedDate = normalizeDateValue(baseDate);
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) {
+      node.forEach((child) => {
+        queue.push({ node: child, baseDate: inheritedDate });
+      });
+      continue;
+    }
+    const nodeDate =
+      normalizeDateValue(
+        readLooseValue(node, [
+          "date",
+          "day",
+          "datetime",
+          "timestamp",
+          "created_at",
+          "createdAt"
+        ])
+      ) || inheritedDate;
+    const timeseries = Array.isArray(node.timeseries) ? node.timeseries : [];
+    timeseries.forEach((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return;
+      const rowDate =
+        normalizeDateValue(
+          readLooseValue(row, [
+            "date",
+            "day",
+            "datetime",
+            "timestamp",
+            "created_at",
+            "createdAt"
+          ])
+        ) || nodeDate;
+      if (rowDate === targetDate) rows.push(row);
+    });
+    Object.values(node).forEach((child) => {
+      if (child && typeof child === "object") {
+        queue.push({ node: child, baseDate: nodeDate });
+      }
+    });
+  }
+  return rows;
+};
+const readSeriesTimestamp = (row) => {
+  const raw = readLooseValue(row, [
+    "datetime",
+    "timestamp",
+    "ts",
+    "time",
+    "created_at",
+    "createdAt"
+  ]);
+  const stamp = Date.parse(String(raw || ""));
+  return Number.isFinite(stamp) ? stamp : null;
+};
+const resolveSeriesDailyTotal = (points) => {
+  const source = Array.isArray(points) ? points : [];
+  const list = source
+    .map((item) => ({
+      value: Number(item?.value),
+      stamp: Number(item?.stamp)
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  if (!list.length) return 0;
+  const hasStamp = list.every((item) => Number.isFinite(item.stamp));
+  const ordered = hasStamp
+    ? [...list].sort((a, b) => Number(a.stamp) - Number(b.stamp))
+    : list;
+  const values = ordered.map((item) => item.value);
+  const monotonicUp = values.every(
+    (value, idx) => idx === 0 || value >= values[idx - 1] - 1e-9
+  );
+  if (monotonicUp && values.length >= 2) {
+    const delta = Math.max(0, values[values.length - 1] - values[0]);
+    if (delta > 0) return delta;
+  }
+  return values.reduce((sum, value) => sum + Math.max(0, value), 0);
+};
+const buildDailyUsageFromTimeseriesRows = (rows) => {
+  const points = Array.isArray(rows) ? rows : [];
+  if (!points.length) return null;
+  const solarPoints = [];
+  const selfUsePoints = [];
+  const mdbOutPoints = [];
+  points.forEach((row) => {
+    const stamp = readSeriesTimestamp(row);
+    const solar = readLooseNumber(row, [
+      "solar_in",
+      "solarIn",
+      "solar",
+      "energy_in",
+      "energyIn",
+      "pv",
+      "pv_in",
+      "pvIn"
+    ]);
+    if (solar !== null) solarPoints.push({ value: solar, stamp });
+    const selfUse = readLooseNumber(row, [
+      "self_use",
+      "selfUse",
+      "self",
+      "mdb_in",
+      "mdbIn",
+      "energy_out",
+      "energyOut",
+      "grid_import",
+      "gridImport",
+      "consumption"
+    ]);
+    if (selfUse !== null) selfUsePoints.push({ value: selfUse, stamp });
+    const mdbOut = readLooseNumber(row, [
+      "mdb_out",
+      "mdbOut",
+      "energy_export",
+      "energyExport",
+      "export",
+      "grid_export",
+      "gridExport"
+    ]);
+    if (mdbOut !== null) mdbOutPoints.push({ value: mdbOut, stamp });
+  });
+
+  const solarDaily = resolveSeriesDailyTotal(solarPoints);
+  const selfUseDaily = resolveSeriesDailyTotal(selfUsePoints);
+  const mdbOutDaily = resolveSeriesDailyTotal(mdbOutPoints);
+  if (!solarDaily && !selfUseDaily && !mdbOutDaily) return null;
+  return normalizeDailyUsageValue({
+    solar_in: solarDaily,
+    self_use: selfUseDaily,
+    mdb_in: selfUseDaily,
+    mdb_out: mdbOutDaily
+  });
 };
 const getMetersWithApiId = () => {
   const meters = Array.isArray(meterProfiles) ? meterProfiles : [];
@@ -1587,13 +1742,10 @@ const readMeterDailyValueFromRow = (row, meter) => {
 const resolveDailyRowFromPayload = (payload, dateStr) => {
   const rawRows = extractDailyRows(payload);
   const directRows = normalizeDailyRows(rawRows);
-  const directMatch = directRows.find((row) => row.date === dateStr);
-  if (directMatch) return directMatch;
-  const totalRows = buildDailyRowsFromEnergyTotals(rawRows);
-  return totalRows.find((row) => row.date === dateStr) || null;
+  return directRows.find((row) => row.date === dateStr) || null;
 };
-const readDirectDailyUsageFromPayload = (payload) => {
-  if (!payload || typeof payload !== "object") return null;
+const readPayloadPeriodToken = (payload) => {
+  if (!payload || typeof payload !== "object") return "";
   const candidates = [];
   if (!Array.isArray(payload)) candidates.push(payload);
   if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
@@ -1602,8 +1754,50 @@ const readDirectDailyUsageFromPayload = (payload) => {
   if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
     candidates.push(payload.result);
   }
-  const directRow = candidates.find((item) => hasDailyUsageFields(item));
-  return directRow ? normalizeDailyUsageValue(directRow) : null;
+  for (const candidate of candidates) {
+    const token = String(readLooseValue(candidate, ["period"]) || "")
+      .trim()
+      .toLowerCase();
+    if (token) return token;
+  }
+  return "";
+};
+const readDirectDailyUsageFromPayload = (payload, dateStr = "") => {
+  if (!payload || typeof payload !== "object") return null;
+  const targetDate = normalizeDateValue(dateStr);
+  const periodToken = readPayloadPeriodToken(payload);
+  const candidates = [];
+  if (!Array.isArray(payload)) candidates.push(payload);
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+    candidates.push(payload.data);
+  }
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
+    candidates.push(payload.result);
+  }
+  for (const candidate of candidates) {
+    if (!hasDailyUsageFields(candidate)) continue;
+    const candidateDate = normalizeDateValue(
+      readLooseValue(candidate, ["date", "day", "datetime", "timestamp", "created_at", "createdAt"])
+    );
+    if (targetDate && candidateDate && candidateDate !== targetDate) continue;
+    if (targetDate && !candidateDate && periodToken && periodToken !== "day") continue;
+    return normalizeDailyUsageValue(candidate);
+  }
+  return null;
+};
+const resolveDailyUsageFromPayload = (payload, dateStr, meter) => {
+  const dailyRow = resolveDailyRowFromPayload(payload, dateStr);
+  if (dailyRow) return readMeterDailyValueFromRow(dailyRow, meter);
+  const timeseriesRows = extractTimeseriesRowsForDate(payload, dateStr);
+  const timeseriesUsage = buildDailyUsageFromTimeseriesRows(timeseriesRows);
+  if (timeseriesUsage) return timeseriesUsage;
+  const directUsage = readDirectDailyUsageFromPayload(payload, dateStr);
+  if (directUsage) return directUsage;
+  if (readPayloadPeriodToken(payload) === "day") {
+    const summaryUsage = readSummaryUsageFromPayload(payload);
+    if (summaryUsage) return summaryUsage;
+  }
+  return null;
 };
 const fetchDeviceEnergyDayForMeter = async (meter, dateStr) => {
   const meterId = Number(meter?.id);
@@ -1622,10 +1816,7 @@ const fetchDeviceEnergyDayForMeter = async (meter, dateStr) => {
 
   const response = await requestDeviceEnergyApi(`?${params.toString()}`);
   const payload = await response.json().catch(() => null);
-  const dailyRow = resolveDailyRowFromPayload(payload, dateParts.date);
-  const values = dailyRow
-    ? readMeterDailyValueFromRow(dailyRow, meter)
-    : readDirectDailyUsageFromPayload(payload);
+  const values = resolveDailyUsageFromPayload(payload, dateParts.date, meter);
   if (!values) return null;
   return {
     meter,
@@ -1641,6 +1832,7 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
   if (!apiMeters.length) return [];
 
   const rows = [];
+  let hasAnyReading = false;
   const dates = listDatesInclusive(start, end);
   for (const dateStr of dates) {
     const dayItems = await Promise.all(
@@ -1651,73 +1843,44 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
     const resolvedItems = dayItems.filter(
       (item) => item && typeof item.meterKey === "string" && item.meterKey
     );
-    if (!resolvedItems.length) continue;
+    if (resolvedItems.length) hasAnyReading = true;
 
     const by_meter = {};
-    let totalSolar = 0;
-    let totalSelf = 0;
-    let totalMdbIn = 0;
+    let totalEnergyIn = 0;
+    let totalEnergyOut = 0;
     let totalMdbOut = 0;
     resolvedItems.forEach((item) => {
       const usage = normalizeDailyUsageValue(item.values);
       by_meter[item.meterKey] = usage;
-      totalSolar += usage.solar_in;
-      totalSelf += usage.self_use;
-      totalMdbIn += usage.mdb_in;
+      totalEnergyIn += usage.energy_in;
+      totalEnergyOut += usage.energy_out;
       totalMdbOut += usage.mdb_out;
     });
     rows.push({
       date: dateStr,
-      solar_in: roundTo(totalSolar, 1),
-      self_use: roundTo(totalSelf, 1),
-      mdb_in: roundTo(totalMdbIn, 1),
+      energy_in: roundTo(totalEnergyIn, 1),
+      energy_out: roundTo(totalEnergyOut, 1),
+      solar_in: roundTo(totalEnergyIn, 1),
+      self_use: roundTo(totalEnergyOut, 1),
+      mdb_in: roundTo(totalEnergyOut, 1),
       mdb_out: roundTo(totalMdbOut, 1),
       by_meter
     });
   }
+  if (!hasAnyReading) return [];
   return rows;
 };
 
-const fetchEnergyRangeFromMonthApi = async (startStr, endStr) => {
-  const start = parseDateInput(startStr);
-  const end = parseDateInput(endStr);
-  if (!start || !end) return [];
-  const months = listMonthsBetween(start, end);
-  const results = [];
-  for (const month of months) {
-    try {
-      const rows = await fetchEnergyMonth(month);
-      if (rows.length) results.push(...rows);
-    } catch {
-      // ignore individual month errors
-    }
-  }
-  if (!results.length) return [];
-  const map = new Map();
-  results.forEach((row) => {
-    if (row?.date) map.set(row.date, row);
-  });
-  return Array.from(map.values())
-    .filter((row) => row.date >= startStr && row.date <= endStr)
-    .sort((a, b) => a.date.localeCompare(b.date));
-};
 const fetchEnergyRange = async (startStr, endStr) => {
-  const deviceRows = await fetchDeviceEnergyRange(startStr, endStr).catch(() => []);
-  if (deviceRows.length) {
-    return deviceRows.sort((a, b) => a.date.localeCompare(b.date));
-  }
-  return fetchEnergyRangeFromMonthApi(startStr, endStr);
+  const deviceRows = await fetchDeviceEnergyRange(startStr, endStr).catch(
+    () => []
+  );
+  return deviceRows.sort((a, b) => a.date.localeCompare(b.date));
 };
 
 const getDailyEnergyForRange = async (startStr, endStr) => {
   const apiRows = await fetchEnergyRange(startStr, endStr);
-  if (apiRows.length) {
-    return { rows: apiRows, source: "api" };
-  }
-  return {
-    rows: buildMockEnergyRange(startStr, endStr, `${startStr}-${endStr}`),
-    source: "mock"
-  };
+  return { rows: apiRows, source: "api" };
 };
 
 const buildStorageKey = (prefix) => {
@@ -1792,9 +1955,18 @@ const saveSchedule = () => {
 };
 const loadHistory = () => {
   history = [];
+  let historyChanged = false;
   try {
     const saved = localStorage.getItem(historyKey);
-    if (saved) history = JSON.parse(saved) || [];
+    if (saved) {
+      const parsed = JSON.parse(saved) || [];
+      const loaded = Array.isArray(parsed) ? parsed : [];
+      const filtered = loaded.filter(
+        (bill) => normalizeSiteToken(bill?.source) !== "mock"
+      );
+      historyChanged = filtered.length !== loaded.length;
+      history = filtered;
+    }
   } catch {
     history = [];
   }
@@ -1807,142 +1979,14 @@ const loadHistory = () => {
   if (!billSequence && history.length) {
     billSequence = Math.max(...history.map((b) => b.billNo || 0), 0);
   }
+  if (historyChanged) {
+    saveHistory();
+  }
 };
 const saveHistory = () => {
   localStorage.setItem(historyKey, JSON.stringify(history));
   localStorage.setItem(sequenceKey, String(billSequence));
 };
-const seedMockAutoHistoryIfEmpty = () => {
-  let alreadySeeded = false;
-  try {
-    alreadySeeded = localStorage.getItem(mockScenarioKey) === "1";
-  } catch {
-    alreadySeeded = false;
-  }
-  const preferredAuto =
-    getAutoScheduleByCutoff(15) ||
-    getAutoScheduleByCutoff(schedule.cutoffDay) ||
-    getAutoScheduleByCutoff(20) ||
-    getAutoSchedules()[0] ||
-    null;
-  if (!preferredAuto) return;
-
-  const targetCutoff = Number(preferredAuto.cutoffDay) || defaultSchedule.cutoffDay;
-  const existingTargetBills = history.filter(
-    (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === targetCutoff
-  );
-  if (alreadySeeded && existingTargetBills.length >= 12) return;
-
-  const setupTimestamp = Number(preferredAuto?.updatedAt) > 0
-    ? Number(preferredAuto.updatedAt)
-    : targetCutoff === 15
-      ? new Date(2026, 1, 13, 1, 54, 25).getTime()
-      : new Date(2025, 0, 24, 10, 15, 30).getTime();
-  const mockAutoConfig = normalizeAutoScheduleEntry(
-    {
-      ...preferredAuto,
-      cutoffDay: targetCutoff,
-      defaultRate:
-        parseFloat(`${preferredAuto?.defaultRate}`) || defaultSchedule.defaultRate,
-      rateType: preferredAuto?.rateType || defaultSchedule.rateType,
-      calcMethod: preferredAuto?.calcMethod || defaultSchedule.calcMethod,
-      calcFormula: Array.isArray(preferredAuto?.calcFormula)
-        ? preferredAuto.calcFormula
-        : buildLegacyFormula(
-          preferredAuto?.calcMethod || defaultSchedule.calcMethod,
-          meterProfiles
-        ),
-      calcLabel: preferredAuto?.calcLabel || defaultCalcLabel,
-      detailColumns: normalizeDetailColumns(preferredAuto?.detailColumns),
-      updatedAt: setupTimestamp
-    },
-    preferredAuto
-  );
-  const savedAuto = upsertAutoSchedule(mockAutoConfig);
-  if (!Number.isFinite(Number(schedule.cutoffDay))) {
-    schedule.cutoffDay = savedAuto.cutoffDay;
-  }
-  saveSchedule();
-
-  const latestRunDate = (() => {
-    const anchor = new Date(setupTimestamp);
-    const thisMonthRunDay = clampDay(
-      anchor.getFullYear(),
-      anchor.getMonth(),
-      savedAuto.cutoffDay
-    );
-    if (anchor.getDate() > thisMonthRunDay) {
-      return new Date(anchor.getFullYear(), anchor.getMonth(), thisMonthRunDay);
-    }
-    const prevMonth = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1);
-    const prevMonthRunDay = clampDay(
-      prevMonth.getFullYear(),
-      prevMonth.getMonth(),
-      savedAuto.cutoffDay
-    );
-    return new Date(prevMonth.getFullYear(), prevMonth.getMonth(), prevMonthRunDay);
-  })();
-
-  const mockMeters = getMetersFromFormula(savedAuto.calcFormula, meterProfiles);
-  const existingPeriods = new Set(
-    history
-      .filter(
-        (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(savedAuto.cutoffDay)
-      )
-      .map((bill) => `${bill.periodStart}|${bill.periodEnd}`)
-  );
-  const runDates = Array.from({ length: 12 }, (_, idx) => {
-    const monthShift = idx - 11;
-    const monthBase = new Date(
-      latestRunDate.getFullYear(),
-      latestRunDate.getMonth() + monthShift,
-      1
-    );
-    const runDay = clampDay(monthBase.getFullYear(), monthBase.getMonth(), savedAuto.cutoffDay);
-    return new Date(monthBase.getFullYear(), monthBase.getMonth(), runDay);
-  });
-  runDates.forEach((runDate) => {
-    const { start, end } = getAutoPeriodForRunDate(runDate, savedAuto.cutoffDay);
-    const periodStart = formatDate(start);
-    const periodEnd = formatDate(end);
-    const periodKey = `${periodStart}|${periodEnd}`;
-    if (existingPeriods.has(periodKey)) return;
-    const dailyRows = buildMockEnergyRange(
-      periodStart,
-      periodEnd,
-      `mock-auto-${savedAuto.cutoffDay}-${periodStart}-${periodEnd}`
-    );
-    createBill({
-      periodStart,
-      periodEnd,
-      meters: mockMeters,
-      rate: savedAuto.defaultRate,
-      rateType: savedAuto.rateType,
-      calcMethod: savedAuto.calcMethod,
-      calcFormula: savedAuto.calcFormula,
-      calcLabel: savedAuto.calcLabel,
-      cutoffDay: savedAuto.cutoffDay,
-      detailColumns: savedAuto.detailColumns,
-      auto: true,
-      source: "mock",
-      dailyRows,
-      createdAt: new Date(
-        runDate.getFullYear(),
-        runDate.getMonth(),
-        runDate.getDate(),
-        9,
-        0,
-        0
-      ).getTime()
-    });
-  });
-  try {
-    localStorage.setItem(mockScenarioKey, "1");
-  } catch {
-    // ignore localStorage write errors
-  }
-};
-
 const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
   const year = runDate.getFullYear();
   const month = runDate.getMonth();
@@ -2251,7 +2295,16 @@ const findMeterScopedRow = (row, term) => {
 };
 const getFormulaTermValue = (row, term) => {
   const source = findMeterScopedRow(row, term) || row;
-  return parseNumber(source?.[term.field]);
+  const fieldKey = formulaFieldLabelMap[term?.field]
+    ? term.field
+    : formulaFieldAliasMap[String(term?.field || "").trim().toLowerCase()] || defaultFormulaField;
+  if (fieldKey === "energy_in") {
+    return parseNumber(source?.energy_in ?? source?.solar_in ?? source?.mdb_in);
+  }
+  if (fieldKey === "energy_out") {
+    return parseNumber(source?.energy_out ?? source?.self_use ?? source?.mdb_out);
+  }
+  return parseNumber(source?.[fieldKey]);
 };
 const calculateByFormula = (row, formula) => {
   const terms = normalizeCalcFormula(formula, meterProfiles, false);
@@ -2273,15 +2326,22 @@ const calculateByFormula = (row, formula) => {
 const getBillUnits = (row, method, formula) => {
   const byFormula = calculateByFormula(row, formula);
   if (byFormula !== null) return byFormula;
-  const solarIn = parseNumber(row.solar_in);
-  const selfUse = parseNumber(row.self_use);
-  const mdbIn = parseNumber(row.mdb_in);
-  const mdbOut = parseNumber(row.mdb_out);
-  let value = selfUse;
-  if (method === "mdb_net") value = mdbIn - mdbOut;
-  if (method === "solar_in") value = solarIn;
-  if (method === "mdb_in") value = mdbIn;
-  if (method === "mdb_out") value = mdbOut;
+  const energyIn = parseNumber(row.energy_in ?? row.solar_in ?? row.mdb_in);
+  const energyOut = parseNumber(row.energy_out ?? row.self_use ?? row.mdb_out);
+  const mdbOut = parseNumber(row.mdb_out ?? 0);
+  let value = energyOut;
+  if (method === "energy_in" || method === "solar_in" || method === "mdb_in") {
+    value = energyIn;
+  }
+  if (method === "energy_out" || method === "self_use" || method === "mdb_out") {
+    value = energyOut;
+  }
+  if (method === "energy_net" || method === "mdb_net") {
+    value = energyIn - energyOut;
+  }
+  if (method === "legacy_mdb_net") {
+    value = energyIn - mdbOut;
+  }
   return roundTo(Math.max(0, value), 1);
 };
 
@@ -2791,14 +2851,11 @@ const handleConfirm = async () => {
   renderHistory();
   updateSummary();
   closeModal();
-  const sourceNote = source === "mock"
-    ? "\nหมายเหตุ: ใช้ข้อมูลจำลอง (API ยังดึงไม่ได้)"
-    : "";
   alert(
     `สร้างบิลใบที่ ${bill.billNo}\nช่วง ${bill.periodStart} - ${bill.periodEnd}\nพลังงานรวม ${formatNumber(
       bill.totalKwh,
       1
-    )} kWh x ฿${formatNumber(bill.rate, 2)} = ${formatCurrency(bill.amount)}${sourceNote}`
+    )} kWh x ฿${formatNumber(bill.rate, 2)} = ${formatCurrency(bill.amount)}`
   );
 };
 
@@ -2861,6 +2918,9 @@ calcModeFormulaBtn?.addEventListener("click", () => {
   billEnd
 ].forEach((el) => {
   el?.addEventListener("change", () => {
+    if (el === formulaMeterLeft || el === formulaMeterRight) {
+      syncFormulaValueOptionsForMeterSelects({ preserveExisting: true });
+    }
     updateFormulaResultPreview();
   });
 });
@@ -2894,12 +2954,10 @@ window.addEventListener("resize", () => {
 historyKey = buildStorageKey("billingHistoryV2");
 scheduleKey = buildStorageKey("billingScheduleV1");
 sequenceKey = buildStorageKey("billingSequenceV1");
-mockScenarioKey = buildStorageKey("billingMockScenarioV2");
 loadSchedule();
 loadHistory();
 
 const initBilling = async () => {
-  seedMockAutoHistoryIfEmpty();
   updateScheduleInfo(schedule.cutoffDay);
   await runAutoIfDue();
   renderAutoQueue();

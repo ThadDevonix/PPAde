@@ -1,12 +1,7 @@
-// Use fallback demo data ifไม่มีข้อมูลใน localStorage
-if (!plant) {
+if (!plant || typeof plant !== "object") {
   plant = {
-    name: "Demo Plant 10kW",
-    deviceSn: "SN-DEMO-001",
-    devices: [
-      { name: "Meter A", sn: "SN-DEMO-001-A", status: "online" },
-      { name: "Meter B", sn: "SN-DEMO-001-B", status: "online" }
-    ]
+    name: "ไม่พบข้อมูล Plant",
+    devices: []
   };
 }
 
@@ -52,25 +47,39 @@ const syncPlantToHomeStorage = () => {
 };
 
 let plantMeters = normalizeLocalMeters(plant.devices);
-if (!plantMeters.length && !stored) {
-  plantMeters = normalizeLocalMeters([
-    { name: "Meter A", sn: plant.deviceSn || "-", status: "online" },
-    { name: "Meter B", sn: `${plant.deviceSn || "-"}-B`, status: "online" }
-  ]);
-}
+let isSavingMeterCreate = false;
 
 const formatMeterSerialText = (meter) => {
   if (!meter || typeof meter !== "object") return "-";
-  const in1 = readText(meter.modbusIn1, meter.modbus_in_1);
-  const in2 = readText(meter.modbusIn2, meter.modbus_in_2);
-  const out1 = readText(meter.modbusOut1, meter.modbus_out_1);
-  const out2 = readText(meter.modbusOut2, meter.modbus_out_2);
-  if (in1 || in2 || out1 || out2) {
-    const inText = in1 || in2 ? `${in1 || "-"} / ${in2 || "-"}` : "-";
-    const outText = out1 || out2 ? `${out1 || "-"} / ${out2 || "-"}` : "-";
-    return `IN ${inText} | OUT ${outText}`;
-  }
-  return readText(meter.sn, meter.serial, meter.modbus_address_in, meter.modbus_address_out) || "-";
+  const pickPrimaryToken = (value) => {
+    const raw = readText(value);
+    if (!raw) return "";
+    const cleaned = raw.replace(/^\s*IN\s*/i, "").trim();
+    const tokens = cleaned
+      .split(/[|/,\s]+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .filter((token) => !/^(IN|OUT)$/i.test(token));
+    return tokens[0] || raw;
+  };
+  const primary = pickPrimaryToken(
+    readText(
+      meter.modbusIn1,
+      meter.modbus_in_1,
+      meter.modbus_address_in,
+      meter.modbusAddressIn
+    )
+  );
+  if (primary) return primary;
+  return pickPrimaryToken(readText(meter.sn, meter.serial, meter.modbus_address_out, meter.modbusAddressOut)) || "-";
+};
+const shortenSerialText = (value, maxLength = 26) => {
+  const text = String(value || "");
+  if (!text) return "-";
+  if (text.length <= maxLength) return text;
+  if (maxLength <= 3) return text.slice(0, maxLength);
+  const sideLength = Math.max(2, Math.floor((maxLength - 3) / 2));
+  return `${text.slice(0, sideLength)}...${text.slice(-sideLength)}`;
 };
 const splitAddressPair = (value) => {
   const text = readText(value);
@@ -138,7 +147,11 @@ const handleDeleteMeterByIndex = async (idx) => {
   const ok = confirm(`ต้องการลบมิเตอร์: ${label} ใช่หรือไม่?`);
   if (!ok) return;
   try {
-    await deleteMeterInApi(meter);
+    const deleteMode = await deleteMeterInApi(meter, plant);
+    if (deleteMode === "api") {
+      await hydratePlantMetersFromApi();
+      return;
+    }
     const nextMeters = plantMeters.filter((_, meterIdx) => meterIdx !== idx);
     applyPlantMeters(nextMeters, { persistPlant: true, persistHomePlants: true });
   } catch (error) {
@@ -155,11 +168,14 @@ const renderPlantMeters = () => {
   }
   deviceRowsEl.innerHTML = plantMeters
     .map(
-      (meter, idx) => `
+      (meter, idx) => {
+        const serialFull = formatMeterSerialText(meter);
+        const serialShort = shortenSerialText(serialFull);
+        return `
       <tr data-idx="${idx}">
         <td><span class="status-dot" title="${escapeHtml(meter.status)}"></span></td>
         <td>${escapeHtml(meter.name)}</td>
-        <td>${escapeHtml(formatMeterSerialText(meter))}</td>
+        <td title="${escapeHtml(serialFull)}">${escapeHtml(serialShort)}</td>
         <td>
           <div class="history-actions meter-row-actions">
             <button
@@ -196,7 +212,8 @@ const renderPlantMeters = () => {
             </div>
           </div>
         </td>
-      </tr>`
+      </tr>`;
+      }
     )
     .join("");
 
@@ -277,7 +294,260 @@ const openMeterCreateModal = () => {
   isMeterCreateModalOpen = true;
   meterCreateNameInput?.focus();
 };
-const handleCreateMeter = () => {
+const parseLoosePositiveInt = (value) => {
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && asNumber > 0) return Math.trunc(asNumber);
+  if (typeof value !== "string") return null;
+  const match = value.match(/(\d+)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+};
+const getPlantSiteIdForWrite = () => {
+  const candidates = [plant?.apiId, plant?.siteId, plant?.site_id];
+  for (const value of candidates) {
+    const siteId = parseLoosePositiveInt(value);
+    if (Number.isFinite(siteId) && siteId > 0) return siteId;
+  }
+  return null;
+};
+const getMeterPersistId = (meter) => {
+  const candidates = [meter?.id, meter?.apiId, meter?.device_id, meter?.deviceId];
+  for (const value of candidates) {
+    const meterId = parseLoosePositiveInt(value);
+    if (Number.isFinite(meterId) && meterId > 0) return meterId;
+  }
+  return null;
+};
+const readResponseErrorText = async (response) => {
+  try {
+    const text = await response.text();
+    return text ? `: ${text}` : "";
+  } catch {
+    return "";
+  }
+};
+const extractMeterFromWritePayload = (payload) => {
+  if (!payload) return null;
+  const rows = extractApiDeviceRows(payload);
+  const normalizedRows = normalizeMeterRows(rows);
+  if (normalizedRows.length) return normalizedRows[0];
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const single = normalizeMeterRows([payload]);
+    if (single.length) return single[0];
+    const dataNode = payload.data;
+    if (dataNode && typeof dataNode === "object" && !Array.isArray(dataNode)) {
+      const nestedSingle = normalizeMeterRows([dataNode]);
+      if (nestedSingle.length) return nestedSingle[0];
+    }
+    const resultNode = payload.result;
+    if (resultNode && typeof resultNode === "object" && !Array.isArray(resultNode)) {
+      const nestedSingle = normalizeMeterRows([resultNode]);
+      if (nestedSingle.length) return nestedSingle[0];
+    }
+  }
+  return null;
+};
+const buildMeterWritePayload = (meter) => {
+  const siteId = getPlantSiteIdForWrite();
+  if (!Number.isFinite(siteId) || siteId <= 0) {
+    throw new Error("ไม่พบ Site ID ของ Plant จึงบันทึกมิเตอร์เข้า API ไม่ได้");
+  }
+  const modbusIn1 = readText(meter?.modbusIn1, meter?.modbus_in_1);
+  const modbusIn2 = readText(meter?.modbusIn2, meter?.modbus_in_2);
+  const modbusOut1 = readText(meter?.modbusOut1, meter?.modbus_out_1);
+  const modbusOut2 = readText(meter?.modbusOut2, meter?.modbus_out_2);
+  const deviceName = readText(meter?.name, meter?.device_name, meter?.deviceName);
+  const deviceType = (
+    readText(meter?.deviceType, meter?.device_type, meter?.type) || "METER"
+  ).toUpperCase();
+  return {
+    site_id: siteId,
+    device_name: deviceName,
+    device_type: deviceType,
+    modbus_address_in: modbusIn1 || null,
+    modbus_address_in_2: modbusIn2 || null,
+    modbus_address_out: modbusOut1 || null,
+    modbus_address_out_2: modbusOut2 || null,
+    modbus_in_1: modbusIn1 || null,
+    modbus_in_2: modbusIn2 || null,
+    modbus_out_1: modbusOut1 || null,
+    modbus_out_2: modbusOut2 || null,
+    is_active: 1
+  };
+};
+const createMeterInApi = async (meter) => {
+  const payload = buildMeterWritePayload(meter);
+  let response = null;
+  try {
+    response = await fetch("/api/devices", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    throw error || new Error("POST /api/devices failed");
+  }
+  if (!response.ok) {
+    const detail = await readResponseErrorText(response);
+    if (response.status === 403) {
+      throw new Error(detail.replace(/^:\s*/, "") || "ไม่มีสิทธิ์เพิ่มมิเตอร์");
+    }
+    if (response.status === 401) {
+      throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    }
+    throw new Error(`POST /api/devices failed (${response.status})${detail}`);
+  }
+  const responsePayload = await response.json().catch(() => null);
+  const created = extractMeterFromWritePayload(responsePayload);
+  if (created) return created;
+  const refreshed = await fetchPlantDevicesFromApi(plant).catch(() => []);
+  const matchedByName = refreshed.find(
+    (item) => normalizeSiteToken(item?.name) === normalizeSiteToken(payload.device_name)
+  );
+  if (matchedByName) return matchedByName;
+  throw new Error("API รับคำขอแล้ว แต่ยังยืนยันมิเตอร์ที่เพิ่มไม่ได้ กรุณารีเฟรชแล้วตรวจสอบอีกครั้ง");
+};
+const updateMeterInApi = async (meter, currentMeter) => {
+  const payload = buildMeterWritePayload(meter);
+  const meterId = getMeterPersistId(currentMeter);
+  if (!Number.isFinite(meterId) || meterId <= 0) {
+    return createMeterInApi(meter);
+  }
+  const toComparable = (candidate) => ({
+    name: normalizeSiteToken(readText(candidate?.name, candidate?.device_name, candidate?.deviceName)),
+    type: normalizeSiteToken(readText(candidate?.deviceType, candidate?.device_type, candidate?.type)),
+    in1: normalizeSiteToken(
+      readText(
+        candidate?.modbusIn1,
+        candidate?.modbus_in_1,
+        candidate?.modbus_address_in,
+        candidate?.modbusAddressIn
+      )
+    ),
+    in2: normalizeSiteToken(
+      readText(
+        candidate?.modbusIn2,
+        candidate?.modbus_in_2,
+        candidate?.modbus_address_in_2,
+        candidate?.modbusAddressIn2
+      )
+    ),
+    out1: normalizeSiteToken(
+      readText(
+        candidate?.modbusOut1,
+        candidate?.modbus_out_1,
+        candidate?.modbus_address_out,
+        candidate?.modbusAddressOut
+      )
+    ),
+    out2: normalizeSiteToken(
+      readText(
+        candidate?.modbusOut2,
+        candidate?.modbus_out_2,
+        candidate?.modbus_address_out_2,
+        candidate?.modbusAddressOut2
+      )
+    )
+  });
+  const expectedComparable = {
+    name: normalizeSiteToken(payload.device_name),
+    type: normalizeSiteToken(payload.device_type),
+    in1: normalizeSiteToken(payload.modbus_address_in),
+    in2: normalizeSiteToken(payload.modbus_address_in_2),
+    out1: normalizeSiteToken(payload.modbus_address_out),
+    out2: normalizeSiteToken(payload.modbus_address_out_2)
+  };
+  const currentComparable = toComparable(currentMeter || {});
+  const changedFields = Object.keys(expectedComparable).filter(
+    (key) => expectedComparable[key] !== currentComparable[key]
+  );
+  const isExpectedMeterState = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const actual = toComparable(candidate);
+    if (!changedFields.length) return true;
+    return changedFields.every((key) => actual[key] === expectedComparable[key]);
+  };
+  const fetchMeterByIdFromApi = async (id) => {
+    const refreshed = await fetchPlantDevicesFromApi(plant).catch(() => []);
+    if (!Array.isArray(refreshed) || !refreshed.length) return null;
+    return (
+      refreshed.find((item) => getMeterPersistId(item) === id) ||
+      null
+    );
+  };
+  const verifyUpdatedStateFromApi = async (id) => {
+    const waits = [0, 280, 650];
+    for (const wait of waits) {
+      if (wait > 0) {
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, wait);
+        });
+      }
+      const byId = await fetchMeterByIdFromApi(id);
+      if (isExpectedMeterState(byId)) return byId;
+    }
+    return null;
+  };
+  const encodedMeterId = encodeURIComponent(String(meterId));
+  const attempts = [
+    {
+      path: "",
+      init: {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, id: meterId })
+      }
+    },
+    {
+      path: `/${encodedMeterId}`,
+      init: {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    }
+  ];
+  let firstError = null;
+  for (const attempt of attempts) {
+    let response = null;
+    try {
+      response = await fetch(`/api/devices${attempt.path}`, attempt.init);
+    } catch (error) {
+      if (!firstError) firstError = error;
+      continue;
+    }
+    if (response.ok) {
+      const responsePayload = await response.json().catch(() => null);
+      const updatedFromPayload = extractMeterFromWritePayload(responsePayload);
+      if (
+        updatedFromPayload &&
+        getMeterPersistId(updatedFromPayload) === meterId &&
+        isExpectedMeterState(updatedFromPayload)
+      ) {
+        return updatedFromPayload;
+      }
+      const updatedFromApi = await verifyUpdatedStateFromApi(meterId);
+      if (updatedFromApi) return updatedFromApi;
+      throw new Error("API ตอบสำเร็จ แต่ข้อมูลมิเตอร์ไม่เปลี่ยนที่หลังบ้าน");
+    }
+    const detail = await readResponseErrorText(response);
+    if (response.status === 403) {
+      throw new Error(detail.replace(/^:\s*/, "") || "ไม่มีสิทธิ์แก้ไขมิเตอร์");
+    }
+    if (response.status === 401) {
+      throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    }
+    if (!firstError) {
+      firstError = new Error(`PUT /api/devices failed (${response.status})${detail}`);
+    }
+  }
+  throw firstError || new Error("แก้ไขมิเตอร์ผ่าน API ไม่สำเร็จ");
+};
+const handleCreateMeter = async () => {
   const deviceType = readText(meterCreateTypeInput?.value) || "METER";
   const meterName = readText(meterCreateNameInput?.value);
   const modbusIn1 = readText(meterCreateIn1Input?.value);
@@ -287,6 +557,12 @@ const handleCreateMeter = () => {
   if (!meterName || !modbusIn1 || !modbusIn2) {
     alert("กรุณากรอกประเภทอุปกรณ์, ชื่ออุปกรณ์ และ Modbus Address ขาเข้าให้ครบ");
     return;
+  }
+  if (isSavingMeterCreate) return;
+  isSavingMeterCreate = true;
+  if (meterCreateConfirm) {
+    meterCreateConfirm.disabled = true;
+    meterCreateConfirm.textContent = "กำลังบันทึก...";
   }
   const serialLabel = `IN ${modbusIn1} / ${modbusIn2}`;
   const newMeter = {
@@ -310,32 +586,47 @@ const handleCreateMeter = () => {
     modbus_address_in: `${modbusIn1}/${modbusIn2}`,
     modbus_address_out: modbusOut1 || modbusOut2 ? `${modbusOut1 || "-"} / ${modbusOut2 || "-"}` : ""
   };
-  if (
-    editingPlantMeterIndex !== null &&
-    editingPlantMeterIndex >= 0 &&
-    editingPlantMeterIndex < plantMeters.length
-  ) {
-    const currentMeter = plantMeters[editingPlantMeterIndex] || {};
-    const mergedMeter = {
-      ...currentMeter,
-      ...newMeter,
-      id: currentMeter.id ?? null,
-      apiId: currentMeter.apiId ?? null,
-      siteId:
-        Number.isFinite(Number(currentMeter.siteId)) && Number(currentMeter.siteId) > 0
-          ? Number(currentMeter.siteId)
-          : newMeter.siteId,
-      siteCode: readText(currentMeter.siteCode, currentMeter.site_code, newMeter.siteCode),
-      status: readText(currentMeter.status) || "online"
-    };
-    const updatedMeters = plantMeters.map((meter, idx) =>
-      idx === editingPlantMeterIndex ? mergedMeter : meter
-    );
-    applyPlantMeters(updatedMeters, { persistPlant: true, persistHomePlants: true });
-  } else {
-    applyPlantMeters([...plantMeters, newMeter], { persistPlant: true, persistHomePlants: true });
+  try {
+    if (
+      editingPlantMeterIndex !== null &&
+      editingPlantMeterIndex >= 0 &&
+      editingPlantMeterIndex < plantMeters.length
+    ) {
+      const currentMeter = plantMeters[editingPlantMeterIndex] || {};
+      const mergedMeter = {
+        ...currentMeter,
+        ...newMeter,
+        id: currentMeter.id ?? null,
+        apiId: currentMeter.apiId ?? null,
+        siteId:
+          Number.isFinite(Number(currentMeter.siteId)) && Number(currentMeter.siteId) > 0
+            ? Number(currentMeter.siteId)
+            : newMeter.siteId,
+        siteCode: readText(currentMeter.siteCode, currentMeter.site_code, newMeter.siteCode),
+        status: readText(currentMeter.status) || "online"
+      };
+      const savedMeter = await updateMeterInApi(mergedMeter, currentMeter);
+      const updatedMeters = plantMeters.map((meter, idx) =>
+        idx === editingPlantMeterIndex ? savedMeter : meter
+      );
+      applyPlantMeters(updatedMeters, { persistPlant: true, persistHomePlants: true });
+    } else {
+      const savedMeter = await createMeterInApi(newMeter);
+      applyPlantMeters([...plantMeters, savedMeter], { persistPlant: true, persistHomePlants: true });
+    }
+    closeMeterCreateModal();
+  } catch (error) {
+    alert(error?.message || "บันทึกมิเตอร์ผ่าน API ไม่สำเร็จ");
+  } finally {
+    isSavingMeterCreate = false;
+    if (meterCreateConfirm) {
+      meterCreateConfirm.disabled = false;
+      if (isMeterCreateModalOpen) {
+        meterCreateConfirm.textContent =
+          editingPlantMeterIndex !== null ? "บันทึก" : "เพิ่มมิเตอร์";
+      }
+    }
   }
-  closeMeterCreateModal();
 };
 
 const hydratePlantMetersFromApi = async () => {
