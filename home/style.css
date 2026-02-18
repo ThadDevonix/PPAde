@@ -1638,6 +1638,54 @@ tbody tr.selected {
   line-height: 1;
   color: #0f63d4;
 }
+.meter-total-box.is-dual {
+  display: grid;
+  gap: 6px;
+  min-width: 360px;
+  align-items: stretch;
+}
+.meter-total-box.is-dual .label {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+.meter-total-box strong.meter-total-dual {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.meter-total-card {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #cfe0ff;
+  background: #f8fbff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+.meter-total-card.in {
+  border-color: #beddff;
+  background: linear-gradient(155deg, #f0f7ff, #ffffff);
+}
+.meter-total-card.out {
+  border-color: #d7d2ff;
+  background: linear-gradient(155deg, #f5f2ff, #ffffff);
+}
+.meter-total-card .k {
+  font-weight: 700;
+  color: #466089;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.meter-total-card .v {
+  font-weight: 800;
+  color: #0f63d4;
+  font-size: 13px;
+  line-height: 1.2;
+}
 .meter-chart-controls {
   margin-top: 10px;
   display: grid;
@@ -2173,6 +2221,9 @@ body.plant-page .panel h3,
 body.plant-page .panel-head h3 {
   color: #1a2d4d;
 }
+body.plant-page #meters-panel .panel-head {
+  margin-bottom: 10px;
+}
 body.plant-page .device-table-wrap,
 body.plant-page .history-wrap {
   border-radius: 12px;
@@ -2194,6 +2245,51 @@ body.plant-page .history-table th {
 body.plant-page .device-table td,
 body.plant-page .history-table td {
   font-size: 13px;
+}
+body.plant-page .meter-row-edit {
+  min-width: 34px;
+  padding: 4px 10px;
+  line-height: 1;
+}
+body.plant-page .meter-row-actions {
+  position: relative;
+}
+body.plant-page .meter-row-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 112px;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid #d7e4fb;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 30, 62, 0.16);
+}
+body.plant-page .meter-row-menu-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f6f9ff;
+  color: #1f3a67;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  padding: 6px 10px;
+  line-height: 1.2;
+}
+body.plant-page .meter-row-menu-item:hover {
+  background: #e9f0ff;
+}
+body.plant-page .meter-row-menu-item.danger {
+  border-color: #f2b8b5;
+  background: #fff5f5;
+  color: #d94646;
+}
+body.plant-page .meter-row-menu-item.danger:hover {
+  background: #ffe8e8;
 }
 body.plant-page .bill-flow-tabs,
 body.plant-page .calc-mode-switch {
@@ -2219,6 +2315,42 @@ body.plant-page .calc-mode-btn.active {
   color: #ffffff;
   background: linear-gradient(135deg, #60a5fa, #3b82f6 45%, #2563eb);
   box-shadow: 0 8px 14px rgba(37, 99, 235, 0.4);
+}
+body.plant-page #meter-create-modal {
+  z-index: 30;
+}
+body.plant-page #meter-create-modal .modal-content.small {
+  width: min(440px, 92vw);
+}
+body.plant-page #meter-create-modal .modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+body.plant-page #meter-create-modal .modal-body {
+  gap: 10px;
+}
+body.plant-page #meter-create-modal .meter-create-section {
+  border: 1px solid #dce9ff;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px 12px;
+}
+body.plant-page #meter-create-modal .meter-create-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+body.plant-page #meter-create-modal .meter-create-section-import .meter-create-section-title {
+  color: #0f9f67;
+}
+body.plant-page #meter-create-modal .meter-create-section-export .meter-create-section-title {
+  color: #d97706;
+}
+body.plant-page #meter-create-modal .meter-create-grid {
+  margin-top: 8px;
+}
+body.plant-page #meter-create-modal .meter-create-note {
+  margin: 8px 0 0;
 }
 body.plant-page .panel-sub {
   border-radius: 12px;
@@ -2555,6 +2687,29 @@ body.meter-page .meter-total-box strong {
   color: #0f4fb9;
   font-size: clamp(16px, 1.8vw, 20px);
 }
+body.meter-page .meter-total-box.is-dual {
+  min-width: min(64vw, 460px);
+}
+body.meter-page .meter-total-box.is-dual .label {
+  text-align: center;
+}
+body.meter-page .meter-total-box strong.meter-total-dual {
+  font-size: 12px;
+  grid-template-columns: repeat(2, minmax(132px, 1fr));
+  gap: 8px;
+}
+body.meter-page .meter-total-box .meter-total-card {
+  padding: 7px 9px;
+  border-radius: 9px;
+}
+body.meter-page .meter-total-box .meter-total-card .k {
+  color: #31537f;
+  font-size: 10px;
+}
+body.meter-page .meter-total-box .meter-total-card .v {
+  color: #0f4fb9;
+  font-size: 12px;
+}
 body.meter-page .meter-chart-controls {
   margin-top: 10px;
   padding: 10px;
@@ -2749,6 +2904,12 @@ body.meter-page .meter-chart-summary {
   body.meter-page .meter-chart {
     width: 100%;
     min-width: 0;
+  }
+  body.meter-page .meter-total-box.is-dual {
+    min-width: 100%;
+  }
+  body.meter-page .meter-total-box strong.meter-total-dual {
+    grid-template-columns: 1fr;
   }
 }
 

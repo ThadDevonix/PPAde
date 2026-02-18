@@ -1,19 +1,4 @@
-const backBtn = document.getElementById("back-btn");
-backBtn?.addEventListener("click", () => {
-  window.location.href = "./index.html";
-});
-
-const stored = localStorage.getItem("selectedPlant");
-let plant = null;
-try {
-  plant = stored ? JSON.parse(stored) : null;
-} catch {
-  plant = null;
-}
-
-const nameEl = document.getElementById("plant-name");
-const deviceRowsEl = document.getElementById("device-rows");
-
+/* eslint-disable no-unused-vars -- shared globals for split plant page scripts */
 // Billing elements
 const billNewBtn = document.getElementById("bill-new-btn");
 const billQueuePanel = document.getElementById("bill-queue-panel");
@@ -95,6 +80,12 @@ const metersPanel = document.getElementById("meters-panel");
 const billingPanel = document.getElementById("billing-panel");
 
 const energyApiBase = "https://solarmdb.devonix.co.th/api/energy";
+const deviceEnergyApiCandidates = [
+  "/api/device-energy",
+  "http://localhost:3000/api/device-energy",
+  "http://127.0.0.1:3000/api/device-energy",
+  "https://solarmdb.devonix.co.th/api/device-energy"
+];
 const devicesApiCandidates = [
   "/api/devices",
   "http://localhost:3000/api/devices",
@@ -131,6 +122,8 @@ const detailColumnDefs = [
 
 let isModalOpen = false;
 let isReceiptPreviewOpen = false;
+let isMeterCreateModalOpen = false;
+let editingPlantMeterIndex = null;
 let currentReceiptHtml = "";
 let currentReceiptTitle = "";
 let currentReceiptContext = null;
@@ -210,6 +203,13 @@ const normalizeDateValue = (value) => {
   }
   return null;
 };
+const splitDateParts = (value) => {
+  const date = normalizeDateValue(value);
+  if (!date) return null;
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return { date, year, month, day };
+};
 const listDatesInclusive = (start, end) => {
   const dates = [];
   let current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -252,6 +252,7 @@ const parseNumber = (value) => {
   const num = parseFloat(value);
   return Number.isFinite(num) ? num : 0;
 };
+const normalizeRole = (value) => String(value || "").trim().toLowerCase();
 const readText = (...values) => {
   for (const value of values) {
     if (typeof value !== "string") continue;
@@ -267,7 +268,10 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+const homePlantsStorageKey = "plantsDataV2";
 const normalizeSiteToken = (value) => String(value || "").trim().toLowerCase();
+let currentUserRole = "";
+const canDeleteMeters = () => currentUserRole !== "admin";
 const normalizeDeviceStatus = (value) => {
   if (typeof value === "boolean") return value ? "online" : "offline";
   if (typeof value === "number") return value > 0 ? "online" : "offline";
@@ -305,6 +309,30 @@ const normalizeMeterRow = (row) => {
     row.meterName,
     row.name
   );
+  const modbusIn1 = readText(
+    row.modbus_in_1,
+    row.modbusIn1,
+    row.address_in_1,
+    row.addressIn1
+  );
+  const modbusIn2 = readText(
+    row.modbus_in_2,
+    row.modbusIn2,
+    row.address_in_2,
+    row.addressIn2
+  );
+  const modbusOut1 = readText(
+    row.modbus_out_1,
+    row.modbusOut1,
+    row.address_out_1,
+    row.addressOut1
+  );
+  const modbusOut2 = readText(
+    row.modbus_out_2,
+    row.modbusOut2,
+    row.address_out_2,
+    row.addressOut2
+  );
   const serial = readText(
     row.modbus_address_in,
     row.modbusAddressIn,
@@ -313,17 +341,27 @@ const normalizeMeterRow = (row) => {
     row.serial,
     row.modbus_address_out
   );
+  const serialLabel =
+    modbusIn1 || modbusIn2 || modbusOut1 || modbusOut2
+      ? `IN ${modbusIn1 || "-"} / ${modbusIn2 || "-"}${
+          modbusOut1 || modbusOut2 ? ` | OUT ${modbusOut1 || "-"} / ${modbusOut2 || "-"}` : ""
+        }`
+      : serial;
   return {
     id: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
     siteId: Number.isFinite(siteId) && siteId > 0 ? siteId : null,
     siteCode: readText(row.site_code, row.siteCode),
     siteName: readText(row.site_name, row.siteName),
-    name: name || serial || "Meter",
-    sn: serial || "-",
+    name: name || serialLabel || serial || "Meter",
+    sn: serialLabel || serial || "-",
     status: normalizeDeviceStatus(
       row.is_active ?? row.active ?? row.isActive ?? row.status
     ),
-    deviceType: readText(row.device_type, row.deviceType, row.type) || "METER"
+    deviceType: readText(row.device_type, row.deviceType, row.type) || "METER",
+    modbusIn1,
+    modbusIn2,
+    modbusOut1,
+    modbusOut2
   };
 };
 const normalizeMeterRows = (rows) => {
@@ -340,6 +378,14 @@ const normalizeMeterRows = (rows) => {
   return Array.from(byKey.values());
 };
 const buildDevicesApiUrl = (base, search = "") => `${base}${search || ""}`;
+const getResponseErrorText = async (response) => {
+  try {
+    const text = await response.text();
+    return text ? `: ${text}` : "";
+  } catch {
+    return "";
+  }
+};
 const requestDevicesApi = async (search = "") => {
   let lastHttpError = null;
   let lastNetworkError = null;
@@ -361,6 +407,92 @@ const requestDevicesApi = async (search = "") => {
   if (lastHttpError) throw lastHttpError;
   if (lastNetworkError) throw lastNetworkError;
   throw new Error("GET /api/devices failed");
+};
+const requestDeviceEnergyApi = async (search = "") => {
+  let lastHttpError = null;
+  let lastNetworkError = null;
+  for (const base of deviceEnergyApiCandidates) {
+    const url = buildDevicesApiUrl(base, search);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin"
+      });
+      if (!response.ok) {
+        if (!lastHttpError) {
+          lastHttpError = new Error(`GET ${url} failed (${response.status})`);
+        }
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (!lastNetworkError) lastNetworkError = error;
+    }
+  }
+  if (lastHttpError) throw lastHttpError;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error("GET /api/device-energy failed");
+};
+const deleteMeterInApi = async (meter) => {
+  const meterId = Number(meter?.id);
+  if (!Number.isFinite(meterId) || meterId <= 0) return "local";
+  const encodedMeterId = encodeURIComponent(String(meterId));
+  const attempts = [
+    {
+      path: `/${encodedMeterId}`,
+      init: { method: "DELETE", credentials: "same-origin" }
+    },
+    {
+      path: `?id=${encodedMeterId}`,
+      init: { method: "DELETE", credentials: "same-origin" }
+    },
+    {
+      path: "",
+      init: {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: meterId })
+      }
+    }
+  ];
+  let firstError = null;
+  for (const attempt of attempts) {
+    let response = null;
+    try {
+      response = await fetch(`/api/devices${attempt.path}`, attempt.init);
+    } catch (error) {
+      if (!firstError) firstError = error;
+      continue;
+    }
+    if (response.ok) return "api";
+
+    const detail = await getResponseErrorText(response);
+    if (response.status === 403) {
+      throw new Error(detail.replace(/^:\s*/, "") || "ไม่มีสิทธิ์ลบมิเตอร์");
+    }
+    if (response.status === 401) {
+      throw new Error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    }
+    if (!firstError) {
+      firstError = new Error(`DELETE /api/devices failed (${response.status})${detail}`);
+    }
+  }
+  throw firstError || new Error("ลบมิเตอร์ผ่าน API ไม่สำเร็จ");
+};
+const hydrateCurrentUserRole = async () => {
+  currentUserRole = "";
+  try {
+    const response = await fetch("/api/auth/me", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) return;
+    const payload = await response.json().catch(() => ({}));
+    currentUserRole = normalizeRole(payload?.user?.role);
+  } catch {
+    // ignore role lookup errors
+  }
 };
 const fetchPlantDevicesFromApi = async (targetPlant) => {
   const siteId = Number(targetPlant?.apiId);
@@ -985,7 +1117,7 @@ const openReceiptPrint = () => {
   if (!currentReceiptHtml) return;
   const win = window.open("", "_blank");
   if (!win) return;
-  const styleHref = new URL("./style.css", window.location.href).href;
+  const styleHref = new URL("../style.css", window.location.href).href;
   const fontHref =
     "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap";
   win.document.write(`
@@ -1404,7 +1536,149 @@ const fetchEnergyMonth = async (monthStr) => {
   return totalRows.length ? totalRows : rows;
 };
 
-const fetchEnergyRange = async (startStr, endStr) => {
+const normalizeDailyUsageValue = (row) => ({
+  solar_in: roundTo(Math.max(0, parseNumber(row?.solar_in ?? row?.solarIn ?? row?.solar)), 1),
+  self_use: roundTo(Math.max(0, parseNumber(row?.self_use ?? row?.selfUse ?? row?.self)), 1),
+  mdb_in: roundTo(Math.max(0, parseNumber(row?.mdb_in ?? row?.mdbIn ?? row?.mdb_in_kwh)), 1),
+  mdb_out: roundTo(Math.max(0, parseNumber(row?.mdb_out ?? row?.mdbOut ?? row?.mdb_out_kwh)), 1)
+});
+const hasDailyUsageFields = (row) => {
+  if (!row || typeof row !== "object") return false;
+  return [
+    row.solar_in,
+    row.solarIn,
+    row.solar,
+    row.self_use,
+    row.selfUse,
+    row.self,
+    row.mdb_in,
+    row.mdbIn,
+    row.mdb_out,
+    row.mdbOut
+  ].some((value) => value !== undefined && value !== null && value !== "");
+};
+const getMetersWithApiId = () => {
+  const meters = Array.isArray(meterProfiles) ? meterProfiles : [];
+  const byId = new Map();
+  meters.forEach((meter) => {
+    const meterId = Number(meter?.id);
+    if (!Number.isFinite(meterId) || meterId <= 0) return;
+    if (!byId.has(meterId)) byId.set(meterId, meter);
+  });
+  return Array.from(byId.values());
+};
+const readMeterDailyValueFromRow = (row, meter) => {
+  if (row?.by_meter && typeof row.by_meter === "object") {
+    const meterKey = getMeterKey(meter);
+    if (meterKey && row.by_meter[meterKey]) {
+      return normalizeDailyUsageValue(row.by_meter[meterKey]);
+    }
+    const meterId = Number(meter?.id);
+    if (Number.isFinite(meterId) && row.by_meter[meterId]) {
+      return normalizeDailyUsageValue(row.by_meter[meterId]);
+    }
+    const firstValue = Object.values(row.by_meter).find(
+      (item) => item && typeof item === "object"
+    );
+    if (firstValue) return normalizeDailyUsageValue(firstValue);
+  }
+  return normalizeDailyUsageValue(row);
+};
+const resolveDailyRowFromPayload = (payload, dateStr) => {
+  const rawRows = extractDailyRows(payload);
+  const directRows = normalizeDailyRows(rawRows);
+  const directMatch = directRows.find((row) => row.date === dateStr);
+  if (directMatch) return directMatch;
+  const totalRows = buildDailyRowsFromEnergyTotals(rawRows);
+  return totalRows.find((row) => row.date === dateStr) || null;
+};
+const readDirectDailyUsageFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const candidates = [];
+  if (!Array.isArray(payload)) candidates.push(payload);
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+    candidates.push(payload.data);
+  }
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
+    candidates.push(payload.result);
+  }
+  const directRow = candidates.find((item) => hasDailyUsageFields(item));
+  return directRow ? normalizeDailyUsageValue(directRow) : null;
+};
+const fetchDeviceEnergyDayForMeter = async (meter, dateStr) => {
+  const meterId = Number(meter?.id);
+  const dateParts = splitDateParts(dateStr);
+  if (!Number.isFinite(meterId) || meterId <= 0 || !dateParts) return null;
+
+  const params = new URLSearchParams();
+  params.set("device_id", String(meterId));
+  params.set("year", String(dateParts.year));
+  params.set("month", String(dateParts.month));
+  params.set("day", String(dateParts.day));
+  const siteId = Number(meter?.siteId ?? plant?.apiId);
+  if (Number.isFinite(siteId) && siteId > 0) {
+    params.set("site_id", String(siteId));
+  }
+
+  const response = await requestDeviceEnergyApi(`?${params.toString()}`);
+  const payload = await response.json().catch(() => null);
+  const dailyRow = resolveDailyRowFromPayload(payload, dateParts.date);
+  const values = dailyRow
+    ? readMeterDailyValueFromRow(dailyRow, meter)
+    : readDirectDailyUsageFromPayload(payload);
+  if (!values) return null;
+  return {
+    meter,
+    meterKey: getMeterKey(meter),
+    values
+  };
+};
+const fetchDeviceEnergyRange = async (startStr, endStr) => {
+  const start = parseDateInput(startStr);
+  const end = parseDateInput(endStr);
+  if (!start || !end) return [];
+  const apiMeters = getMetersWithApiId();
+  if (!apiMeters.length) return [];
+
+  const rows = [];
+  const dates = listDatesInclusive(start, end);
+  for (const dateStr of dates) {
+    const dayItems = await Promise.all(
+      apiMeters.map((meter) =>
+        fetchDeviceEnergyDayForMeter(meter, dateStr).catch(() => null)
+      )
+    );
+    const resolvedItems = dayItems.filter(
+      (item) => item && typeof item.meterKey === "string" && item.meterKey
+    );
+    if (!resolvedItems.length) continue;
+
+    const by_meter = {};
+    let totalSolar = 0;
+    let totalSelf = 0;
+    let totalMdbIn = 0;
+    let totalMdbOut = 0;
+    resolvedItems.forEach((item) => {
+      const usage = normalizeDailyUsageValue(item.values);
+      by_meter[item.meterKey] = usage;
+      totalSolar += usage.solar_in;
+      totalSelf += usage.self_use;
+      totalMdbIn += usage.mdb_in;
+      totalMdbOut += usage.mdb_out;
+    });
+    rows.push({
+      date: dateStr,
+      solar_in: roundTo(totalSolar, 1),
+      self_use: roundTo(totalSelf, 1),
+      mdb_in: roundTo(totalMdbIn, 1),
+      mdb_out: roundTo(totalMdbOut, 1),
+      by_meter
+    });
+  }
+  return rows;
+};
+
+const fetchEnergyRangeFromMonthApi = async (startStr, endStr) => {
   const start = parseDateInput(startStr);
   const end = parseDateInput(endStr);
   if (!start || !end) return [];
@@ -1426,6 +1700,13 @@ const fetchEnergyRange = async (startStr, endStr) => {
   return Array.from(map.values())
     .filter((row) => row.date >= startStr && row.date <= endStr)
     .sort((a, b) => a.date.localeCompare(b.date));
+};
+const fetchEnergyRange = async (startStr, endStr) => {
+  const deviceRows = await fetchDeviceEnergyRange(startStr, endStr).catch(() => []);
+  if (deviceRows.length) {
+    return deviceRows.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  return fetchEnergyRangeFromMonthApi(startStr, endStr);
 };
 
 const getDailyEnergyForRange = async (startStr, endStr) => {
@@ -2528,6 +2809,10 @@ billModal?.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (isMeterCreateModalOpen) {
+    closeMeterCreateModal();
+    return;
+  }
   if (isReceiptPreviewOpen) {
     closeReceiptPreview();
     return;
@@ -2606,117 +2891,6 @@ window.addEventListener("resize", () => {
   if (isReceiptPreviewOpen) sizeReceiptSheet();
 });
 
-// toggle meters/billing
-const setMode = (isBilling) => {
-  if (metersPanel && billingPanel) {
-    metersPanel.classList.toggle("hidden", isBilling);
-    billingPanel.classList.toggle("hidden", !isBilling);
-  }
-  if (metersBtn) metersBtn.classList.toggle("active", !isBilling);
-  if (billingBtn) billingBtn.classList.toggle("active", isBilling);
-  if (!isBilling) {
-    closeModal();
-    hideReceiptHistory();
-    closeReceiptPreview();
-    closeAutoRoundModal();
-  }
-};
-
-metersBtn?.addEventListener("click", () => setMode(false));
-billingBtn?.addEventListener("click", () => setMode(true));
-
-// Use fallback demo data ifไม่มีข้อมูลใน localStorage
-if (!plant) {
-  plant = {
-    name: "Demo Plant 10kW",
-    deviceSn: "SN-DEMO-001",
-    devices: [
-      { name: "Meter A", sn: "SN-DEMO-001-A", status: "online" },
-      { name: "Meter B", sn: "SN-DEMO-001-B", status: "online" }
-    ]
-  };
-}
-
-nameEl.textContent = plant.name;
-
-const normalizeLocalMeters = (meters) =>
-  normalizeMeterRows(
-    (Array.isArray(meters) ? meters : []).map((meter) => ({
-      ...meter,
-      site_id: meter?.siteId ?? meter?.site_id ?? plant?.apiId,
-      device_name: meter?.deviceName ?? meter?.device_name ?? meter?.name,
-      modbus_address_in: meter?.sn ?? meter?.serial ?? meter?.modbus_address_in
-    }))
-  );
-
-let plantMeters = normalizeLocalMeters(plant.devices);
-if (!plantMeters.length && !stored) {
-  plantMeters = normalizeLocalMeters([
-    { name: "Meter A", sn: plant.deviceSn || "-", status: "online" },
-    { name: "Meter B", sn: `${plant.deviceSn || "-"}-B`, status: "online" }
-  ]);
-}
-
-const renderPlantMeters = () => {
-  if (!deviceRowsEl) return;
-  if (!plantMeters.length) {
-    deviceRowsEl.innerHTML = '<tr><td class="empty" colspan="3">ไม่พบมิเตอร์ของ Plant นี้</td></tr>';
-    return;
-  }
-  deviceRowsEl.innerHTML = plantMeters
-    .map(
-      (meter, idx) => `
-      <tr data-idx="${idx}">
-        <td><span class="status-dot" title="${escapeHtml(meter.status)}"></span></td>
-        <td>${escapeHtml(meter.name)}</td>
-        <td>${escapeHtml(meter.sn)}</td>
-      </tr>`
-    )
-    .join("");
-
-  deviceRowsEl.querySelectorAll("tr[data-idx]").forEach((tr) => {
-    tr.addEventListener("click", () => {
-      const idx = Number(tr.dataset.idx);
-      const meter = plantMeters[idx];
-      if (!meter) return;
-      localStorage.setItem("selectedPlant", JSON.stringify(plant));
-      localStorage.setItem("selectedMeter", JSON.stringify(meter));
-      window.location.href = "./meter.html";
-    });
-  });
-};
-
-const applyPlantMeters = (meters, { persistPlant = true } = {}) => {
-  plantMeters = normalizeLocalMeters(meters);
-  plant = { ...plant, devices: plantMeters };
-  meterProfiles = buildMeterProfiles(plantMeters);
-  if (persistPlant) {
-    localStorage.setItem("selectedPlant", JSON.stringify(plant));
-  }
-  renderPlantMeters();
-};
-
-const hydratePlantMetersFromApi = async () => {
-  try {
-    const apiMeters = await fetchPlantDevicesFromApi(plant);
-    if (!apiMeters.length) {
-      const hasPlantIdentity =
-        (Number.isFinite(Number(plant?.apiId)) && Number(plant.apiId) > 0) ||
-        normalizeSiteToken(plant?.siteCode || plant?.site_code) ||
-        normalizeSiteToken(plant?.name);
-      if (hasPlantIdentity) {
-        applyPlantMeters([], { persistPlant: true });
-      }
-      return;
-    }
-    applyPlantMeters(apiMeters, { persistPlant: true });
-  } catch (error) {
-    console.warn("Failed to load devices from API", error);
-  }
-};
-
-applyPlantMeters(plantMeters, { persistPlant: false });
-
 historyKey = buildStorageKey("billingHistoryV2");
 scheduleKey = buildStorageKey("billingScheduleV1");
 sequenceKey = buildStorageKey("billingSequenceV1");
@@ -2766,9 +2940,3 @@ billModal?.classList.add("hidden");
 populateCutoffOptions();
 setDefaultRange(schedule.cutoffDay);
 setBillMode("manual");
-const bootstrapPlantPage = async () => {
-  setMode(false);
-  await hydratePlantMetersFromApi();
-  await initBilling();
-};
-bootstrapPlantPage();

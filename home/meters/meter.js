@@ -1,6 +1,6 @@
 const backBtn = document.getElementById("back-meter");
 backBtn?.addEventListener("click", () => {
-  window.location.href = "./plant.html";
+  window.location.href = "../plant/index.html";
 });
 
 const meterData = (() => {
@@ -21,6 +21,8 @@ const plantData = (() => {
 const meterNameEl = document.getElementById("meter-name");
 const chartBox = document.getElementById("chart-box");
 const totalKwhValue = document.getElementById("total-kwh-value");
+const totalKwhLabel = document.getElementById("total-kwh-label");
+const totalKwhBox = totalKwhValue?.closest(".meter-total-box");
 
 const periodSwitch = document.getElementById("chart-period-switch");
 const periodButtons = Array.from(
@@ -33,6 +35,11 @@ const monthWrap = document.getElementById("chart-month-wrap");
 const dayWrap = document.getElementById("chart-day-wrap");
 
 const energyApiCandidates = ["/api/energy"];
+const deviceEnergyApiCandidates = ["/api/device-energy"];
+const dayFallbackEnergyApiCandidates = ["/api/energy"];
+const deviceEnergyPayloadCache = new Map();
+const deviceEnergyPayloadTtlMs = 30 * 1000;
+const deviceEnergyRateLimitCooldownMs = 20 * 1000;
 const fallbackPlantName = "CNX_PPA";
 const thaiMonthShort = [
   "ม.ค.",
@@ -136,6 +143,8 @@ const readSolarSeriesValue = (row) => {
     "solar_in",
     "solarIn",
     "solar in",
+    "energy_in",
+    "energyIn",
     "solar_kw",
     "solarKw",
     "solar",
@@ -149,6 +158,8 @@ const readGridSeriesValue = (row) => {
     "self_use",
     "selfUse",
     "self use",
+    "energy_out",
+    "energyOut",
     "grid_import",
     "gridImport",
     "egat",
@@ -170,6 +181,10 @@ const readEnergyTotalValue = (row) => {
     "dailyEnergy",
     "monthly_energy",
     "monthlyEnergy",
+    "energy_in",
+    "energyIn",
+    "energy_out",
+    "energyOut",
     "kwh",
     "energy",
     "value",
@@ -324,6 +339,40 @@ const buildIntegerYAxis = (rawMin, rawMax, segments = 4) => {
   };
 };
 const formatTotalKwh = (value) => `${formatMetric(value)} kWh`;
+const defaultTotalKwhLabel = readText(totalKwhLabel?.textContent) || "Total kWh";
+const setTotalKwhSingle = (valueText, labelText = defaultTotalKwhLabel) => {
+  if (totalKwhLabel) totalKwhLabel.textContent = labelText || defaultTotalKwhLabel;
+  if (!totalKwhValue) return;
+  totalKwhBox?.classList.remove("is-dual");
+  totalKwhValue.classList.remove("meter-total-dual");
+  totalKwhValue.textContent = valueText;
+};
+const setTotalKwhDual = ({
+  energyIn = 0,
+  energyOut = 0,
+  unit = "kWh",
+  summaryLabel = "สรุปพลังงาน"
+} = {}) => {
+  const resolvedUnit = readText(unit) || "kWh";
+  if (totalKwhLabel) totalKwhLabel.textContent = readText(summaryLabel) || "สรุปพลังงาน";
+  if (!totalKwhValue) return;
+  totalKwhBox?.classList.add("is-dual");
+  totalKwhValue.classList.add("meter-total-dual");
+  totalKwhValue.innerHTML = `
+    <span class="meter-total-card in">
+      <span class="k">พลังงานที่ได้รับ</span>
+      <span class="v">${escapeText(formatMetric(Math.max(0, parseNumber(energyIn))))} ${escapeText(
+    resolvedUnit
+  )}</span>
+    </span>
+    <span class="meter-total-card out">
+      <span class="k">พลังงานที่จ่ายออก</span>
+      <span class="v">${escapeText(formatMetric(Math.max(0, parseNumber(energyOut))))} ${escapeText(
+    resolvedUnit
+  )}</span>
+    </span>
+  `;
+};
 const datePartFormatterCache = new Map();
 const getDatePartFormatter = (timeZone = chartTimeZone) => {
   const zone = readText(timeZone) || "Asia/Bangkok";
@@ -646,6 +695,14 @@ const rowHasSeries = (row) =>
   typeof row === "object" &&
   !Array.isArray(row) &&
   (readSolarSeriesValue(row) !== null || readGridSeriesValue(row) !== null);
+const rowHasEnergyInOut = (row) =>
+  row &&
+  typeof row === "object" &&
+  !Array.isArray(row) &&
+  (readLooseNumber(row, ["energy_in", "energyIn"]) !== null ||
+    readLooseNumber(row, ["energy_out", "energyOut"]) !== null);
+const rowsContainEnergyInOut = (rows) =>
+  (Array.isArray(rows) ? rows : []).some((row) => rowHasEnergyInOut(row));
 const rowHasEnergyTotal = (row) =>
   row &&
   typeof row === "object" &&
@@ -671,7 +728,36 @@ const rowHasTemporalHint = (row) =>
       "year"
     ])
   );
-const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
+const extractSummaryMeta = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const candidates = [];
+  if (!Array.isArray(payload)) candidates.push(payload);
+  if (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
+    candidates.push(payload.data);
+  }
+  if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
+    candidates.push(payload.result);
+  }
+  for (let idx = 0; idx < candidates.length; idx += 1) {
+    const candidate = candidates[idx];
+    const summary = candidate?.summary;
+    if (!summary || typeof summary !== "object" || Array.isArray(summary)) continue;
+    const unit = readText(readLooseValue(summary, ["unit"]));
+    const energyIn = readLooseNumber(summary, ["energy_in", "energyIn"]);
+    const energyOut = readLooseNumber(summary, ["energy_out", "energyOut"]);
+    if (unit || energyIn !== null || energyOut !== null) {
+      return { unit, energyIn, energyOut };
+    }
+  }
+  return null;
+};
+const attachSummaryMetaToRows = (rows, meta) => {
+  if (Array.isArray(rows) && meta && typeof meta === "object") {
+    rows.__summaryMeta = meta;
+  }
+  return rows;
+};
+const extractTimeseriesRows = (payload, scopedDeviceId = null) => {
   if (!payload || typeof payload !== "object") return [];
   const queue = [payload];
   while (queue.length) {
@@ -683,15 +769,46 @@ const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
     }
     const period = normalizeIdentityToken(readLooseValue(current, ["period"]));
     const timeseries = Array.isArray(current.timeseries) ? current.timeseries : [];
-    if (timeseries.length && (period === "day" || readLooseValue(current, ["date", "day"]))) {
+    const hasPeriodHint = period === "day" || period === "month" || period === "year";
+    const hasDateHint = Boolean(
+      readLooseValue(current, ["date", "day", "month", "year"])
+    );
+    if (timeseries.length && (hasPeriodHint || hasDateHint)) {
       const baseDate = normalizeDateKey(readLooseValue(current, ["date", "day"]));
+      const baseMonthTokenRaw = readText(readLooseValue(current, ["month"]));
+      const baseMonthTokenMatch = baseMonthTokenRaw.match(/^(\d{4})-(\d{2})$/);
+      const baseYear = parseLoosePositiveId(readLooseValue(current, ["year"]));
       const baseSiteId = parseLoosePositiveId(readLooseValue(current, ["site_id", "siteId"]));
+      const summaryMeta = extractSummaryMeta(current);
       return timeseries
         .filter((row) => row && typeof row === "object" && !Array.isArray(row))
         .map((row) => {
           const next = { ...row };
           const existingDate = normalizeDateKey(readLooseValue(next, ["date", "day"]));
-          const dateKey = existingDate || baseDate;
+          let dateKey = existingDate || baseDate;
+          if (!dateKey && period === "month" && baseMonthTokenMatch) {
+            const rowDay = resolveRowDayForMonth(next);
+            if (Number.isFinite(rowDay) && rowDay >= 1 && rowDay <= 31) {
+              dateKey = `${baseMonthTokenMatch[1]}-${baseMonthTokenMatch[2]}-${pad2(
+                Math.trunc(rowDay)
+              )}`;
+            }
+          }
+          if (!dateKey && period === "year") {
+            const rowMonth = resolveRowMonthForYear(next);
+            const rowYear = Number.isFinite(baseYear)
+              ? Math.trunc(baseYear)
+              : resolveRowYearForYear(next);
+            if (
+              Number.isFinite(rowMonth) &&
+              rowMonth >= 1 &&
+              rowMonth <= 12 &&
+              Number.isFinite(rowYear) &&
+              rowYear > 0
+            ) {
+              dateKey = `${Math.trunc(rowYear)}-${pad2(Math.trunc(rowMonth))}-01`;
+            }
+          }
           if (dateKey && !existingDate) next.date = dateKey;
           const existingStamp = readLooseValue(next, [
             "datetime",
@@ -701,7 +818,7 @@ const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
             "created_at",
             "createdAt"
           ]);
-          if (!existingStamp && dateKey) {
+          if (!existingStamp && dateKey && period === "day") {
             const rawHour = Number(readLooseValue(next, ["hour"]));
             const label = readText(readLooseValue(next, ["label", "time", "time_label", "timeLabel"]));
             let hh = Number.isFinite(rawHour) ? Math.trunc(rawHour) : NaN;
@@ -721,6 +838,15 @@ const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
           if (baseSiteId && !readLooseValue(next, ["site_id", "siteId"])) {
             next.site_id = baseSiteId;
           }
+          if (summaryMeta?.unit && !readLooseValue(next, ["unit"])) {
+            next.unit = summaryMeta.unit;
+          }
+          if (summaryMeta?.energyIn !== null && summaryMeta?.energyIn !== undefined) {
+            next.summary_energy_in = summaryMeta.energyIn;
+          }
+          if (summaryMeta?.energyOut !== null && summaryMeta?.energyOut !== undefined) {
+            next.summary_energy_out = summaryMeta.energyOut;
+          }
           if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
             next.__queryDeviceScoped = true;
             next.__queryDeviceId = scopedDeviceId;
@@ -737,8 +863,8 @@ const extractDayTimeseriesRows = (payload, scopedDeviceId = null) => {
 const extractSeriesRows = (payload, context = {}) => {
   if (!payload || typeof payload !== "object") return [];
   const scopedDeviceId = parseLoosePositiveId(context.scopedDeviceId);
-  const dayRows = extractDayTimeseriesRows(payload, scopedDeviceId);
-  if (dayRows.length) return dayRows;
+  const timeseriesRows = extractTimeseriesRows(payload, scopedDeviceId);
+  if (timeseriesRows.length) return timeseriesRows;
   const queue = [payload];
   const rows = [];
   while (queue.length) {
@@ -768,6 +894,8 @@ const extractSeriesRows = (payload, context = {}) => {
 const extractEnergyRows = (payload, context = {}) => {
   if (!payload || typeof payload !== "object") return [];
   const scopedDeviceId = parseLoosePositiveId(context.scopedDeviceId);
+  const timeseriesRows = extractTimeseriesRows(payload, scopedDeviceId);
+  if (timeseriesRows.length) return timeseriesRows;
   const queue = [payload];
   const rows = [];
   while (queue.length) {
@@ -998,6 +1126,7 @@ const normalizeChartRows = (
     limit = 120,
     deviceId = selectedMeterId,
     ignoreMeterIdentity = false,
+    forceDualMetrics = false,
     fallbackYear = NaN,
     fallbackMonth = NaN
   } = {}
@@ -1008,6 +1137,9 @@ const normalizeChartRows = (
     Number.isFinite(wantedDeviceId) &&
     wantedDeviceId > 0 &&
     rowsContainExplicitDeviceId(sourceRows);
+  const shouldForceSingleMetric =
+    Number.isFinite(wantedDeviceId) && wantedDeviceId > 0 && !forceDualMetrics;
+  const preferSolarMetric = selectedMeterTypeKey.includes("solar");
 
   const normalizeWithFilterMode = (useStrictDeviceId) => {
     const normalized = sourceRows
@@ -1062,6 +1194,25 @@ const normalizeChartRows = (
           ])
         );
         const stamp = directStamp || (dateKey ? toDate(`${dateKey}T00:00:00`) : null);
+        const rawSolarValue = readSolarSeriesValue(row);
+        const rawSelfUseValue = readGridSeriesValue(row);
+        let solarInValue = rawSolarValue;
+        let selfUseValue = rawSelfUseValue;
+        if (shouldForceSingleMetric) {
+          const hasSolarValue = rawSolarValue !== null;
+          const hasSelfUseValue = rawSelfUseValue !== null;
+          const useSolarValue =
+            (preferSolarMetric && (hasSolarValue || !hasSelfUseValue)) ||
+            (!hasSelfUseValue && hasSolarValue);
+          if (useSolarValue) {
+            selfUseValue = null;
+          } else {
+            solarInValue = null;
+          }
+        } else {
+          solarInValue = rawSolarValue ?? 0;
+          selfUseValue = rawSelfUseValue ?? 0;
+        }
         return {
           idx,
           stampMs: stamp ? stamp.getTime() : null,
@@ -1071,8 +1222,8 @@ const normalizeChartRows = (
             period,
             idx
           ),
-          solarIn: readSolarSeriesValue(row) ?? 0,
-          selfUse: readGridSeriesValue(row) ?? 0
+          solarIn: solarInValue,
+          selfUse: selfUseValue
         };
       })
       .filter(Boolean);
@@ -1755,6 +1906,8 @@ const resolveChartViewWidth = (viewHeight) => {
 };
 const renderChart = (rows, options = {}) => {
   if (!chartBox) return;
+  const isDualEnergyMode =
+    options.mode === "day-energy-dual" || options.mode === "period-energy-dual";
   const isEnergyMode =
     options.mode === "month-energy" ||
     options.mode === "day-energy" ||
@@ -1792,7 +1945,7 @@ const renderChart = (rows, options = {}) => {
         : "พลังงานรายวัน (kWh)");
     const ariaLabel =
       readText(options.ariaLabel) || "กราฟพลังงานรายวันจาก energy_total ของเดือนที่เลือก";
-    if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(totalEnergy);
+    setTotalKwhSingle(formatTotalKwh(totalEnergy));
     if (!rows.length || !energyValues.length) {
       chartBox.textContent = emptyMessage;
       return;
@@ -1896,12 +2049,6 @@ const renderChart = (rows, options = {}) => {
     return;
   }
 
-  if (totalKwhValue) totalKwhValue.textContent = formatTotalKwh(
-    rows.reduce(
-      (sum, row) => sum + parseNumber(row?.solarIn) + parseNumber(row?.selfUse),
-      0
-    )
-  );
   if (!rows.length) {
     chartBox.textContent = "ไม่พบข้อมูลในช่วงที่เลือก";
     return;
@@ -1911,6 +2058,160 @@ const renderChart = (rows, options = {}) => {
   const labels = rows.map((row) => row.label);
   const solarSeries = rows.map((row) => parseFiniteNumber(row?.solarIn));
   const selfUseSeries = rows.map((row) => parseFiniteNumber(row?.selfUse));
+  const shouldRenderSingleSeries =
+    Number.isFinite(selectedMeterId) && selectedMeterId > 0 && !isDualEnergyMode;
+  if (shouldRenderSingleSeries) {
+    const isSolarMeterType = selectedMeterTypeKey.includes("solar");
+    const solarFinite = collectFiniteNumbers(solarSeries);
+    const selfUseFinite = collectFiniteNumbers(selfUseSeries);
+    const hasSolarNonZero = solarFinite.some((value) => Math.abs(value) > 0);
+    const hasSelfUseNonZero = selfUseFinite.some((value) => Math.abs(value) > 0);
+    const preferSolarSeries =
+      (isSolarMeterType && solarFinite.length > 0) ||
+      (hasSolarNonZero && !hasSelfUseNonZero) ||
+      (solarFinite.length > 0 && !selfUseFinite.length);
+    const singleSeriesConfig = preferSolarSeries
+      ? {
+          series: solarSeries,
+          color: "#f59e0b",
+          label: "โซลาร์ผลิต (kW)",
+          metricLabel: "โซลาร์ผลิต",
+          ariaLabel: "กราฟโซลาร์ผลิตของมิเตอร์ที่เลือก"
+        }
+      : {
+          series: selfUseSeries,
+          color: "#0f63d4",
+          label: selectedMeterTypeKey.includes("meter")
+            ? "ใช้ไฟจากการไฟฟ้า (kW)"
+            : "ค่ามิเตอร์ (kW)",
+          metricLabel: selectedMeterTypeKey.includes("meter")
+            ? "ใช้ไฟจากการไฟฟ้า"
+            : "ค่ามิเตอร์",
+          ariaLabel: selectedMeterTypeKey.includes("meter")
+            ? "กราฟใช้ไฟจากการไฟฟ้าของมิเตอร์ที่เลือก"
+            : "กราฟค่ามิเตอร์ของมิเตอร์ที่เลือก"
+        };
+    const singleSeries = singleSeriesConfig.series;
+    const singleValues = collectFiniteNumbers(singleSeries);
+    setTotalKwhSingle(
+      formatTotalKwh(singleSeries.reduce((sum, value) => sum + parseNumber(value), 0))
+    );
+    if (!singleValues.length) {
+      chartBox.textContent = "ไม่พบข้อมูลในช่วงที่เลือก";
+      return;
+    }
+
+    let min = Math.min(...singleValues);
+    let max = Math.max(...singleValues);
+    const yAxis = buildIntegerYAxis(min, max, 4);
+    min = yAxis.min;
+    max = yAxis.max;
+
+    const height = 340;
+    const width = resolveChartViewWidth(height);
+    const padLeft = 48;
+    const padRight = 14;
+    const padTop = 14;
+    const padBottom = 48;
+    const innerWidth = width - padLeft - padRight;
+    const innerHeight = height - padTop - padBottom;
+    const xAt = (index) =>
+      padLeft +
+      (labels.length <= 1 ? innerWidth / 2 : (index * innerWidth) / (labels.length - 1));
+    const yAt = (value) => padTop + ((max - value) * innerHeight) / (max - min);
+    const yTicks = yAxis.values.map((value) => ({
+      value,
+      y: yAt(value)
+    }));
+    const maxXLabels = 7;
+    const xStep = Math.max(1, Math.ceil(labels.length / maxXLabels));
+    const xTicks = forceFullDayXAxis
+      ? labels.map((label, idx) => ({ label, idx }))
+      : labels
+        .map((label, idx) => ({ label, idx }))
+        .filter(({ idx }) => idx % xStep === 0 || idx === labels.length - 1);
+    const xTickFontSize = forceFullDayXAxis ? 9 : 11;
+    const baselineY = height - padBottom;
+    const singlePath = buildPath(singleSeries, xAt, yAt);
+    const singleAreaPath = buildAreaPath(singleSeries, xAt, yAt, baselineY);
+    const singleDots = buildDots(
+      singleSeries,
+      xAt,
+      yAt,
+      singleSeriesConfig.color,
+      (value, idx) => `เวลา ${labels[idx]} | ${singleSeriesConfig.metricLabel} ${formatMetric(value)} kW`
+    );
+
+    chartBox.innerHTML = `
+      <div class="meter-chart">
+        <div class="meter-chart-legend">
+          <span><i style="background:${singleSeriesConfig.color}"></i>${escapeText(
+            singleSeriesConfig.label
+          )}</span>
+        </div>
+        <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" data-plot-left="${padLeft}" data-plot-right="${width - padRight}" data-plot-top="${padTop}" data-plot-bottom="${height - padBottom}" role="img" aria-label="${escapeText(
+          singleSeriesConfig.ariaLabel
+        )}">
+          <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+          ${yTicks
+            .map(
+              ({ y, value }) => `
+              <line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="#dbe4f5" stroke-width="1"></line>
+              <text x="${padLeft - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6b7280">${formatYAxisMetric(
+                value
+              )}</text>
+            `
+            )
+            .join("")}
+          <line x1="${padLeft}" y1="${height - padBottom}" x2="${width - padRight}" y2="${height - padBottom}" stroke="#93a6c8" stroke-width="1.2"></line>
+          ${xTicks
+            .map(
+              ({ label, idx }) => `
+              <text x="${xAt(idx)}" y="${height - 22}" text-anchor="middle" font-size="${xTickFontSize}" fill="#6b7280">${escapeText(
+                label
+              )}</text>
+            `
+            )
+            .join("")}
+          <defs>
+            <linearGradient id="single-area-gradient" x1="0" y1="${padTop}" x2="0" y2="${baselineY}" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="${singleSeriesConfig.color}" stop-opacity="0.1"></stop>
+              <stop offset="100%" stop-color="${singleSeriesConfig.color}" stop-opacity="0.01"></stop>
+            </linearGradient>
+          </defs>
+          ${singleAreaPath
+            ? `<path d="${singleAreaPath}" fill="url(#single-area-gradient)" stroke="none" pointer-events="none"></path>`
+            : ""}
+          <path d="${singlePath}" fill="none" stroke="${singleSeriesConfig.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          ${singleDots}
+          <line class="meter-crosshair-line meter-crosshair-v" x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${height - padBottom}"></line>
+          <line class="meter-crosshair-line meter-crosshair-h" x1="${padLeft}" y1="${padTop}" x2="${width - padRight}" y2="${padTop}"></line>
+        </svg>
+      </div>
+    `;
+    bindChartPointTooltip();
+    return;
+  }
+
+  const derivedEnergyInTotal = rows.reduce((sum, row) => sum + parseNumber(row?.solarIn), 0);
+  const derivedEnergyOutTotal = rows.reduce((sum, row) => sum + parseNumber(row?.selfUse), 0);
+  const summaryEnergyInTotal = parseFiniteNumber(options.energyInTotal);
+  const summaryEnergyOutTotal = parseFiniteNumber(options.energyOutTotal);
+  const dualMetricUnit = readText(options.metricUnit) || "kWh";
+  const resolvedEnergyInTotal =
+    summaryEnergyInTotal !== null ? Math.max(0, summaryEnergyInTotal) : Math.max(0, derivedEnergyInTotal);
+  const resolvedEnergyOutTotal =
+    summaryEnergyOutTotal !== null ? Math.max(0, summaryEnergyOutTotal) : Math.max(0, derivedEnergyOutTotal);
+  if (isDualEnergyMode) {
+    setTotalKwhDual({
+      energyIn: resolvedEnergyInTotal,
+      energyOut: resolvedEnergyOutTotal,
+      unit: dualMetricUnit,
+      summaryLabel: readText(options.totalLabel) || "สรุปพลังงาน"
+    });
+  } else {
+    setTotalKwhSingle(formatTotalKwh(derivedEnergyInTotal + derivedEnergyOutTotal));
+  }
   const allValues = collectFiniteNumbers([...solarSeries, ...selfUseSeries]);
   if (!allValues.length) {
     chartBox.textContent = "ไม่พบข้อมูลในช่วงที่เลือก";
@@ -1949,6 +2250,22 @@ const renderChart = (rows, options = {}) => {
 
   const solarColor = "#f59e0b";
   const selfUseColor = "#0f63d4";
+  const dualLeftLabel = readText(options.leftLegendLabel) || "พลังงานที่ได้รับ";
+  const dualRightLabel = readText(options.rightLegendLabel) || "พลังงานที่จ่ายออก";
+  const leftLegendLabel = isDualEnergyMode
+    ? `${dualLeftLabel} (${dualMetricUnit})`
+    : "โซลาร์ผลิต (kW)";
+  const rightLegendLabel = isDualEnergyMode
+    ? `${dualRightLabel} (${dualMetricUnit})`
+    : "ใช้ไฟจากการไฟฟ้า (kW)";
+  const leftMetricLabel = isDualEnergyMode ? dualLeftLabel : "โซลาร์ผลิต";
+  const rightMetricLabel = isDualEnergyMode ? dualRightLabel : "ใช้ไฟจากการไฟฟ้า";
+  const dualAriaLabel =
+    readText(options.ariaLabel) || `กราฟพลังงานที่ได้รับและพลังงานที่จ่ายออก (${dualMetricUnit})`;
+  const chartAriaLabel = isDualEnergyMode
+    ? dualAriaLabel
+    : "กราฟโซลาร์ผลิตและใช้ไฟจากการไฟฟ้า";
+  const metricUnit = isDualEnergyMode ? dualMetricUnit : "kW";
   const solarPath = buildPath(solarSeries, xAt, yAt);
   const selfUsePath = buildPath(selfUseSeries, xAt, yAt);
   const baselineY = height - padBottom;
@@ -1959,23 +2276,24 @@ const renderChart = (rows, options = {}) => {
     xAt,
     yAt,
     solarColor,
-    (value, idx) => `เวลา ${labels[idx]} | โซลาร์ผลิต ${formatMetric(value)} kW`
+    (value, idx) => `เวลา ${labels[idx]} | ${leftMetricLabel} ${formatMetric(value)} ${metricUnit}`
   );
   const selfUseDots = buildDots(
     selfUseSeries,
     xAt,
     yAt,
     selfUseColor,
-    (value, idx) => `เวลา ${labels[idx]} | ใช้ไฟจากการไฟฟ้า ${formatMetric(value)} kW`
+    (value, idx) => `เวลา ${labels[idx]} | ${rightMetricLabel} ${formatMetric(value)} ${metricUnit}`
   );
-
   chartBox.innerHTML = `
-    <div class="meter-chart">
-      <div class="meter-chart-legend">
-        <span><i style="background:${solarColor}"></i>โซลาร์ผลิต (kW)</span>
-        <span><i style="background:${selfUseColor}"></i>ใช้ไฟจากการไฟฟ้า (kW)</span>
-      </div>
-      <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" data-plot-left="${padLeft}" data-plot-right="${width - padRight}" data-plot-top="${padTop}" data-plot-bottom="${height - padBottom}" role="img" aria-label="กราฟโซลาร์ผลิตและใช้ไฟจากการไฟฟ้า">
+      <div class="meter-chart">
+        <div class="meter-chart-legend">
+          <span><i style="background:${solarColor}"></i>${escapeText(leftLegendLabel)}</span>
+          <span><i style="background:${selfUseColor}"></i>${escapeText(rightLegendLabel)}</span>
+        </div>
+      <svg viewBox="0 0 ${width} ${height}" class="meter-chart-svg" data-plot-left="${padLeft}" data-plot-right="${width - padRight}" data-plot-top="${padTop}" data-plot-bottom="${height - padBottom}" role="img" aria-label="${escapeText(
+        chartAriaLabel
+      )}">
         <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
         ${yTicks
           .map(
@@ -2025,14 +2343,24 @@ const renderChart = (rows, options = {}) => {
   bindChartPointTooltip();
 };
 
-const requestRowsFromCandidates = async (queryCandidates, extractor) => {
+const requestRowsFromCandidates = async (
+  queryCandidates,
+  extractor,
+  apiCandidates = energyApiCandidates
+) => {
   const uniqueQueries = [...new Set((Array.isArray(queryCandidates) ? queryCandidates : []).filter(Boolean))];
+  const baseCandidates = Array.isArray(apiCandidates) && apiCandidates.length
+    ? apiCandidates
+    : energyApiCandidates;
   const errors = [];
   let hadOkResponse = false;
+  let hadRateLimitedResponse = false;
   let scopedRowsWithoutExplicitDevice = [];
-  for (let b = 0; b < energyApiCandidates.length; b += 1) {
-    const base = energyApiCandidates[b];
+  for (let b = 0; b < baseCandidates.length; b += 1) {
+    const base = baseCandidates[b];
+    let isRateLimitedBase = false;
     for (let i = 0; i < uniqueQueries.length; i += 1) {
+      if (isRateLimitedBase) break;
       const query = uniqueQueries[i];
       const url = `${base}?${query}`;
       try {
@@ -2042,7 +2370,9 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
         });
         if (!response.ok) {
           if (response.status === 429) {
-            throw new Error(`HTTP 429 (rate limited): ${url}`);
+            hadRateLimitedResponse = true;
+            isRateLimitedBase = true;
+            continue;
           }
           throw new Error(`HTTP ${response.status}`);
         }
@@ -2072,14 +2402,12 @@ const requestRowsFromCandidates = async (queryCandidates, extractor) => {
       } catch (error) {
         const message = `${error?.message || "unknown error"}`;
         errors.push(`${url}: ${message}`);
-        if (message.includes("HTTP 429")) {
-          throw new Error(errors.slice(0, 8).join(" | "));
-        }
       }
     }
   }
   if (scopedRowsWithoutExplicitDevice.length) return scopedRowsWithoutExplicitDevice;
   if (hadOkResponse) return [];
+  if (hadRateLimitedResponse) return [];
   if (errors.length) throw new Error(errors.slice(0, 8).join(" | "));
   return [];
 };
@@ -2093,14 +2421,21 @@ const buildYearQueryCandidates = (year) => {
           selectedSiteId
         )}&device_id=${encodeURIComponent(selectedMeterId)}&period=year&year=${encodeURIComponent(year)}`
       );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&period=year&year=${encodeURIComponent(year)}&device_id=${encodeURIComponent(
+          selectedMeterId
+        )}`
+      );
     } else {
       queryCandidates.push(
         `site_id=${encodeURIComponent(selectedSiteId)}&period=year&year=${encodeURIComponent(year)}`
       );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&period=month&year=${encodeURIComponent(year)}`
+      );
     }
-    queryCandidates.push(
-      `site_id=${encodeURIComponent(selectedSiteId)}&period=year&year=${encodeURIComponent(year)}`
-    );
   }
   if (hasMeterId) {
     queryCandidates.push(
@@ -2108,13 +2443,14 @@ const buildYearQueryCandidates = (year) => {
         selectedEnergyName
       )}&year=${encodeURIComponent(year)}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
-  }
-  queryCandidates.push(
-    `period=year&name=${encodeURIComponent(selectedEnergyName)}&year=${encodeURIComponent(year)}`
-  );
-  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
     queryCandidates.push(
-      `site_id=${encodeURIComponent(selectedSiteId)}&period=month&year=${encodeURIComponent(year)}`
+      `period=year&device_id=${encodeURIComponent(selectedMeterId)}&year=${encodeURIComponent(
+        year
+      )}`
+    );
+  } else {
+    queryCandidates.push(
+      `period=year&name=${encodeURIComponent(selectedEnergyName)}&year=${encodeURIComponent(year)}`
     );
   }
   return queryCandidates;
@@ -2137,15 +2473,21 @@ const buildMonthQueryCandidates = (year, month) => {
           selectedMeterId
         )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
       );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&period=month&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`
+      );
+    } else {
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&period=month&month=${monthToken}`
+      );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
+      );
     }
-    queryCandidates.push(
-      `site_id=${encodeURIComponent(selectedSiteId)}&period=month&month=${monthToken}`
-    );
-    queryCandidates.push(
-      `site_id=${encodeURIComponent(
-        selectedSiteId
-      )}&period=month&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`
-    );
   }
   if (hasMeterId) {
     queryCandidates.push(
@@ -2153,21 +2495,179 @@ const buildMonthQueryCandidates = (year, month) => {
         selectedEnergyName
       )}&month=${monthToken}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
+    queryCandidates.push(
+      `period=month&device_id=${encodeURIComponent(selectedMeterId)}&month=${monthToken}`
+    );
+  } else {
+    queryCandidates.push(
+      `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`
+    );
   }
-  queryCandidates.push(
-    `period=month&name=${encodeURIComponent(selectedEnergyName)}&month=${monthToken}`
-  );
   return queryCandidates;
 };
+const resolveTargetYear = (value) => {
+  const year = Number(value);
+  if (!Number.isFinite(year) || year <= 0) return NaN;
+  return Math.trunc(year);
+};
+const resolveTargetMonth = (value) => {
+  const month = Number(value);
+  if (!Number.isFinite(month) || month < 1 || month > 12) return NaN;
+  return Math.trunc(month);
+};
+const buildMonthToken = (year, month) => {
+  const safeYear = resolveTargetYear(year);
+  const safeMonth = resolveTargetMonth(month);
+  if (!Number.isFinite(safeYear) || !Number.isFinite(safeMonth)) return "";
+  return `${safeYear}-${pad2(safeMonth)}`;
+};
+const getDeviceEnergyPayloadCacheKey = (period, token) => {
+  const safePeriod = readText(period).toLowerCase();
+  const safeToken = readText(token);
+  if (!safePeriod || !safeToken || !Number.isFinite(selectedMeterId) || selectedMeterId <= 0) {
+    return "";
+  }
+  return `${Math.trunc(selectedMeterId)}|${safePeriod}|${safeToken}`;
+};
+const fetchDeviceEnergyPayloadByQueries = async (queries, cacheKey) => {
+  const uniqueQueries = [...new Set((Array.isArray(queries) ? queries : []).filter(Boolean))];
+  if (!uniqueQueries.length) return null;
+  const now = Date.now();
+  const cached = cacheKey ? deviceEnergyPayloadCache.get(cacheKey) : null;
+  if (cached) {
+    if (Number.isFinite(cached.rateLimitedUntil) && cached.rateLimitedUntil > now) {
+      return null;
+    }
+    if (cached.payload && now - Number(cached.cachedAt || 0) <= deviceEnergyPayloadTtlMs) {
+      return cached.payload;
+    }
+  }
+
+  let wasRateLimited = false;
+  for (let idx = 0; idx < deviceEnergyApiCandidates.length; idx += 1) {
+    const base = deviceEnergyApiCandidates[idx];
+    let isRateLimitedBase = false;
+    for (let qIdx = 0; qIdx < uniqueQueries.length; qIdx += 1) {
+      if (isRateLimitedBase) break;
+      const query = uniqueQueries[qIdx];
+      const url = `${base}?${query}`;
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          credentials: "same-origin"
+        });
+        if (!response.ok) {
+          if (response.status === 429) {
+            wasRateLimited = true;
+            isRateLimitedBase = true;
+          }
+          continue;
+        }
+        const payload = await response.json().catch(() => null);
+        if (payload && typeof payload === "object") {
+          if (cacheKey) {
+            deviceEnergyPayloadCache.set(cacheKey, {
+              payload,
+              cachedAt: Date.now(),
+              rateLimitedUntil: 0
+            });
+          }
+          return payload;
+        }
+      } catch {
+        // ignore network errors and continue with next candidate
+      }
+    }
+  }
+
+  if (cacheKey && wasRateLimited) {
+    deviceEnergyPayloadCache.set(cacheKey, {
+      payload: null,
+      cachedAt: now,
+      rateLimitedUntil: now + deviceEnergyRateLimitCooldownMs
+    });
+  }
+  return null;
+};
+const buildCanonicalMonthDeviceEnergyQueries = (year, month) => {
+  if (!Number.isFinite(selectedMeterId) || selectedMeterId <= 0) return [];
+  const monthToken = buildMonthToken(year, month);
+  const safeYear = resolveTargetYear(year);
+  const safeMonth = resolveTargetMonth(month);
+  const queries = [];
+  if (monthToken) {
+    queries.push(
+      `device_id=${encodeURIComponent(selectedMeterId)}&period=month&month=${encodeURIComponent(
+        monthToken
+      )}`
+    );
+  }
+  if (Number.isFinite(safeYear) && Number.isFinite(safeMonth)) {
+    queries.push(
+      `device_id=${encodeURIComponent(selectedMeterId)}&period=month&year=${encodeURIComponent(
+        safeYear
+      )}&month=${encodeURIComponent(safeMonth)}`
+    );
+  }
+  return queries;
+};
+const buildCanonicalYearDeviceEnergyQueries = (year) => {
+  if (!Number.isFinite(selectedMeterId) || selectedMeterId <= 0) return [];
+  const safeYear = resolveTargetYear(year);
+  if (!Number.isFinite(safeYear)) return [];
+  return [
+    `device_id=${encodeURIComponent(selectedMeterId)}&period=year&year=${encodeURIComponent(
+      safeYear
+    )}`
+  ];
+};
+const fetchMonthDevicePayload = async (year, month) => {
+  const monthToken = buildMonthToken(year, month);
+  if (!monthToken) return null;
+  const queries = buildCanonicalMonthDeviceEnergyQueries(year, month);
+  const cacheKey = getDeviceEnergyPayloadCacheKey("month", monthToken);
+  return fetchDeviceEnergyPayloadByQueries(queries, cacheKey);
+};
+const fetchYearDevicePayload = async (year) => {
+  const safeYear = resolveTargetYear(year);
+  if (!Number.isFinite(safeYear)) return null;
+  const queries = buildCanonicalYearDeviceEnergyQueries(safeYear);
+  const cacheKey = getDeviceEnergyPayloadCacheKey("year", String(safeYear));
+  return fetchDeviceEnergyPayloadByQueries(queries, cacheKey);
+};
 const fetchMonthRows = async (year, month) => {
+  const monthDevicePayload = await fetchMonthDevicePayload(year, month);
+  const summaryMeta = extractSummaryMeta(monthDevicePayload);
+  const monthRows = monthDevicePayload
+    ? extractSeriesRows(monthDevicePayload, {
+        scopedDeviceId: selectedMeterId
+      })
+    : [];
+  if (monthRows.length) return attachSummaryMetaToRows(monthRows, summaryMeta);
   const queryCandidates = buildMonthQueryCandidates(year, month);
   return requestRowsFromCandidates(queryCandidates, extractSeriesRows);
 };
 const fetchMonthEnergyRows = async (year, month) => {
+  const monthDevicePayload = await fetchMonthDevicePayload(year, month);
+  const summaryMeta = extractSummaryMeta(monthDevicePayload);
+  const monthEnergyRows = monthDevicePayload
+    ? extractEnergyRows(monthDevicePayload, {
+        scopedDeviceId: selectedMeterId
+      })
+    : [];
+  if (monthEnergyRows.length) return attachSummaryMetaToRows(monthEnergyRows, summaryMeta);
   const queryCandidates = buildMonthQueryCandidates(year, month);
   return requestRowsFromCandidates(queryCandidates, extractEnergyRows);
 };
 const fetchYearRows = async (year) => {
+  const yearDevicePayload = await fetchYearDevicePayload(year);
+  const summaryMeta = extractSummaryMeta(yearDevicePayload);
+  const yearRows = yearDevicePayload
+    ? extractSeriesRows(yearDevicePayload, {
+        scopedDeviceId: selectedMeterId
+      })
+    : [];
+  if (yearRows.length) return attachSummaryMetaToRows(yearRows, summaryMeta);
   const queryCandidates = buildYearQueryCandidates(year);
   return requestRowsFromCandidates(queryCandidates, extractSeriesRows);
 };
@@ -2208,10 +2708,18 @@ const buildDayQueryCandidates = (dateKey, year, month, day) => {
         selectedSiteId
       )}&period=day&date=${dateKey}&device_id=${encodeURIComponent(selectedMeterId)}`
       );
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(
+          selectedSiteId
+        )}&period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
+          month
+        )}&day=${encodeURIComponent(day)}&device_id=${encodeURIComponent(selectedMeterId)}`
+      );
+    } else {
+      queryCandidates.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&period=day&date=${dateKey}`
+      );
     }
-    queryCandidates.push(
-      `site_id=${encodeURIComponent(selectedSiteId)}&period=day&date=${dateKey}`
-    );
   }
   if (hasMeterId) {
     queryCandidates.push(
@@ -2224,32 +2732,110 @@ const buildDayQueryCandidates = (dateKey, year, month, day) => {
         month
       )}&day=${encodeURIComponent(day)}&device_id=${encodeURIComponent(selectedMeterId)}`
     );
+    queryCandidates.push(
+      `period=day&device_id=${encodeURIComponent(selectedMeterId)}&date=${dateKey}`
+    );
+  } else {
+    queryCandidates.push(
+      `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
+    );
+    queryCandidates.push(
+      `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
+        month
+      )}&day=${encodeURIComponent(day)}`
+    );
   }
-  queryCandidates.push(
-    `period=day&name=${encodeURIComponent(selectedEnergyName)}&date=${dateKey}`
-  );
-  queryCandidates.push(
-    `period=day&year=${encodeURIComponent(year)}&month=${encodeURIComponent(
-      month
-    )}&day=${encodeURIComponent(day)}`
-  );
   return queryCandidates;
 };
+const resolveDayTargetDateKey = (dateKey, year, month, day) => {
+  const normalized = normalizeDateKey(dateKey);
+  if (normalized) return normalized;
+  const safeYear = Number(year);
+  const safeMonth = Number(month);
+  const safeDay = Number(day);
+  if (
+    Number.isFinite(safeYear) &&
+    Number.isFinite(safeMonth) &&
+    Number.isFinite(safeDay) &&
+    safeYear > 0 &&
+    safeMonth >= 1 &&
+    safeMonth <= 12 &&
+    safeDay >= 1 &&
+    safeDay <= 31
+  ) {
+    return `${Math.trunc(safeYear)}-${pad2(Math.trunc(safeMonth))}-${pad2(Math.trunc(safeDay))}`;
+  }
+  return "";
+};
+const buildCanonicalDayDeviceEnergyQuery = (dateKey, year, month, day) => {
+  const targetDateKey = resolveDayTargetDateKey(dateKey, year, month, day);
+  if (!targetDateKey || !Number.isFinite(selectedMeterId) || selectedMeterId <= 0) return "";
+  return `device_id=${encodeURIComponent(selectedMeterId)}&period=day&date=${targetDateKey}`;
+};
+const getDayDevicePayloadCacheKey = (dateKey, year, month, day) => {
+  const targetDateKey = resolveDayTargetDateKey(dateKey, year, month, day);
+  return getDeviceEnergyPayloadCacheKey("day", targetDateKey);
+};
+const fetchDayDevicePayload = async (dateKey, year, month, day) => {
+  if (!Number.isFinite(selectedMeterId) || selectedMeterId <= 0) return null;
+  const query = buildCanonicalDayDeviceEnergyQuery(dateKey, year, month, day);
+  if (!query) return null;
+  const cacheKey = getDayDevicePayloadCacheKey(dateKey, year, month, day);
+  return fetchDeviceEnergyPayloadByQueries([query], cacheKey);
+};
 const fetchDayRows = async (dateKey, year, month, day) => {
+  const dayDevicePayload = await fetchDayDevicePayload(dateKey, year, month, day);
+  const daySummaryMeta = extractSummaryMeta(dayDevicePayload);
+  const dayDeviceRows = dayDevicePayload
+    ? extractSeriesRows(dayDevicePayload, {
+        scopedDeviceId: selectedMeterId
+      })
+    : [];
+  if (dayDeviceRows.length) return attachSummaryMetaToRows(dayDeviceRows, daySummaryMeta);
   return requestRowsFromCandidates(
     buildDayQueryCandidates(dateKey, year, month, day),
-    extractSeriesRows
+    extractSeriesRows,
+    dayFallbackEnergyApiCandidates
   );
 };
 const fetchDayEnergyRows = async (dateKey, year, month, day) => {
+  const dayDevicePayload = await fetchDayDevicePayload(dateKey, year, month, day);
+  const daySummaryMeta = extractSummaryMeta(dayDevicePayload);
+  const dayDeviceRows = dayDevicePayload
+    ? extractEnergyRows(dayDevicePayload, {
+        scopedDeviceId: selectedMeterId
+      })
+    : [];
+  if (dayDeviceRows.length) return attachSummaryMetaToRows(dayDeviceRows, daySummaryMeta);
   return requestRowsFromCandidates(
     buildDayQueryCandidates(dateKey, year, month, day),
-    extractEnergyRows
+    extractEnergyRows,
+    dayFallbackEnergyApiCandidates
   );
 };
 const getSelectedYear = () => Number(yearSelect?.value || new Date().getFullYear());
 const getSelectedMonth = () => Number(monthSelect?.value || new Date().getMonth() + 1);
 const getSelectedDay = () => Number(daySelect?.value || new Date().getDate());
+const getCurrentDateControlParts = () => {
+  const nowParts = getDatePartsInTimeZone(new Date(), chartTimeZone);
+  const fallbackNow = new Date();
+  return {
+    year: Number.isFinite(nowParts?.year) ? nowParts.year : fallbackNow.getFullYear(),
+    month: Number.isFinite(nowParts?.month) ? nowParts.month : fallbackNow.getMonth() + 1,
+    day: Number.isFinite(nowParts?.day) ? nowParts.day : fallbackNow.getDate()
+  };
+};
+const resetDateControlsToCurrent = () => {
+  if (!yearSelect || !monthSelect || !daySelect) return;
+  const { year, month, day } = getCurrentDateControlParts();
+  if (!Array.from(yearSelect.options).some((option) => option.value === String(year))) {
+    yearSelect.insertAdjacentHTML("beforeend", `<option value="${year}">${year}</option>`);
+  }
+  yearSelect.value = String(year);
+  monthSelect.value = String(month);
+  updateDayOptions();
+  daySelect.value = String(day);
+};
 const buildSingleDayEnergyPoint = (row, fallbackDateKey) => {
   if (!row || typeof row !== "object") return null;
   const dateKey = normalizeDateKey(row.dateKey) || normalizeDateKey(fallbackDateKey);
@@ -2294,7 +2880,7 @@ const updatePeriodUi = () => {
 const loadChartBySelection = async () => {
   if (!chartBox) return;
   chartBox.textContent = "กำลังโหลดกราฟ...";
-  if (totalKwhValue) totalKwhValue.textContent = "-";
+  setTotalKwhSingle("-");
   const year = getSelectedYear();
   const month = getSelectedMonth();
   const day = getSelectedDay();
@@ -2302,8 +2888,10 @@ const loadChartBySelection = async () => {
   try {
     let rows = [];
     let chartOptions = {};
+    const hasSelectedMeterId =
+      Number.isFinite(selectedMeterId) && selectedMeterId > 0;
     const useSiteMonthAggregate =
-      Number.isFinite(selectedSiteId) && selectedSiteId > 0;
+      !hasSelectedMeterId && Number.isFinite(selectedSiteId) && selectedSiteId > 0;
     const monthDeviceIdFilter = selectedMeterId;
 
     if (selectedPeriod === "year") {
@@ -2311,11 +2899,18 @@ const loadChartBySelection = async () => {
       if (!raw.length) {
         raw = await fetchYearRowsByMonthFallback(year);
       }
+      const rawYearMeta = raw && typeof raw === "object" ? raw.__summaryMeta : null;
+      const hasYearEnergyInOut = rowsContainEnergyInOut(raw);
+      const yearMetricUnit = readText(
+        rawYearMeta?.unit,
+        readLooseValue(raw?.[0], ["unit"])
+      ) || "kWh";
       const yearlyRows = normalizeChartRows(raw, {
         period: "year",
         limit: 0,
         deviceId: monthDeviceIdFilter,
         ignoreMeterIdentity: useSiteMonthAggregate,
+        forceDualMetrics: hasYearEnergyInOut,
         fallbackYear: year
       });
       rows = aggregateYearSeriesRowsByMonth(yearlyRows, { year });
@@ -2327,6 +2922,19 @@ const loadChartBySelection = async () => {
           ...chartOptions,
           forceFullDayXAxis: true
         };
+        if (hasYearEnergyInOut) {
+          chartOptions = {
+            ...chartOptions,
+            mode: "period-energy-dual",
+            totalLabel: `สรุปพลังงานปี ${year}`,
+            leftLegendLabel: "พลังงานที่ได้รับ",
+            rightLegendLabel: "พลังงานที่จ่ายออก",
+            metricUnit: yearMetricUnit,
+            energyInTotal: rawYearMeta?.energyIn,
+            energyOutTotal: rawYearMeta?.energyOut,
+            ariaLabel: `กราฟพลังงานที่ได้รับและพลังงานที่จ่ายออก ปี ${year}`
+          };
+        }
       }
     }
 
@@ -2337,11 +2945,19 @@ const loadChartBySelection = async () => {
       const rawSeries = await fetchMonthRows(targetYear, targetMonth).catch(
         () => []
       );
+      const rawMonthMeta =
+        rawSeries && typeof rawSeries === "object" ? rawSeries.__summaryMeta : null;
+      const hasMonthEnergyInOut = rowsContainEnergyInOut(rawSeries);
+      const monthMetricUnit = readText(
+        rawMonthMeta?.unit,
+        readLooseValue(rawSeries?.[0], ["unit"])
+      ) || "kWh";
       rows = normalizeChartRows(rawSeries, {
         period: "month",
         limit: 62,
         deviceId: monthDeviceIdFilter,
         ignoreMeterIdentity: useSiteMonthAggregate,
+        forceDualMetrics: hasMonthEnergyInOut,
         fallbackYear: targetYear,
         fallbackMonth: targetMonth
       });
@@ -2361,27 +2977,29 @@ const loadChartBySelection = async () => {
         });
         useMonthEnergyMode = rows.length > 0;
         if (raw.length) {
-          const fallbackRows = normalizeMonthlyEnergyRows(raw, {
-            deviceId: monthDeviceIdFilter,
-            ignoreMeterIdentity: useSiteMonthAggregate
-          });
-          if (fallbackRows.length) {
-            rows = fallbackRows;
-            useMonthEnergyMode = true;
-            const fallbackMonth = summarizeMonthFromRows(fallbackRows);
-            if (fallbackMonth) {
-              summaryLabel = `รวมเดือน ${fallbackMonth}`;
-              ariaLabel = `กราฟพลังงานรายวันจาก energy_total ของเดือน ${fallbackMonth}`;
+          if (!hasSelectedMeterId) {
+            const fallbackRows = normalizeMonthlyEnergyRows(raw, {
+              deviceId: monthDeviceIdFilter,
+              ignoreMeterIdentity: useSiteMonthAggregate
+            });
+            if (fallbackRows.length) {
+              rows = fallbackRows;
+              useMonthEnergyMode = true;
+              const fallbackMonth = summarizeMonthFromRows(fallbackRows);
+              if (fallbackMonth) {
+                summaryLabel = `รวมเดือน ${fallbackMonth}`;
+                ariaLabel = `กราฟพลังงานรายวันจาก energy_total ของเดือน ${fallbackMonth}`;
+              } else {
+                summaryLabel = "รวมช่วงข้อมูลล่าสุด";
+                ariaLabel = "กราฟพลังงานรายวันจาก energy_total (ช่วงข้อมูลล่าสุด)";
+              }
+              emptyMessage = "ไม่พบข้อมูลของมิเตอร์ที่เลือก";
             } else {
-              summaryLabel = "รวมช่วงข้อมูลล่าสุด";
-              ariaLabel = "กราฟพลังงานรายวันจาก energy_total (ช่วงข้อมูลล่าสุด)";
+              const range = summarizeCreatedAtRange(raw, chartTimeZone);
+              emptyMessage = range
+                ? `API มีข้อมูลช่วง ${range} แต่ยังไม่ตรงมิเตอร์ที่เลือก`
+                : "API มีข้อมูล แต่ยังไม่ตรงมิเตอร์ที่เลือก";
             }
-            emptyMessage = "ไม่พบข้อมูลของมิเตอร์ที่เลือก";
-          } else {
-            const range = summarizeCreatedAtRange(raw, chartTimeZone);
-            emptyMessage = range
-              ? `API มีข้อมูลช่วง ${range} แต่ยังไม่ตรงมิเตอร์ที่เลือก`
-              : "API มีข้อมูล แต่ยังไม่ตรงมิเตอร์ที่เลือก";
           }
         }
         if (!rows.length) {
@@ -2414,6 +3032,19 @@ const loadChartBySelection = async () => {
       } else {
         chartOptions = {};
       }
+      if (!useMonthEnergyMode && rows.length && hasMonthEnergyInOut) {
+        chartOptions = {
+          ...chartOptions,
+          mode: "period-energy-dual",
+          totalLabel: `สรุปพลังงานเดือน ${targetMonthLabel}`,
+          leftLegendLabel: "พลังงานที่ได้รับ",
+          rightLegendLabel: "พลังงานที่จ่ายออก",
+          metricUnit: monthMetricUnit,
+          energyInTotal: rawMonthMeta?.energyIn,
+          energyOutTotal: rawMonthMeta?.energyOut,
+          ariaLabel: `กราฟพลังงานที่ได้รับและพลังงานที่จ่ายออก เดือน ${targetMonthLabel}`
+        };
+      }
       if (rows.length) {
         rows = normalizeRowsForFullMonthXAxis(rows, {
           year: targetYear,
@@ -2430,12 +3061,36 @@ const loadChartBySelection = async () => {
     if (selectedPeriod === "day") {
       const target = `${year}-${pad2(month)}-${pad2(day)}`;
       const raw = await fetchDayRows(target, year, month, day);
+      const rawDayMeta = raw && typeof raw === "object" ? raw.__summaryMeta : null;
+      const hasExplicitEnergyInOut = rowsContainEnergyInOut(raw);
+      const dayMetricUnit = readText(
+        rawDayMeta?.unit,
+        readLooseValue(raw?.[0], ["unit"])
+      ) || "kWh";
       rows = normalizeChartRows(raw, {
         period: "day",
         limit: 288,
-        deviceId: selectedMeterId
+        deviceId: selectedMeterId,
+        forceDualMetrics: hasExplicitEnergyInOut
       });
-      if (!rows.length) {
+      if (rows.length && hasExplicitEnergyInOut) {
+        chartOptions = {
+          mode: "day-energy-dual",
+          totalLabel: "สรุปพลังงานวันนี้",
+          leftLegendLabel: "พลังงานที่ได้รับ",
+          rightLegendLabel: "พลังงานที่จ่ายออก",
+          metricUnit: dayMetricUnit,
+          energyInTotal: rawDayMeta?.energyIn,
+          energyOutTotal: rawDayMeta?.energyOut,
+          ariaLabel: `กราฟพลังงานที่ได้รับและพลังงานที่จ่ายออก วันที่ ${target}`
+        };
+      }
+      const hasSeriesValues = rows.some(
+        (row) =>
+          parseFiniteNumber(row?.solarIn) !== null ||
+          parseFiniteNumber(row?.selfUse) !== null
+      );
+      if (!rows.length || !hasSeriesValues) {
         const rawEnergy = await fetchDayEnergyRows(
           target,
           year,
@@ -2504,22 +3159,13 @@ const loadChartBySelection = async () => {
     renderChart(rows, chartOptions);
   } catch (error) {
     chartBox.textContent = `โหลดกราฟไม่สำเร็จ (${error.message})`;
-    if (totalKwhValue) totalKwhValue.textContent = "-";
+    setTotalKwhSingle("-");
     console.warn("Failed to load chart", error);
   }
 };
 const initDateControls = () => {
   if (!yearSelect || !monthSelect || !daySelect) return;
-  const nowParts = getDatePartsInTimeZone(new Date(), chartTimeZone);
-  const currentYear = Number.isFinite(nowParts?.year)
-    ? nowParts.year
-    : new Date().getFullYear();
-  const currentMonth = Number.isFinite(nowParts?.month)
-    ? nowParts.month
-    : new Date().getMonth() + 1;
-  const currentDay = Number.isFinite(nowParts?.day)
-    ? nowParts.day
-    : new Date().getDate();
+  const { year: currentYear } = getCurrentDateControlParts();
 
   yearSelect.innerHTML = Array.from({ length: 8 }, (_, idx) => {
     const value = currentYear - 4 + idx;
@@ -2530,10 +3176,7 @@ const initDateControls = () => {
   monthSelect.innerHTML = thaiMonthFull
     .map((label, idx) => `<option value="${idx + 1}">${label}</option>`)
     .join("");
-  monthSelect.value = String(currentMonth);
-
-  updateDayOptions();
-  daySelect.value = String(currentDay);
+  resetDateControlsToCurrent();
 };
 
 if (!meterData) {
@@ -2550,6 +3193,9 @@ periodButtons.forEach((button) => {
     const target = button.dataset.period;
     if (!target || target === selectedPeriod) return;
     selectedPeriod = target;
+    if (target === "day" || target === "month" || target === "year") {
+      resetDateControlsToCurrent();
+    }
     updatePeriodUi();
     loadChartBySelection();
   });

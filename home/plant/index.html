@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="../style.css">
 </head>
 <body class="plant-page">
   <div class="shell">
@@ -33,7 +33,12 @@
     </section>
 
     <section class="panel" id="meters-panel">
-      <h3>มิเตอร์ / Meters</h3>
+      <div class="panel-head">
+        <h3>มิเตอร์ / Meters</h3>
+        <div class="panel-actions">
+          <button class="primary small-btn" id="meter-new-btn" type="button">เพิ่มมิเตอร์</button>
+        </div>
+      </div>
       <div class="device-table-wrap">
         <table class="device-table">
           <thead>
@@ -41,10 +46,11 @@
               <th style="width: 80px;">Status</th>
               <th>Meter</th>
               <th style="width: 220px;">Serial</th>
+              <th style="width: 110px;">จัดการ</th>
             </tr>
           </thead>
           <tbody id="device-rows">
-            <tr><td class="empty" colspan="3">กำลังโหลด...</td></tr>
+            <tr><td class="empty" colspan="4">กำลังโหลด...</td></tr>
           </tbody>
         </table>
       </div>
@@ -281,6 +287,72 @@
       </div>
     </div>
 
+    <div class="modal hidden" id="meter-create-modal" role="dialog" aria-modal="true">
+      <div class="modal-content small">
+        <div class="modal-header">
+          <h3>เพิ่มมิเตอร์</h3>
+          <button class="ghost icon-btn" id="meter-create-modal-close" aria-label="ปิด">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="meter-create-type">ประเภทอุปกรณ์</label>
+            <select id="meter-create-type">
+              <option value="SOLAR_PANEL">โซล่าร์ (SOLAR_PANEL)</option>
+              <option value="METER">มิเตอร์ (METER)</option>
+              <option value="MDB_IN">มิเตอร์ขาเข้า (MDB_IN)</option>
+              <option value="MDB_OUT">มิเตอร์ขาออก (MDB_OUT)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="meter-create-name">ชื่ออุปกรณ์</label>
+            <input
+              id="meter-create-name"
+              type="text"
+              autocomplete="off"
+              placeholder="เช่น Main Solar Inverter"
+            />
+          </div>
+          <div class="meter-create-section meter-create-section-import">
+            <p class="meter-create-section-title">Modbus Address ขาเข้า (Import)</p>
+            <div class="grid-2 meter-create-grid">
+              <div class="field">
+                <label for="meter-create-in-1">Address IN 1 (High Word)</label>
+                <input id="meter-create-in-1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43205" />
+              </div>
+              <div class="field">
+                <label for="meter-create-in-2">Address IN 2 (Low Word)</label>
+                <input id="meter-create-in-2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43206" />
+              </div>
+            </div>
+          </div>
+          <div class="meter-create-section meter-create-section-export">
+            <p class="meter-create-section-title">Modbus Address ขาออก (Export)</p>
+            <div class="grid-2 meter-create-grid">
+              <div class="field">
+                <label for="meter-create-out-1">Address OUT 1 (High Word)</label>
+                <input id="meter-create-out-1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43209" />
+              </div>
+              <div class="field">
+                <label for="meter-create-out-2">Address OUT 2 (Low Word)</label>
+                <input id="meter-create-out-2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43210" />
+              </div>
+            </div>
+            <p class="muted small meter-create-note">* ไม่บังคับ หากไม่มีขาออกสามารถเว้นว่างได้</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="ghost small-btn" id="meter-create-cancel" type="button">ยกเลิก</button>
+          <button class="primary" id="meter-create-confirm" type="button">เพิ่มมิเตอร์</button>
+        </div>
+      </div>
+    </div>
+
   <script src="./plant.js" defer></script>
+  <script src="../billing/billing.js" defer></script>
+  <script src="../meters/meters.js" defer></script>
 </body>
 </html>

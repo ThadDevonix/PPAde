@@ -64,6 +64,7 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+const normalizeRole = (value) => readString(value).toLowerCase();
 const normalizePlantNameKey = (value) => value.trim().toLowerCase();
 const normalizeLocationValue = (value) => readString(value) || "Thailand";
 const normalizeSiteCodeKey = (value) =>
@@ -671,11 +672,15 @@ let editingPlantId = null;
 let editingMeterIndex = null;
 let meterPage = 1;
 let plantStep = 1;
+let plantModalMode = "create";
 const metersPerPage = 5;
 let isMeterModalOpen = false;
 let isHydratingPlants = false;
 let plantsLoadError = "";
 let isLocatingPlantLocation = false;
+let currentUserRole = "";
+const canDeletePlants = () => currentUserRole === "superadmin";
+const canDeleteMeters = () => currentUserRole === "superadmin";
 
 const redirectToLogin = () => {
   const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -689,6 +694,7 @@ const setAuthUser = (user) => {
   authUserEl.textContent = `ผู้ใช้: ${label}`;
 };
 const ensureAuthenticated = async () => {
+  currentUserRole = "";
   try {
     const response = await fetch("/api/auth/me", {
       method: "GET",
@@ -703,6 +709,7 @@ const ensureAuthenticated = async () => {
       redirectToLogin();
       return null;
     }
+    currentUserRole = normalizeRole(payload.user?.role);
     setAuthUser(payload.user);
     return payload.user;
   } catch {
@@ -766,7 +773,7 @@ const render = (data) => {
       const plant = data[idx];
       if (!plant) return;
       localStorage.setItem("selectedPlant", JSON.stringify(plant));
-      window.location.href = "./plant.html";
+      window.location.href = "./plant/index.html";
     });
   });
   rowsEl.querySelectorAll("button[data-action='edit']").forEach((btn) => {
@@ -829,6 +836,9 @@ const bindAddressGroupItem = (item) => {
     });
   });
   item.querySelector(".address-group-remove")?.addEventListener("click", () => {
+    const groupLabel = readString(item.querySelector(".address-group-index")?.textContent) || "ชุด Address นี้";
+    const ok = confirm(`ต้องการลบ ${groupLabel} ใช่หรือไม่?`);
+    if (!ok) return;
     item.remove();
     if (!getAddressGroupItems().length) {
       appendAddressGroupItem();
@@ -922,6 +932,7 @@ const renderMeterPager = () => {
 };
 const renderMeterList = () => {
   if (!meterList) return;
+  const allowDelete = canDeleteMeters();
   const totalPages = getMeterPageCount();
   if (meterPage > totalPages) meterPage = totalPages;
   if (meterPage < 1) meterPage = 1;
@@ -952,20 +963,31 @@ const renderMeterList = () => {
         </div>
         <div class="meter-item-actions">
           <button class="meter-edit" type="button" data-action="edit" data-index="${start + idx}">แก้ไข</button>
-          <button class="meter-remove" type="button" data-action="delete" data-index="${start + idx}">ลบ</button>
+          ${
+            allowDelete
+              ? `<button class="meter-remove" type="button" data-action="delete" data-index="${start + idx}">ลบ</button>`
+              : ""
+          }
         </div>
       </div>
     `
     })
     .join("");
-  meterList.querySelectorAll("button[data-action='delete']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const index = Number(btn.dataset.index);
-      if (Number.isNaN(index)) return;
-      pendingMeters = pendingMeters.filter((_, i) => i !== index);
-      renderMeterList();
+  if (allowDelete) {
+    meterList.querySelectorAll("button[data-action='delete']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const index = Number(btn.dataset.index);
+        if (Number.isNaN(index)) return;
+        const target = pendingMeters[index];
+        if (!target) return;
+        const meterLabel = readString(target.name) || `มิเตอร์ลำดับ ${index + 1}`;
+        const ok = confirm(`ต้องการลบมิเตอร์: ${meterLabel} ใช่หรือไม่?`);
+        if (!ok) return;
+        pendingMeters = pendingMeters.filter((_, i) => i !== index);
+        renderMeterList();
+      });
     });
-  });
+  }
   meterList.querySelectorAll("button[data-action='edit']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const index = Number(btn.dataset.index);
@@ -1030,12 +1052,20 @@ const locateCurrentPosition = () => {
 
 const getPlantNameValue = () => plantNameInput?.value.trim() ?? "";
 const canProceedToMeters = () => Boolean(getPlantNameValue());
+const isCreatePlantFlow = () => plantModalMode === "create";
+const getPlantStepCount = () => (isCreatePlantFlow() ? 2 : 1);
 const updatePlantStepAvailability = () => {
+  if (!isCreatePlantFlow()) {
+    if (plantStepNext) plantStepNext.disabled = false;
+    return;
+  }
   const canGoStep2 = canProceedToMeters();
   if (plantStepNext) plantStepNext.disabled = !canGoStep2;
 };
 const setPlantStep = (step, { force = false } = {}) => {
-  const target = Math.min(Math.max(step, 1), 2);
+  const totalSteps = getPlantStepCount();
+  const isSingleStep = totalSteps === 1;
+  const target = Math.min(Math.max(step, 1), totalSteps);
   if (target === 2 && !canProceedToMeters() && !force) {
     alert("กรุณาตั้งชื่อ Plant ก่อน");
     return;
@@ -1045,20 +1075,32 @@ const setPlantStep = (step, { force = false } = {}) => {
     const panelStep = Number(panel.dataset.step);
     panel.classList.toggle("hidden", panelStep !== plantStep);
   });
-  if (plantStepLabel) plantStepLabel.textContent = `ขั้นตอนที่ ${plantStep}/2`;
+  if (plantStepper) {
+    plantStepper.classList.toggle("hidden", isSingleStep);
+  }
+  if (plantStepLabel) {
+    if (isSingleStep) {
+      plantStepLabel.textContent = "";
+      plantStepLabel.classList.add("hidden");
+    } else {
+      plantStepLabel.textContent = `ขั้นตอนที่ ${plantStep}/${totalSteps}`;
+      plantStepLabel.classList.remove("hidden");
+    }
+  }
   if (plantStepper) plantStepper.dataset.step = String(plantStep);
   if (plantStepFill) {
-    const progress = (plantStep / 2) * 100;
+    const progress = (plantStep / totalSteps) * 100;
     plantStepFill.style.width = `${progress}%`;
   }
   plantStepper?.querySelectorAll(".modal-step-item").forEach((item) => {
     const itemStep = Number(item.dataset.step);
+    item.classList.toggle("hidden", itemStep > totalSteps);
     item.classList.toggle("active", itemStep === plantStep);
     item.classList.toggle("done", itemStep < plantStep);
   });
-  plantStepBack?.classList.toggle("hidden", plantStep !== 2);
-  plantSave?.classList.toggle("hidden", plantStep !== 2);
-  plantStepNext?.classList.toggle("hidden", plantStep !== 1);
+  plantStepBack?.classList.toggle("hidden", isSingleStep || plantStep !== 2);
+  plantSave?.classList.toggle("hidden", isSingleStep ? false : plantStep !== 2);
+  plantStepNext?.classList.toggle("hidden", isSingleStep || plantStep !== 1);
   updatePlantStepAvailability();
 };
 
@@ -1066,11 +1108,12 @@ const openPlantModal = (mode = "create", plant = null) => {
   if (!plantModal) return;
   plantModal.classList.remove("hidden");
   isPlantModalOpen = true;
+  plantModalMode = mode === "edit" ? "edit" : "create";
   meterPage = 1;
   if (mode === "edit" && plant) {
     editingPlantId = plant.id;
     if (plantModalTitle) plantModalTitle.textContent = "แก้ไข Plant";
-    plantDelete?.classList.remove("hidden");
+    plantDelete?.classList.toggle("hidden", !canDeletePlants());
     if (plantNameInput) plantNameInput.value = plant.name || "";
     if (plantLocationInput) plantLocationInput.value = plant.location || "";
     setPlantLocationHint("");
@@ -1102,6 +1145,7 @@ const openPlantModal = (mode = "create", plant = null) => {
 const closePlantModal = () => {
   plantModal?.classList.add("hidden");
   isPlantModalOpen = false;
+  plantModalMode = "create";
   if (plantNameInput) plantNameInput.value = "";
   if (plantLocationInput) plantLocationInput.value = "";
   setPlantLocationHint("");
@@ -1130,6 +1174,10 @@ const applyFilters = () => {
 };
 
 const deletePlant = async (id) => {
+  if (!canDeletePlants()) {
+    alert("สิทธิ์ admin ไม่สามารถลบ Plant ได้");
+    return;
+  }
   const target = plants.find((p) => p.id === id);
   if (!target) return;
   const ok = confirm(`ต้องการลบ Plant: ${target.name} ใช่หรือไม่?`);
@@ -1155,7 +1203,7 @@ document.getElementById("reset").addEventListener("click", () => {
 });
 
 logoutBtn?.addEventListener("click", logout);
-createPlantBtn?.addEventListener("click", openPlantModal);
+createPlantBtn?.addEventListener("click", () => openPlantModal("create"));
 plantModalClose?.addEventListener("click", closePlantModal);
 plantCancel?.addEventListener("click", closePlantModal);
 plantModal?.addEventListener("click", (e) => {
@@ -1221,13 +1269,14 @@ meterAddConfirm?.addEventListener("click", () => {
 });
 
 plantSave?.addEventListener("click", async () => {
+  const isEdit = Boolean(editingPlantId);
   const plantName = plantNameInput?.value.trim();
   const plantLocation = normalizeLocationValue(plantLocationInput?.value);
   if (!plantName) {
     alert("กรุณาตั้งชื่อ Plant");
     return;
   }
-  if (!pendingMeters.length) {
+  if (!isEdit && !pendingMeters.length) {
     alert("กรุณาเพิ่มมิเตอร์อย่างน้อย 1 รายการ");
     return;
   }
@@ -1250,7 +1299,7 @@ plantSave?.addEventListener("click", async () => {
     plantSave.textContent = "กำลังบันทึก...";
   }
   try {
-    if (editingPlantId) {
+    if (isEdit) {
       const current = plants.find((p) => p.id === editingPlantId);
       if (!current) return;
       const updatedFromApi = await updatePlantInApi(
@@ -1264,8 +1313,8 @@ plantSave?.addEventListener("click", async () => {
         id: current.id,
         name: updatedFromApi?.name || plantName,
         location: updatedFromApi?.location || plantLocation,
-        devices,
-        deviceSn: devices[0]?.sn || current.deviceSn || ""
+        devices: Array.isArray(current.devices) ? current.devices : [],
+        deviceSn: current.deviceSn || updatedFromApi?.deviceSn || ""
       };
       plants = plants.map((p) => (p.id === editingPlantId ? updated : p));
     } else {

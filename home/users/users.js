@@ -100,7 +100,7 @@ const redirectToLogin = () => {
   const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const search = new URLSearchParams();
   search.set("redirect", target);
-  window.location.href = `./login/index.html?${search.toString()}`;
+  window.location.href = `../login/index.html?${search.toString()}`;
 };
 
 const setMessage = (message, type = "") => {

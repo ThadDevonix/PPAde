@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "home");
 
 const upstreamEnergyApi = "https://solarmdb.devonix.co.th/api/energy";
+const upstreamDeviceEnergyApi = "https://solarmdb.devonix.co.th/api/device-energy";
 const upstreamSitesApi = "https://solarmdb.devonix.co.th/api/sites";
 const upstreamDevicesApi = "https://solarmdb.devonix.co.th/api/devices";
 const upstreamUsersApi = "https://solarmdb.devonix.co.th/api/users";
@@ -61,6 +62,7 @@ const mime = (filePath) => {
 const isAuthApiPath = (pathname) => pathname.startsWith("/api/auth/");
 const isProxyApiPath = (pathname) =>
   pathname === "/api/energy" ||
+  pathname === "/api/device-energy" ||
   pathname === "/api/sites" ||
   pathname.startsWith("/api/sites/") ||
   pathname === "/api/devices" ||
@@ -544,6 +546,8 @@ const isSuperadminSession = (session) => {
 };
 
 const isAdminSession = (session) => normalizeRole(session?.role) === "admin";
+const isDeleteBlockedForAdmin = (session, method) =>
+  method === "DELETE" && isAdminSession(session) && !isSuperadminSession(session);
 
 const shouldRestrictSitesBySession = (session) => {
   if (!isAdminSession(session) || isSuperadminSession(session)) return false;
@@ -1355,8 +1359,32 @@ export const handleRequest = async (req, res) => {
         return;
       }
 
+      if (url.pathname === "/api/device-energy") {
+        const requestedSiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
+          "site_id",
+          "siteId"
+        ]);
+        if (
+          restrictSites &&
+          requestedSiteIds.some((siteId) => !isAllowedSiteIdForSet(siteId, allowedSiteIdSet))
+        ) {
+          sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+          return;
+        }
+        const upstreamUrl = `${upstreamDeviceEnergyApi}${url.search}`;
+        await proxyRequest(req, res, upstreamUrl, {
+          Authorization: authHeader,
+          Cookie: upstreamCookie
+        });
+        return;
+      }
+
       if (url.pathname === "/api/sites" || url.pathname.startsWith("/api/sites/")) {
         const suffix = url.pathname.slice("/api/sites".length);
+        if (isDeleteBlockedForAdmin(session, method)) {
+          sendApiError(res, 403, "admin ไม่มีสิทธิ์ลบ Plant");
+          return;
+        }
         const pathSiteId = collectSiteIdFromPathSuffix(url.pathname, "/api/sites");
         const querySiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
           "site_id",
@@ -1399,6 +1427,10 @@ export const handleRequest = async (req, res) => {
 
       if (url.pathname === "/api/devices" || url.pathname.startsWith("/api/devices/")) {
         const suffix = url.pathname.slice("/api/devices".length);
+        if (isDeleteBlockedForAdmin(session, method)) {
+          sendApiError(res, 403, "admin ไม่มีสิทธิ์ลบมิเตอร์");
+          return;
+        }
         const requestedSiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
           "site_id",
           "siteId"
