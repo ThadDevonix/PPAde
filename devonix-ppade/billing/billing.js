@@ -1276,36 +1276,75 @@ const openReceiptPrint = () => {
   if (!currentReceiptHtml) return;
   const win = window.open("", "_blank");
   if (!win) return;
-  const styleHref = new URL("../style.css", window.location.href).href;
-  const fontHref =
-    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap";
+  const printableStyles = [
+    ...Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+      .map((link) => {
+        const href = String(link.href || "").trim();
+        if (!href) return "";
+        const media = String(link.media || "").trim();
+        const mediaAttr = media && media !== "all" ? ` media="${escapeHtml(media)}"` : "";
+        return `<link rel="stylesheet" href="${escapeHtml(href)}"${mediaAttr}>`;
+      })
+      .filter(Boolean),
+    ...Array.from(document.querySelectorAll("style")).map((style) => style.outerHTML)
+  ].join("\n");
   win.document.write(`
     <html>
       <head>
         <title>${currentReceiptTitle}</title>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="${fontHref}">
-        <link rel="stylesheet" href="${styleHref}">
+        ${printableStyles}
       </head>
       <body class="pdf-view">${currentReceiptHtml}</body>
     </html>
   `);
   win.document.close();
+
+  const waitForPrintAssets = () => {
+    const stylesheetPromises = Array.from(
+      win.document.querySelectorAll('link[rel="stylesheet"]')
+    ).map(
+      (link) =>
+        new Promise((resolve) => {
+          let settled = false;
+          const done = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+          };
+          if (link.sheet) {
+            done();
+            return;
+          }
+          link.addEventListener("load", done, { once: true });
+          link.addEventListener("error", done, { once: true });
+          setTimeout(done, 2000);
+        })
+    );
+    const fontsPromise =
+      win.document.fonts && win.document.fonts.ready
+        ? win.document.fonts.ready.catch(() => undefined)
+        : Promise.resolve();
+    return Promise.all([...stylesheetPromises, fontsPromise]);
+  };
   const triggerPrint = () => {
     win.focus();
     win.print();
   };
+  const schedulePrint = () => {
+    waitForPrintAssets().then(() => {
+      setTimeout(triggerPrint, 80);
+    });
+  };
   if (win.document.readyState === "complete") {
-    requestAnimationFrame(triggerPrint);
+    schedulePrint();
     return;
   }
   win.addEventListener(
     "load",
     () => {
-      setTimeout(triggerPrint, 100);
+      schedulePrint();
     },
     { once: true }
   );
