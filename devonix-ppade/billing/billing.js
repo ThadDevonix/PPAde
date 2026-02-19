@@ -190,7 +190,13 @@ const formatThaiMonthYear = (value) => {
 const normalizeDateValue = (value) => {
   if (!value) return null;
   if (value instanceof Date) return formatDate(value);
-  if (typeof value === "number") return formatDate(new Date(value));
+  if (typeof value === "number") {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    if (Math.abs(numeric) >= 1e11) return formatDate(new Date(numeric));
+    if (Math.abs(numeric) >= 1e9) return formatDate(new Date(numeric * 1000));
+    return null;
+  }
   if (typeof value === "string") {
     const trimmed = value.trim();
     const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}/);
@@ -213,6 +219,40 @@ const splitDateParts = (value) => {
   const [year, month, day] = date.split("-").map(Number);
   if (!year || !month || !day) return null;
   return { date, year, month, day };
+};
+const normalizeMonthToken = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const monthMatch = text.match(/^(\d{4})-(\d{1,2})$/);
+  if (monthMatch) return `${monthMatch[1]}-${pad(monthMatch[2])}`;
+  const date = normalizeDateValue(text);
+  if (!date) return "";
+  return date.slice(0, 7);
+};
+const readDayOfMonth = (value) => {
+  if (value === undefined || value === null) return null;
+  const numeric =
+    typeof value === "number" ? Math.trunc(value) : Number.parseInt(String(value), 10);
+  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 31) return numeric;
+  const match = String(value).match(/(\d{1,2})/);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 31) return null;
+  return parsed;
+};
+const buildDateFromMonthDay = (monthToken, day) => {
+  const match = String(monthToken || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const dayNumber = Number(day);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(dayNumber)) {
+    return null;
+  }
+  const monthIndex = month - 1;
+  if (monthIndex < 0 || monthIndex > 11) return null;
+  const safeDay = clampDay(year, monthIndex, Math.trunc(dayNumber));
+  return `${year}-${pad(month)}-${pad(safeDay)}`;
 };
 const listDatesInclusive = (start, end) => {
   const dates = [];
@@ -588,9 +628,7 @@ const getMeterKey = (meter) =>
   ).trim();
 const getMeterLabel = (meter) => {
   if (!meter || typeof meter !== "object") return "Meter";
-  const name = meter.name || meter.sn || "Meter";
-  if (!meter.sn || meter.name === meter.sn) return name;
-  return `${name} (SN: ${meter.sn})`;
+  return meter.name || meter.sn || "Meter";
 };
 const getSelectedMetersForFormula = () => [...meterProfiles];
 const buildLegacyFormula = (method, meterPool = meterProfiles) => {
@@ -787,7 +825,7 @@ const setCalcInputMode = (mode, options = {}) => {
   formulaResultNameCell?.classList.toggle("hidden", isSingle);
   formulaResultValueCell?.classList.toggle("hidden", isSingle);
   if (formulaMeterLeftLabel) {
-    formulaMeterLeftLabel.textContent = "ชื่อมิเตอร์ที่ 1";
+    formulaMeterLeftLabel.textContent = "ชื่อมิเตอร์";
   }
   if (formulaValueLeftLabel) {
     formulaValueLeftLabel.textContent = "ค่าที่ใช้คำนวณ";
@@ -1042,12 +1080,21 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   const dailyRows = [...(bill.daily || [])]
     .filter((row) => row?.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .map((row) => ({
-      date: row.date,
-      units: parseNumber(row.bill_units),
-      leftValue: showFormulaColumns && leftTerm ? getFormulaTermValue(row, leftTerm) : null,
-      rightValue: showFormulaColumns && rightTerm ? getFormulaTermValue(row, rightTerm) : null
-    }));
+    .map((row) => {
+      const leftValue = leftTerm ? getFormulaTermValue(row, leftTerm) : null;
+      const rightValue = rightTerm ? getFormulaTermValue(row, rightTerm) : null;
+      const units = showFormulaColumns
+        ? parseNumber(row.bill_units)
+        : leftTerm
+          ? parseNumber(leftValue)
+          : parseNumber(row.bill_units);
+      return {
+        date: row.date,
+        units,
+        leftValue: showFormulaColumns ? leftValue : null,
+        rightValue: showFormulaColumns ? rightValue : null
+      };
+    });
   const totalKwh = roundTo(
     dailyRows.reduce((sum, row) => sum + row.units, 0),
     1
@@ -1094,6 +1141,12 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   const termTwoDetail = getTermDetail(rightTerm, "ค่าที่ใช้คำนวณ 2");
   const termOneHeader = getTermHeaderLabel(leftTerm, "ค่าที่ใช้คำนวณ 1");
   const termTwoHeader = getTermHeaderLabel(rightTerm, "ค่าที่ใช้คำนวณ 2");
+  const usageHeaderText = "พลังงานที่ใช้ (kWh)";
+  const usageHeaderTitle = showFormulaColumns
+    ? "พลังงานที่ใช้หลังคำนวณ"
+    : leftTerm
+      ? termOneHeader
+      : usageHeaderText;
   const formulaOperator =
     showFormulaColumns && formulaOperators.includes(rightTerm?.operator)
       ? rightTerm.operator
@@ -1148,7 +1201,9 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
             <tr>
               <th class="date-cell">วันที่</th>
               ${formulaHeadHtml}
-              <th class="num-cell">ใช้ไฟ (kWh)</th>
+              <th class="num-cell" title="${escapeHtml(usageHeaderTitle)}">${escapeHtml(
+      usageHeaderText
+    )}</th>
             </tr>
           </thead>
           <tbody>
@@ -1413,26 +1468,28 @@ const extractDailyRows = (payload) => {
   return Array.isArray(values) ? values : [];
 };
 
-const normalizeDailyRows = (rows) => {
+const normalizeDailyRows = (rows, options = {}) => {
+  const fallbackMonthToken = normalizeMonthToken(options?.monthToken || options?.month || "");
   const map = new Map();
   rows.forEach((row) => {
     if (!row || typeof row !== "object") return;
-    const date = normalizeDateValue(
-      row.date ?? row.day ?? row.datetime ?? row.timestamp ?? row.ts
+    let date = normalizeDateValue(
+      row.date ?? row.datetime ?? row.timestamp ?? row.ts ?? row.created_at ?? row.createdAt
     );
+    if (!date) {
+      const monthToken = normalizeMonthToken(
+        row.month ?? row.period_month ?? row.periodMonth ?? row.month_token ?? row.monthToken
+      ) || fallbackMonthToken;
+      const day = readDayOfMonth(row.day ?? row.date ?? row.label);
+      if (monthToken && day) {
+        date = buildDateFromMonthDay(monthToken, day);
+      }
+    }
     if (!date) return;
-    const solarIn = parseNumber(row.solar_in ?? row.solarIn ?? row.solar);
-    const selfUse = parseNumber(row.self_use ?? row.selfUse ?? row.self);
-    const mdbIn = parseNumber(row.mdb_in ?? row.mdbIn ?? row.mdb_in_kwh);
-    const mdbOut = parseNumber(row.mdb_out ?? row.mdbOut ?? row.mdb_out_kwh);
+    const usage = normalizeDailyUsageValue(row);
     map.set(date, {
       date,
-      energy_in: solarIn,
-      energy_out: selfUse,
-      solar_in: solarIn,
-      self_use: selfUse,
-      mdb_in: mdbIn,
-      mdb_out: mdbOut
+      ...usage
     });
   });
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -1740,9 +1797,11 @@ const readMeterDailyValueFromRow = (row, meter) => {
   return normalizeDailyUsageValue(row);
 };
 const resolveDailyRowFromPayload = (payload, dateStr) => {
+  const targetDate = normalizeDateValue(dateStr);
+  const targetMonthToken = targetDate ? targetDate.slice(0, 7) : "";
   const rawRows = extractDailyRows(payload);
-  const directRows = normalizeDailyRows(rawRows);
-  return directRows.find((row) => row.date === dateStr) || null;
+  const directRows = normalizeDailyRows(rawRows, { monthToken: targetMonthToken });
+  return directRows.find((row) => row.date === targetDate) || null;
 };
 const readPayloadPeriodToken = (payload) => {
   if (!payload || typeof payload !== "object") return "";
@@ -1799,24 +1858,53 @@ const resolveDailyUsageFromPayload = (payload, dateStr, meter) => {
   }
   return null;
 };
-const fetchDeviceEnergyDayForMeter = async (meter, dateStr) => {
+const fetchDeviceEnergyDayForMeter = async (meter, dateStr, monthPayloadCache = null) => {
   const meterId = Number(meter?.id);
   const dateParts = splitDateParts(dateStr);
   if (!Number.isFinite(meterId) || meterId <= 0 || !dateParts) return null;
+  const monthToken = `${dateParts.year}-${pad(dateParts.month)}`;
 
-  const params = new URLSearchParams();
-  params.set("device_id", String(meterId));
-  params.set("year", String(dateParts.year));
-  params.set("month", String(dateParts.month));
-  params.set("day", String(dateParts.day));
   const siteId = Number(meter?.siteId ?? plant?.apiId);
-  if (Number.isFinite(siteId) && siteId > 0) {
-    params.set("site_id", String(siteId));
+  const buildBaseParams = () => {
+    const params = new URLSearchParams();
+    params.set("device_id", String(meterId));
+    if (Number.isFinite(siteId) && siteId > 0) {
+      params.set("site_id", String(siteId));
+    }
+    return params;
+  };
+
+  let values = null;
+  try {
+    const monthParams = buildBaseParams();
+    monthParams.set("period", "month");
+    monthParams.set("month", monthToken);
+    const monthCacheKey = `${meterId}:${Number.isFinite(siteId) ? siteId : "all"}:${monthToken}`;
+    let payloadPromise = null;
+    if (monthPayloadCache && monthPayloadCache.has(monthCacheKey)) {
+      payloadPromise = monthPayloadCache.get(monthCacheKey);
+    } else {
+      payloadPromise = (async () => {
+        const response = await requestDeviceEnergyApi(`?${monthParams.toString()}`);
+        return response.json().catch(() => null);
+      })();
+      if (monthPayloadCache) monthPayloadCache.set(monthCacheKey, payloadPromise);
+    }
+    const payload = await payloadPromise;
+    values = resolveDailyUsageFromPayload(payload, dateParts.date, meter);
+  } catch {
+    // fallback to legacy per-day request below
   }
 
-  const response = await requestDeviceEnergyApi(`?${params.toString()}`);
-  const payload = await response.json().catch(() => null);
-  const values = resolveDailyUsageFromPayload(payload, dateParts.date, meter);
+  if (!values) {
+    const dayParams = buildBaseParams();
+    dayParams.set("year", String(dateParts.year));
+    dayParams.set("month", String(dateParts.month));
+    dayParams.set("day", String(dateParts.day));
+    const response = await requestDeviceEnergyApi(`?${dayParams.toString()}`);
+    const payload = await response.json().catch(() => null);
+    values = resolveDailyUsageFromPayload(payload, dateParts.date, meter);
+  }
   if (!values) return null;
   return {
     meter,
@@ -1832,12 +1920,13 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
   if (!apiMeters.length) return [];
 
   const rows = [];
+  const monthPayloadCache = new Map();
   let hasAnyReading = false;
   const dates = listDatesInclusive(start, end);
   for (const dateStr of dates) {
     const dayItems = await Promise.all(
       apiMeters.map((meter) =>
-        fetchDeviceEnergyDayForMeter(meter, dateStr).catch(() => null)
+        fetchDeviceEnergyDayForMeter(meter, dateStr, monthPayloadCache).catch(() => null)
       )
     );
     const resolvedItems = dayItems.filter(

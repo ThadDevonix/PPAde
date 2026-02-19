@@ -7,7 +7,7 @@ import { createSession, deleteSession, getSession } from "./auth/sessionStore.js
 import { getUserByEmail, sanitizeUser } from "./auth/userStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.join(__dirname, "..", "home");
+const publicDir = path.join(__dirname, "..", "devonix-ppade");
 
 const upstreamEnergyApi = "https://solarmdb.devonix.co.th/api/energy";
 const upstreamDeviceEnergyApi = "https://solarmdb.devonix.co.th/api/device-energy";

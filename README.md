@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
-`npm start` spins up a tiny static server on http://localhost:3000 and serves `home/index.html`.
+`npm start` spins up a tiny static server on http://localhost:3000 and serves `devonix-ppade/index.html`.
 Open that URL to interact with the plan-selection UI for setting up meter projects.
 
 ## Deploy on Vercel
@@ -18,7 +18,7 @@ This repo is configured for Vercel using:
 
 - `api/index.js` as the serverless entrypoint
 - `vercel.json` rewrite so every route is handled by the same Node handler
-- `home/**` bundled into the function so static pages/assets still work
+- `devonix-ppade/**` bundled into the function so static pages/assets still work
 
 Deploy:
 
@@ -65,7 +65,7 @@ npm run add-user -- --email user@example.com --password YourPassword --name "Dis
 
 ## Plan picker page
 
-Open `home/index.html` in a browser to view the plan-selection UI for starting meter projects.
+Open `devonix-ppade/index.html` in a browser to view the plan-selection UI for starting meter projects.
 
 ## Linting
 
