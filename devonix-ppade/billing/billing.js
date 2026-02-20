@@ -3623,8 +3623,10 @@ const runAutoIfDue = async () => {
       today.getMonth(),
       cutoffDay
     );
-    if (today.getDate() !== effectiveDay) continue;
-    const { start, end } = getAutoPeriodForRunDate(today, cutoffDay);
+    // Allow catch-up on/after cutoff day (not only exactly on that day).
+    if (today.getDate() < effectiveDay) continue;
+    const runDate = new Date(today.getFullYear(), today.getMonth(), effectiveDay);
+    const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
     const startStr = formatDate(start);
     const endStr = formatDate(end);
     const alreadyGenerated = history.some(
@@ -3756,7 +3758,9 @@ const handleConfirm = async () => {
     alert(
       `${hadSchedule ? "อัปเดตรอบอัตโนมัติแล้ว" : "เพิ่มรอบอัตโนมัติแล้ว"}\nตัดรอบวันที่ ${
         savedAutoSchedule.cutoffDay
-      }\nระบบจะรันวันที่ ${formatDate(runDate)}\nช่วงบิล ${startStr} - ${endStr}\nรอบที่ตั้งไว้ทั้งหมด: ${allDays}`
+      }\nระบบจะรันทุกเดือนวันที่ ${savedAutoSchedule.cutoffDay}\nรอบถัดไป: ${formatDate(
+        runDate
+      )}\nช่วงบิลรอบถัดไป: ${startStr} - ${endStr}\nวันที่ตัดรอบที่ตั้งไว้: ${allDays}`
     );
     return;
   }
