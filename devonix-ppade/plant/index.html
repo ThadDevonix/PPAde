@@ -113,7 +113,7 @@
       </div>
       <div class="panel-sub hidden" id="receipt-history">
         <div class="summary-header">
-          <h4 id="receipt-title">ประวัติใบเสร็จ</h4>
+          <h4 id="receipt-title">ประวัติรายงานบิล</h4>
           <button class="ghost small-btn" id="receipt-close" type="button">ปิด</button>
         </div>
         <div class="history-wrap">
@@ -122,13 +122,13 @@
               <tr>
                 <th style="width: 160px;">เดือน</th>
                 <th style="width: 110px;">จำนวนวัน</th>
-                <th style="width: 180px;">วันที่ออกใบเสร็จ</th>
+                <th style="width: 180px;">วันที่ออกรายงาน</th>
                 <th style="width: 160px;">ดาวน์โหลด</th>
                 <th style="width: 170px;">ตัวอย่าง</th>
               </tr>
             </thead>
             <tbody id="receipt-rows">
-              <tr><td class="empty" colspan="5">ยังไม่มีประวัติใบเสร็จ</td></tr>
+              <tr><td class="empty" colspan="5">ยังไม่มีประวัติรายงานบิล</td></tr>
             </tbody>
           </table>
         </div>
@@ -174,7 +174,7 @@
       <div class="modal-content receipt-preview">
         <div class="modal-header">
           <div>
-            <h3>ตัวอย่างใบเสร็จ</h3>
+            <h3>ตัวอย่างรายงานบิล</h3>
             <p class="muted small" id="receipt-preview-month"></p>
           </div>
           <div class="header-actions">
@@ -273,6 +273,20 @@
                 <label for="formula-result-value">ผลคำนวน</label>
                 <input type="text" id="formula-result-value" readonly value="-">
               </div>
+            </div>
+            <div class="formula-column-builder hidden" id="formula-column-builder">
+              <div class="formula-column-builder-head">
+                <button class="chip-btn" id="formula-add-column-btn" type="button">
+                  เพิ่มคอลัมน์
+                </button>
+                <button class="chip-btn" id="formula-add-calc-column-btn" type="button">
+                  เพิ่มคอลัมคำนวณ
+                </button>
+                <button class="chip-btn ghost" id="formula-remove-column-btn" type="button">
+                  ลบคอลัมน์
+                </button>
+              </div>
+              <div class="formula-columns-boxes" id="formula-columns-boxes"></div>
             </div>
           </div>
           <div class="field" id="bill-cutoff-field">

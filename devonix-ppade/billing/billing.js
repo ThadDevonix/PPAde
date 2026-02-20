@@ -51,6 +51,13 @@ const billType = document.getElementById("bill-type");
 const calcModeSingleBtn = document.getElementById("calc-mode-single");
 const calcModeFormulaBtn = document.getElementById("calc-mode-formula");
 const formulaInlineGrid = document.getElementById("formula-inline-grid");
+const formulaColumnBuilder = document.getElementById("formula-column-builder");
+const formulaAddColumnBtn = document.getElementById("formula-add-column-btn");
+const formulaAddCalcColumnBtn = document.getElementById("formula-add-calc-column-btn");
+const formulaRemoveColumnBtn = document.getElementById("formula-remove-column-btn");
+const formulaColumnsBoxes = document.getElementById("formula-columns-boxes");
+const formulaMeterLeftCell = document.getElementById("formula-meter-left-cell");
+const formulaValueLeftCell = document.getElementById("formula-value-left-cell");
 const formulaMeterLeft = document.getElementById("formula-meter-left");
 const formulaValueLeft = document.getElementById("formula-value-left");
 const formulaMeterLeftLabel = document.getElementById("formula-meter-left-label");
@@ -118,11 +125,44 @@ const formulaFieldAliasMap = {
 };
 const defaultFormulaField = "energy_out";
 const defaultCalcLabel = "ผลคำนวณ";
+const maxFormulaDraftColumns = 5;
 const detailColumnDefs = [
   { key: "energy_in", label: "energy_in (kWh)" },
   { key: "energy_out", label: "energy_out (kWh)" },
   { key: "bill_units", label: "หน่วยคิดบิล (kWh)" }
 ];
+const normalizeFormulaFieldKey = (field) => {
+  const rawField = String(field || "").trim().toLowerCase();
+  if (formulaFieldLabelMap[rawField]) return rawField;
+  return formulaFieldAliasMap[rawField] || defaultFormulaField;
+};
+const sanitizeFormulaColumnDrafts = (drafts) => {
+  if (!Array.isArray(drafts) || !drafts.length) return [];
+  return drafts
+    .slice(0, maxFormulaDraftColumns)
+    .map((draft) => {
+      const type = draft?.type === "calc" ? "calc" : "basic";
+      const name = String(draft?.name || "").trim();
+      if (type === "calc") {
+        const operator = formulaOperators.includes(draft?.operator) ? draft.operator : "-";
+        return {
+          type,
+          name,
+          leftMeterKey: String(draft?.leftMeterKey || "").trim(),
+          leftField: normalizeFormulaFieldKey(draft?.leftField),
+          operator,
+          rightMeterKey: String(draft?.rightMeterKey || "").trim(),
+          rightField: normalizeFormulaFieldKey(draft?.rightField)
+        };
+      }
+      return {
+        type,
+        name,
+        meterKey: String(draft?.meterKey || "").trim(),
+        field: normalizeFormulaFieldKey(draft?.field)
+      };
+    });
+};
 
 let isModalOpen = false;
 let isReceiptPreviewOpen = false;
@@ -136,6 +176,331 @@ let formulaTerms = [];
 let formulaPreviewRequestId = 0;
 let calcInputMode = "formula";
 let billMode = "manual";
+let formulaColumnDrafts = [];
+
+const updateFormulaColumnButtonState = () => {
+  const atMax = formulaColumnDrafts.length >= maxFormulaDraftColumns;
+  if (formulaAddColumnBtn) formulaAddColumnBtn.disabled = atMax;
+  if (formulaAddCalcColumnBtn) formulaAddCalcColumnBtn.disabled = atMax;
+  if (formulaRemoveColumnBtn) formulaRemoveColumnBtn.disabled = formulaColumnDrafts.length === 0;
+};
+const normalizeDraftType = (draft) => (draft?.type === "calc" ? "calc" : "basic");
+const renderFormulaColumnDraftBoxes = () => {
+  if (!formulaColumnsBoxes) return;
+  const activeMeters = getSelectedMetersForFormula();
+  const meterByKey = new Map(
+    activeMeters.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
+  );
+  const firstMeter = activeMeters[0] || null;
+  const secondMeter = activeMeters[1] || firstMeter;
+  const firstMeterKey = getMeterKey(firstMeter);
+  const secondMeterKey = getMeterKey(secondMeter);
+  formulaColumnsBoxes.innerHTML = "";
+  formulaColumnDrafts.forEach((draft, index) => {
+    const draftType = normalizeDraftType(draft);
+    const item = document.createElement("div");
+    item.className = "formula-column-item";
+    item.dataset.columnIndex = String(index + 1);
+    item.dataset.columnType = draftType;
+    const orderBadge = document.createElement("span");
+    orderBadge.className = "formula-column-order";
+    orderBadge.textContent = String(index + 1);
+    if (draftType === "basic") {
+      const preferredMeterKey = String(draft?.meterKey || draft?.leftMeterKey || "").trim();
+      const meterKey = meterByKey.has(preferredMeterKey) ? preferredMeterKey : firstMeterKey;
+      const selectedMeter = meterByKey.get(meterKey) || null;
+      const fieldKeys = getFormulaFieldKeysForMeter(selectedMeter);
+      const selectedField = fieldKeys.length
+        ? resolvePreferredFormulaField(fieldKeys, [
+          draft?.field || draft?.meterField || draft?.leftField,
+          defaultFormulaField
+        ])
+        : "";
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "formula-column-input formula-column-name-input";
+      nameInput.placeholder = "ชื่อคอลัมน์";
+      nameInput.value = String(draft?.name || "");
+
+      const meterSelect = document.createElement("select");
+      meterSelect.className =
+        "formula-column-input formula-column-meter-select formula-column-meter-basic-select";
+      if (!activeMeters.length) {
+        meterSelect.innerHTML = '<option value="">ไม่มีมิเตอร์</option>';
+        meterSelect.disabled = true;
+      } else {
+        meterSelect.innerHTML = activeMeters
+          .map((meter) => `<option value="${getMeterKey(meter)}">${getMeterLabel(meter)}</option>`)
+          .join("");
+        meterSelect.value = meterKey || firstMeterKey || "";
+        meterSelect.disabled = false;
+      }
+
+      const fieldSelect = document.createElement("select");
+      fieldSelect.className =
+        "formula-column-input formula-column-field-select formula-column-field-basic-select";
+      if (!selectedMeter) {
+        fieldSelect.innerHTML = '<option value="">ค่าของมิเตอร์</option>';
+        fieldSelect.disabled = true;
+      } else {
+        fieldSelect.innerHTML = fieldKeys
+          .map((fieldKey) => {
+            const label = formulaFieldLabelMap[fieldKey] || fieldKey;
+            return `<option value="${fieldKey}">${label}</option>`;
+          })
+          .join("");
+        fieldSelect.value = selectedField;
+        fieldSelect.disabled = false;
+      }
+
+      meterSelect.addEventListener("change", () => {
+        syncFormulaColumnDraftValuesFromDom();
+        if (formulaColumnDrafts[index]) {
+          formulaColumnDrafts[index].field = "";
+        }
+        renderFormulaColumnDraftBoxes();
+      });
+
+      item.append(orderBadge, nameInput, meterSelect, fieldSelect);
+    } else {
+      const preferredLeftMeterKey = String(draft?.leftMeterKey || draft?.meterKey || "").trim();
+      const preferredRightMeterKey = String(draft?.rightMeterKey || draft?.meterKey || "").trim();
+      const leftMeterKey = meterByKey.has(preferredLeftMeterKey) ? preferredLeftMeterKey : firstMeterKey;
+      const rightMeterKey = meterByKey.has(preferredRightMeterKey)
+        ? preferredRightMeterKey
+        : secondMeterKey || firstMeterKey;
+      const leftMeter = meterByKey.get(leftMeterKey) || null;
+      const rightMeter = meterByKey.get(rightMeterKey) || null;
+      const leftFieldKeys = getFormulaFieldKeysForMeter(leftMeter);
+      const rightFieldKeys = getFormulaFieldKeysForMeter(rightMeter);
+      const selectedLeftField = leftFieldKeys.length
+        ? resolvePreferredFormulaField(leftFieldKeys, [
+          draft?.leftField || draft?.meterField || draft?.field,
+          defaultFormulaField
+        ])
+        : "";
+      const selectedRightField = rightFieldKeys.length
+        ? resolvePreferredFormulaField(rightFieldKeys, [
+          draft?.rightField || draft?.meterField || draft?.field,
+          defaultFormulaField
+        ])
+        : "";
+      const selectedOperator = formulaOperators.includes(draft?.operator) ? draft.operator : "-";
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "formula-column-input formula-column-name-input";
+      nameInput.placeholder = "ชื่อคอลัมน์";
+      nameInput.value = String(draft?.name || "");
+
+      const leftMeterSelect = document.createElement("select");
+      leftMeterSelect.className =
+        "formula-column-input formula-column-meter-select formula-column-meter-left-select";
+      if (!activeMeters.length) {
+        leftMeterSelect.innerHTML = '<option value="">ไม่มีมิเตอร์</option>';
+        leftMeterSelect.disabled = true;
+      } else {
+        leftMeterSelect.innerHTML = activeMeters
+          .map((meter) => `<option value="${getMeterKey(meter)}">${getMeterLabel(meter)}</option>`)
+          .join("");
+        leftMeterSelect.value = leftMeterKey || firstMeterKey || "";
+        leftMeterSelect.disabled = false;
+      }
+
+      const leftFieldSelect = document.createElement("select");
+      leftFieldSelect.className =
+        "formula-column-input formula-column-field-select formula-column-field-left-select";
+      if (!leftMeter) {
+        leftFieldSelect.innerHTML = '<option value="">ค่าของมิเตอร์</option>';
+        leftFieldSelect.disabled = true;
+      } else {
+        leftFieldSelect.innerHTML = leftFieldKeys
+          .map((fieldKey) => {
+            const label = formulaFieldLabelMap[fieldKey] || fieldKey;
+            return `<option value="${fieldKey}">${label}</option>`;
+          })
+          .join("");
+        leftFieldSelect.value = selectedLeftField;
+        leftFieldSelect.disabled = false;
+      }
+
+      const operatorSelect = document.createElement("select");
+      operatorSelect.className = "formula-column-input formula-column-operator-select";
+      operatorSelect.innerHTML = formulaOperators
+        .map((operator) => `<option value="${operator}">${operator}</option>`)
+        .join("");
+      operatorSelect.value = selectedOperator;
+
+      const rightMeterSelect = document.createElement("select");
+      rightMeterSelect.className =
+        "formula-column-input formula-column-meter-select formula-column-meter-right-select";
+      if (!activeMeters.length) {
+        rightMeterSelect.innerHTML = '<option value="">ไม่มีมิเตอร์</option>';
+        rightMeterSelect.disabled = true;
+      } else {
+        rightMeterSelect.innerHTML = activeMeters
+          .map((meter) => `<option value="${getMeterKey(meter)}">${getMeterLabel(meter)}</option>`)
+          .join("");
+        rightMeterSelect.value = rightMeterKey || secondMeterKey || firstMeterKey || "";
+        rightMeterSelect.disabled = false;
+      }
+
+      const rightFieldSelect = document.createElement("select");
+      rightFieldSelect.className =
+        "formula-column-input formula-column-field-select formula-column-field-right-select";
+      if (!rightMeter) {
+        rightFieldSelect.innerHTML = '<option value="">ค่าของมิเตอร์</option>';
+        rightFieldSelect.disabled = true;
+      } else {
+        rightFieldSelect.innerHTML = rightFieldKeys
+          .map((fieldKey) => {
+            const label = formulaFieldLabelMap[fieldKey] || fieldKey;
+            return `<option value="${fieldKey}">${label}</option>`;
+          })
+          .join("");
+        rightFieldSelect.value = selectedRightField;
+        rightFieldSelect.disabled = false;
+      }
+
+      leftMeterSelect.addEventListener("change", () => {
+        syncFormulaColumnDraftValuesFromDom();
+        if (formulaColumnDrafts[index]) {
+          formulaColumnDrafts[index].leftField = "";
+        }
+        renderFormulaColumnDraftBoxes();
+      });
+      rightMeterSelect.addEventListener("change", () => {
+        syncFormulaColumnDraftValuesFromDom();
+        if (formulaColumnDrafts[index]) {
+          formulaColumnDrafts[index].rightField = "";
+        }
+        renderFormulaColumnDraftBoxes();
+      });
+
+      item.append(
+        orderBadge,
+        nameInput,
+        leftMeterSelect,
+        leftFieldSelect,
+        operatorSelect,
+        rightMeterSelect,
+        rightFieldSelect
+      );
+    }
+
+    formulaColumnsBoxes.appendChild(item);
+  });
+  updateFormulaColumnButtonState();
+};
+const syncFormulaColumnDraftValuesFromDom = () => {
+  if (!formulaColumnsBoxes) return;
+  formulaColumnDrafts = sanitizeFormulaColumnDrafts(
+    Array.from(formulaColumnsBoxes.querySelectorAll(".formula-column-item")).map(
+    (item) => {
+      const draftType = item.dataset.columnType === "calc" ? "calc" : "basic";
+      if (draftType === "basic") {
+        return {
+          type: "basic",
+          name: String(item.querySelector(".formula-column-name-input")?.value || ""),
+          meterKey: String(item.querySelector(".formula-column-meter-basic-select")?.value || ""),
+          field: String(item.querySelector(".formula-column-field-basic-select")?.value || "")
+        };
+      }
+      return {
+        type: "calc",
+        name: String(item.querySelector(".formula-column-name-input")?.value || ""),
+        leftMeterKey: String(item.querySelector(".formula-column-meter-left-select")?.value || ""),
+        leftField: String(item.querySelector(".formula-column-field-left-select")?.value || ""),
+        operator: String(item.querySelector(".formula-column-operator-select")?.value || "-"),
+        rightMeterKey: String(item.querySelector(".formula-column-meter-right-select")?.value || ""),
+        rightField: String(item.querySelector(".formula-column-field-right-select")?.value || "")
+      };
+    }
+  )
+  );
+  updateFormulaColumnButtonState();
+};
+const getFormulaColumnDraftsFromInputs = () => {
+  syncFormulaColumnDraftValuesFromDom();
+  return sanitizeFormulaColumnDrafts(formulaColumnDrafts);
+};
+const setFormulaColumnDrafts = (drafts) => {
+  formulaColumnDrafts = sanitizeFormulaColumnDrafts(drafts);
+  renderFormulaColumnDraftBoxes();
+};
+const ensureFormulaColumnDraftBox = () => {
+  if (calcInputMode !== "formula") return;
+  if (formulaColumnDrafts.length) return;
+  addFormulaColumnDraftBox();
+};
+const resetFormulaColumnDraftBoxes = () => {
+  setFormulaColumnDrafts([]);
+};
+const addFormulaColumnDraftBox = () => {
+  syncFormulaColumnDraftValuesFromDom();
+  if (formulaColumnDrafts.length >= maxFormulaDraftColumns) {
+    alert(
+      `เพิ่มได้สูงสุด ${maxFormulaDraftColumns} คอลัมน์ (รวมวันที่ทั้งหมดไม่เกิน ${
+        maxFormulaDraftColumns + 1
+      } คอลัมน์)`
+    );
+    updateFormulaColumnButtonState();
+    return;
+  }
+  const activeMeters = getSelectedMetersForFormula();
+  const firstMeter = activeMeters[0] || null;
+  const fieldKeys = getFormulaFieldKeysForMeter(firstMeter);
+  formulaColumnDrafts.push({
+    type: "basic",
+    name: "",
+    meterKey: getMeterKey(firstMeter),
+    field: fieldKeys.length
+      ? resolvePreferredFormulaField(fieldKeys, [defaultFormulaField])
+      : ""
+  });
+  renderFormulaColumnDraftBoxes();
+};
+const addFormulaCalcColumnDraftBox = () => {
+  syncFormulaColumnDraftValuesFromDom();
+  if (formulaColumnDrafts.length >= maxFormulaDraftColumns) {
+    alert(
+      `เพิ่มได้สูงสุด ${maxFormulaDraftColumns} คอลัมน์ (รวมวันที่ทั้งหมดไม่เกิน ${
+        maxFormulaDraftColumns + 1
+      } คอลัมน์)`
+    );
+    updateFormulaColumnButtonState();
+    return;
+  }
+  const activeMeters = getSelectedMetersForFormula();
+  const firstMeter = activeMeters[0] || null;
+  const secondMeter = activeMeters[1] || firstMeter;
+  const leftFieldKeys = getFormulaFieldKeysForMeter(firstMeter);
+  const rightFieldKeys = getFormulaFieldKeysForMeter(secondMeter);
+  formulaColumnDrafts.push({
+    type: "calc",
+    name: "",
+    leftMeterKey: getMeterKey(firstMeter),
+    leftField: leftFieldKeys.length
+      ? resolvePreferredFormulaField(leftFieldKeys, [defaultFormulaField])
+      : "",
+    operator: "-",
+    rightMeterKey: getMeterKey(secondMeter),
+    rightField: rightFieldKeys.length
+      ? resolvePreferredFormulaField(rightFieldKeys, [defaultFormulaField])
+      : ""
+  });
+  renderFormulaColumnDraftBoxes();
+};
+const removeFormulaColumnDraftBox = () => {
+  syncFormulaColumnDraftValuesFromDom();
+  if (!formulaColumnDrafts.length) {
+    updateFormulaColumnButtonState();
+    return;
+  }
+  formulaColumnDrafts.pop();
+  renderFormulaColumnDraftBoxes();
+};
 
 const pad = (value) => String(value).padStart(2, "0");
 const formatDate = (date) =>
@@ -819,6 +1184,10 @@ const setCalcInputMode = (mode, options = {}) => {
   calcModeSingleBtn?.classList.toggle("active", isSingle);
   calcModeFormulaBtn?.classList.toggle("active", !isSingle);
   formulaInlineGrid?.classList.toggle("single-mode", isSingle);
+  formulaInlineGrid?.classList.toggle("hidden", !isSingle);
+  formulaColumnBuilder?.classList.toggle("hidden", isSingle);
+  formulaMeterLeftCell?.classList.toggle("hidden", !isSingle);
+  formulaValueLeftCell?.classList.toggle("hidden", !isSingle);
   formulaOpCell?.classList.toggle("hidden", isSingle);
   formulaMeterRightCell?.classList.toggle("hidden", isSingle);
   formulaValueRightCell?.classList.toggle("hidden", isSingle);
@@ -929,44 +1298,9 @@ const populateFormulaInputs = (formula, calcLabel = defaultCalcLabel) => {
 };
 const updateFormulaResultPreview = async () => {
   if (!formulaResultValue) return;
-  let startDate = billStart?.value;
-  let endDate = billEnd?.value;
-  if (billMode === "auto") {
-    const { startStr, endStr } = getAutoPreviewRange(billCutoff?.value);
-    startDate = startStr;
-    endDate = endStr;
-  }
+  // Disable live preview fetch to avoid burst API calls while editing form fields.
   formulaTerms = buildFormulaFromInputs();
-  if (calcInputMode === "single") {
-    formulaResultValue.value = "-";
-    return;
-  }
-  if (!startDate || !endDate) {
-    formulaResultValue.value = "-";
-    return;
-  }
-  const requestId = ++formulaPreviewRequestId;
-  formulaResultValue.value = "กำลังคำนวณ...";
-  try {
-    const { rows } = await getDailyEnergyForRange(startDate, endDate);
-    if (requestId !== formulaPreviewRequestId) return;
-    if (!rows.length) {
-      formulaResultValue.value = "-";
-      return;
-    }
-    const total = roundTo(
-      rows.reduce(
-        (sum, row) => sum + getBillUnits(row, defaultSchedule.calcMethod, formulaTerms),
-        0
-      ),
-      1
-    );
-    formulaResultValue.value = `${formatNumber(total, 1)} kWh`;
-  } catch {
-    if (requestId === formulaPreviewRequestId) {
-      formulaResultValue.value = "-";
-    }
-  }
+  formulaResultValue.value = "-";
 };
 const getFormulaFromInputs = () => {
   formulaTerms = buildFormulaFromInputs();
@@ -1012,6 +1346,46 @@ const getMetersFromFormula = (formula, meterPool = meterProfiles) => {
   });
   return picked.length ? picked : [meterPool[0]];
 };
+const mergeMetersByKey = (...groups) => {
+  const merged = [];
+  const seen = new Set();
+  groups.forEach((group) => {
+    if (!Array.isArray(group)) return;
+    group.forEach((meter) => {
+      if (!meter || typeof meter !== "object") return;
+      const stableKey = getMeterKey(meter) || `${meter.name || ""}|${meter.sn || ""}`;
+      if (!stableKey || seen.has(stableKey)) return;
+      seen.add(stableKey);
+      merged.push(meter);
+    });
+  });
+  return merged;
+};
+const getMetersFromFormulaColumns = (drafts, meterPool = meterProfiles) => {
+  const safePool = Array.isArray(meterPool) ? meterPool.filter(Boolean) : [];
+  if (!safePool.length) return [];
+  const columns = sanitizeFormulaColumnDrafts(drafts);
+  if (!columns.length) return [];
+  const meterByKey = new Map(
+    safePool.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
+  );
+  const pickMeter = (meterKey) => {
+    const key = String(meterKey || "").trim();
+    if (!key) return null;
+    if (meterByKey.has(key)) return meterByKey.get(key) || null;
+    return safePool.find((meter) => String(meter?.name || "").trim() === key) || null;
+  };
+  const picked = [];
+  columns.forEach((column) => {
+    if (column.type === "calc") {
+      picked.push(pickMeter(column.leftMeterKey));
+      picked.push(pickMeter(column.rightMeterKey));
+      return;
+    }
+    picked.push(pickMeter(column.meterKey));
+  });
+  return mergeMetersByKey(picked);
+};
 
 const updateColumnSelectedCount = () => {
   if (!columnsSelectedCount || !billColumnsList) return;
@@ -1033,6 +1407,7 @@ const applyColumnHandlers = () => {
 const closeModal = () => {
   billModal?.classList.add("hidden");
   isModalOpen = false;
+  resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
 };
 const hideReceiptHistory = () => {
@@ -1047,9 +1422,12 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
       meterPool,
       false
     );
+  const formulaColumnDrafts = sanitizeFormulaColumnDrafts(
+    bill?.formulaColumns || bill?.columnDrafts || bill?.calcColumns
+  );
   const leftTerm = formulaTerms[0] || null;
   const rightTerm = formulaTerms[1] || null;
-  const showFormulaColumns = Boolean(leftTerm && rightTerm);
+  const legacyFormulaColumns = Boolean(leftTerm && rightTerm);
   const resolveMeterLabel = (term) => {
     if (!term) return "Meter";
     const termKey = String(term.meterKey || "").trim();
@@ -1074,16 +1452,80 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
     const meterLabel = resolveMeterLabel(term).replace(/\s*\(SN:[^)]+\)\s*$/, "");
     return `${fieldLabel} (${meterLabel})`;
   };
-  const formulaLabel = formulaTerms.length
-    ? formatFormulaLabel(formulaTerms, meterPool)
-    : "-";
+  const buildTerm = (meterKey, field) => {
+    const key = String(meterKey || "").trim();
+    const meter = meterPool.find((item) => getMeterKey(item) === key) || null;
+    return {
+      meterKey: key,
+      meterName: meter?.name || "",
+      field: normalizeFormulaFieldKey(field)
+    };
+  };
+  const calculateDraftColumnValue = (row, column) => {
+    if (column.type === "basic") {
+      return roundTo(getFormulaTermValue(row, column.term), 1);
+    }
+    const leftValue = getFormulaTermValue(row, column.leftTerm);
+    const rightValue = getFormulaTermValue(row, column.rightTerm);
+    if (column.operator === "+") return roundTo(leftValue + rightValue, 1);
+    if (column.operator === "-") return roundTo(leftValue - rightValue, 1);
+    if (column.operator === "*") return roundTo(leftValue * rightValue, 1);
+    if (column.operator === "/") {
+      if (Math.abs(rightValue) < 1e-9) return 0;
+      return roundTo(leftValue / rightValue, 1);
+    }
+    return roundTo(leftValue, 1);
+  };
+  const formulaColumnDefs = formulaColumnDrafts.map((draft, index) => {
+    if (draft.type === "calc") {
+      const leftTerm = buildTerm(draft.leftMeterKey, draft.leftField);
+      const rightTerm = buildTerm(draft.rightMeterKey, draft.rightField);
+      const leftLabel = getTermHeaderLabel(leftTerm, "ค่าที่ใช้คำนวณ");
+      const rightLabel = getTermHeaderLabel(rightTerm, "ค่าที่ใช้คำนวณ");
+      const expression = `${leftLabel} ${draft.operator} ${rightLabel}`;
+      const header = draft.name || `คำนวณ ${index + 1}`;
+      return {
+        type: "calc",
+        header,
+        title: expression,
+        operator: draft.operator,
+        leftTerm,
+        rightTerm
+      };
+    }
+    const term = buildTerm(draft.meterKey, draft.field);
+    const fallbackTitle = getTermHeaderLabel(term, "ค่าที่ใช้คำนวณ");
+    const header = draft.name || fallbackTitle;
+    return {
+      type: "basic",
+      header,
+      title: fallbackTitle,
+      term
+    };
+  });
+  const useDraftColumns = formulaColumnDefs.length > 0;
+  const showFormulaColumns = !useDraftColumns && legacyFormulaColumns;
+  const showUsageColumn = !useDraftColumns;
+  const formulaLabel = useDraftColumns
+    ? formulaColumnDefs
+      .map((column) => {
+        if (column.type === "calc") return `${column.header}: ${column.title}`;
+        return `${column.header}: ${column.title}`;
+      })
+      .join(" | ")
+    : formulaTerms.length
+      ? formatFormulaLabel(formulaTerms, meterPool)
+      : "-";
   const dailyRows = [...(bill.daily || [])]
     .filter((row) => row?.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
     .map((row) => {
       const leftValue = leftTerm ? getFormulaTermValue(row, leftTerm) : null;
       const rightValue = rightTerm ? getFormulaTermValue(row, rightTerm) : null;
-      const units = showFormulaColumns
+      const draftValues = useDraftColumns
+        ? formulaColumnDefs.map((column) => calculateDraftColumnValue(row, column))
+        : [];
+      const units = useDraftColumns || showFormulaColumns
         ? parseNumber(row.bill_units)
         : leftTerm
           ? parseNumber(leftValue)
@@ -1092,9 +1534,24 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         date: row.date,
         units,
         leftValue: showFormulaColumns ? leftValue : null,
-        rightValue: showFormulaColumns ? rightValue : null
+        rightValue: showFormulaColumns ? rightValue : null,
+        draftValues
       };
     });
+  const draftColumnTotals = useDraftColumns
+    ? formulaColumnDefs.map((_, index) =>
+      roundTo(
+        dailyRows.reduce((sum, row) => sum + parseNumber(row.draftValues[index]), 0),
+        1
+      )
+    )
+    : [];
+  const leftColumnTotal = showFormulaColumns
+    ? roundTo(dailyRows.reduce((sum, row) => sum + parseNumber(row.leftValue), 0), 1)
+    : 0;
+  const rightColumnTotal = showFormulaColumns
+    ? roundTo(dailyRows.reduce((sum, row) => sum + parseNumber(row.rightValue), 0), 1)
+    : 0;
   const totalKwh = roundTo(
     dailyRows.reduce((sum, row) => sum + row.units, 0),
     1
@@ -1110,59 +1567,142 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         bill.periodEnd
       )}`
       : formatThaiMonthYear(issueDate);
-  const summaryHtml = `
-    <div class="receipt-summary simple">
-      <div class="box">
-        <div class="row"><span>kWh รวม</span><span>${formatNumber(totalKwh, 1)} kWh</span></div>
-        <div class="row"><span>${formatNumber(totalKwh, 1)} × ${formatNumber(
-    rate,
-    2
-  )}</span><span>${formatNumber(calculatedAmount, 2)} บาท</span></div>
-        <div class="row total"><span>ยอดรวมบิลงวดนี้</span><span>${formatNumber(totalAmount, 2)} บาท</span></div>
-      </div>
-    </div>
+  const billCode = `ST-${String(bill.billNo).padStart(6, "0")}`;
+  const buildMetaLineHtml = (label, value) =>
+    `<div class="meta-line"><span class="meta-label">${escapeHtml(label)}</span><span class="meta-value">${escapeHtml(
+      value
+    )}</span></div>`;
+  const companyMetaHtml = [
+    buildMetaLineHtml("บริษัท", plantName),
+    buildMetaLineHtml("เลขที่บิล", billCode)
+  ].join("");
+  const periodMetaHtml = [
+    buildMetaLineHtml("ช่วงบิล", periodLabel),
+    buildMetaLineHtml("วันที่ออกรายงาน", issueLabel),
+    buildMetaLineHtml("อัตรา", `${formatNumber(rate, 2)} บาท/kWh`),
+    buildMetaLineHtml("สูตรคำนวณ", formulaLabel)
+  ].join("");
+  const dataRowsPerPage = Math.max(1, rowsPerPage - 1);
+  const pageCount = Math.max(1, Math.ceil(dailyRows.length / dataRowsPerPage));
+  const buildTotalRowHtml = () => `
+    <tr class="total-row">
+      <td class="date-cell">รวม</td>
+      ${useDraftColumns
+    ? draftColumnTotals
+      .map((value) => `<td class="num-cell">${formatNumber(value, 1)}</td>`)
+      .join("")
+    : showFormulaColumns
+      ? `<td class="num-cell">${formatNumber(leftColumnTotal, 1)}</td>
+           <td class="op-cell">=</td>
+           <td class="num-cell">${formatNumber(rightColumnTotal, 1)}</td>`
+      : ""}
+      ${showUsageColumn ? `<td class="num-cell">${formatNumber(totalKwh, 1)}</td>` : ""}
+    </tr>
   `;
-  const pageCount = Math.max(1, Math.ceil(dailyRows.length / rowsPerPage));
-  const buildRowsHtml = (rows) =>
-    rows
+  const buildRowsHtml = (rows, { includeTotalRow = false } = {}) => {
+    const rowsHtml = rows
       .map((row) => `
         <tr>
           <td class="date-cell">${formatThaiDateShort(row.date)}</td>
-          ${showFormulaColumns
-      ? `<td class="num-cell">${formatNumber(row.leftValue, 1)}</td>
+          ${useDraftColumns
+      ? row.draftValues
+        .map((value) => `<td class="num-cell">${formatNumber(value, 1)}</td>`)
+        .join("")
+      : showFormulaColumns
+        ? `<td class="num-cell">${formatNumber(row.leftValue, 1)}</td>
              <td class="op-cell">${escapeHtml(formulaOperator)}</td>
              <td class="num-cell">${formatNumber(row.rightValue, 1)}</td>`
-      : ""}
-          <td class="num-cell">${formatNumber(row.units, 1)}</td>
+        : ""}
+          ${showUsageColumn ? `<td class="num-cell">${formatNumber(row.units, 1)}</td>` : ""}
         </tr>
       `)
       .join("");
+    return includeTotalRow ? `${rowsHtml}${buildTotalRowHtml()}` : rowsHtml;
+  };
   const termOneDetail = getTermDetail(leftTerm, "ค่าที่ใช้คำนวณ 1");
   const termTwoDetail = getTermDetail(rightTerm, "ค่าที่ใช้คำนวณ 2");
   const termOneHeader = getTermHeaderLabel(leftTerm, "ค่าที่ใช้คำนวณ 1");
   const termTwoHeader = getTermHeaderLabel(rightTerm, "ค่าที่ใช้คำนวณ 2");
   const usageHeaderText = "พลังงานที่ใช้ (kWh)";
-  const usageHeaderTitle = showFormulaColumns
-    ? "พลังงานที่ใช้หลังคำนวณ"
-    : leftTerm
-      ? termOneHeader
-      : usageHeaderText;
+  const usageHeaderTitle = useDraftColumns
+    ? "พลังงานที่ใช้สำหรับคิดบิล"
+    : showFormulaColumns
+      ? "พลังงานที่ใช้หลังคำนวณ"
+      : leftTerm
+        ? termOneHeader
+        : usageHeaderText;
   const formulaOperator =
     showFormulaColumns && formulaOperators.includes(rightTerm?.operator)
       ? rightTerm.operator
       : "-";
-  const colgroupHtml = showFormulaColumns
+  const summaryColumns = useDraftColumns
+    ? formulaColumnDefs.map((column, index) => ({
+      label: column.header || `คอลัมน์ ${index + 1}`,
+      total: draftColumnTotals[index]
+    }))
+    : showFormulaColumns
+      ? [
+        { label: termOneHeader, total: leftColumnTotal },
+        { label: termTwoHeader, total: rightColumnTotal },
+        { label: usageHeaderText, total: totalKwh }
+      ]
+      : [{ label: usageHeaderText, total: totalKwh }];
+  const summaryBreakdownHtml = summaryColumns
+    .map((column) => {
+      const total = parseNumber(column.total);
+      const amount = roundTo(total * rate, 2);
+      return `<div class="row breakdown"><span class="summary-expression">${escapeHtml(
+        column.label
+      )} ${formatNumber(
+        total,
+        1
+      )} × ${formatNumber(rate, 2)}</span><span class="summary-amount">${formatNumber(
+        amount,
+        2
+      )} บาท</span></div>`;
+    })
+    .join("");
+  const summaryHtml = `
+    <div class="receipt-summary simple">
+      <div class="box">
+        ${summaryBreakdownHtml}
+        <div class="row total"><span class="summary-expression">ยอดรวมบิลงวดนี้</span><span class="summary-amount">${formatNumber(
+          totalAmount,
+          2
+        )} บาท</span></div>
+      </div>
+    </div>
+  `;
+  const draftValueColumnWidth = formulaColumnDefs.length
+    ? (78 / formulaColumnDefs.length).toFixed(2)
+    : "78.00";
+  const colgroupHtml = useDraftColumns
     ? `<colgroup>
+            <col style="width:22%">
+            ${formulaColumnDefs
+      .map(() => `<col style="width:${draftValueColumnWidth}%">`)
+      .join("")}
+          </colgroup>`
+    : showFormulaColumns
+      ? `<colgroup>
             <col style="width:30%">
             <col style="width:21%">
             <col style="width:7%">
             <col style="width:21%">
             <col style="width:21%">
           </colgroup>`
-    : `<colgroup>
+      : `<colgroup>
             <col style="width:72%">
             <col style="width:28%">
           </colgroup>`;
+  const draftHeadHtml = useDraftColumns
+    ? formulaColumnDefs
+      .map(
+        (column) =>
+          `<th class="num-cell" title="${escapeHtml(column.title)}">${escapeHtml(column.header)}</th>`
+      )
+      .join("")
+    : "";
   const formulaHeadHtml = showFormulaColumns
     ? `<th class="num-cell" title="${escapeHtml(termOneDetail)}">${escapeHtml(
       termOneHeader
@@ -1176,21 +1716,17 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
       <div class="receipt-logo"><span>P</span><span>ONIX</span></div>
       <div class="receipt-title">
-        <h2>ใบเสร็จรับเงิน</h2>
-        <p>Receipt</p>
+        <h2>รายงานบิลพลังงาน</h2>
+        <p>Billing Report</p>
       </div>
       <div class="receipt-meta">
         <div class="box">
           <strong>ข้อมูลบริษัท</strong>
-          <div>บริษัท: ${plantName}</div>
-          <div>หมายเลขใบเสร็จ: ST-${String(bill.billNo).padStart(6, "0")}</div>
+          ${companyMetaHtml}
         </div>
         <div class="box">
           <strong>รายละเอียดงวด</strong>
-          <div>ช่วงบิล: ${periodLabel}</div>
-          <div>วันที่ออกใบเสร็จ: ${issueLabel}</div>
-          <div>อัตรา: ${formatNumber(rate, 2)} บาท/kWh</div>
-          <div>สูตรคำนวณ: ${escapeHtml(formulaLabel)}</div>
+          ${periodMetaHtml}
         </div>
       </div>
       <div class="receipt-divider"></div>
@@ -1200,14 +1736,14 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
           <thead>
             <tr>
               <th class="date-cell">วันที่</th>
-              ${formulaHeadHtml}
-              <th class="num-cell" title="${escapeHtml(usageHeaderTitle)}">${escapeHtml(
+              ${useDraftColumns ? draftHeadHtml : formulaHeadHtml}
+              ${showUsageColumn ? `<th class="num-cell" title="${escapeHtml(usageHeaderTitle)}">${escapeHtml(
       usageHeaderText
-    )}</th>
+    )}</th>` : ""}
             </tr>
           </thead>
           <tbody>
-            ${buildRowsHtml(rows)}
+            ${buildRowsHtml(rows, { includeTotalRow: pageIndex === pageCount - 1 })}
           </tbody>
         </table>
       </div>
@@ -1215,8 +1751,8 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
     </div>
   `;
   return Array.from({ length: pageCount }, (_, pageIndex) => {
-    const start = pageIndex * rowsPerPage;
-    const pageRows = dailyRows.slice(start, start + rowsPerPage);
+    const start = pageIndex * dataRowsPerPage;
+    const pageRows = dailyRows.slice(start, start + dataRowsPerPage);
     return buildPage(pageRows, pageIndex);
   }).join('<div class="page-break"></div>');
 };
@@ -1236,7 +1772,7 @@ const openReceiptPreview = ({ bill, issueDate }) => {
     issueDate,
     rowsPerPage: currentReceiptRowsPerPage
   });
-  currentReceiptTitle = `Receipt Bill ${bill.billNo} ${formatMonth(issueDate)}`;
+  currentReceiptTitle = `Billing Report ${bill.billNo} ${formatMonth(issueDate)}`;
   receiptPreviewContent.classList.add("web-view");
   receiptPreviewContent.innerHTML = currentReceiptHtml;
   receiptPreviewModal.classList.remove("hidden");
@@ -1276,6 +1812,7 @@ const openReceiptPrint = () => {
   if (!currentReceiptHtml) return;
   const win = window.open("", "_blank");
   if (!win) return;
+  const printDocumentTitle = "";
   const printableStyles = [
     ...Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
       .map((link) => {
@@ -1291,7 +1828,7 @@ const openReceiptPrint = () => {
   win.document.write(`
     <html>
       <head>
-        <title>${currentReceiptTitle}</title>
+        <title>${printDocumentTitle}</title>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         ${printableStyles}
@@ -1300,6 +1837,11 @@ const openReceiptPrint = () => {
     </html>
   `);
   win.document.close();
+  try {
+    win.history.replaceState({}, "", "/");
+  } catch {
+    // ignore history state failures in popup contexts
+  }
 
   const waitForPrintAssets = () => {
     const stylesheetPromises = Array.from(
@@ -1372,6 +1914,7 @@ const buildDefaultScheduleFields = () => ({
   calcMethod: "energy_out",
   calcFormula: [],
   calcLabel: defaultCalcLabel,
+  formulaColumns: [],
   detailColumns: detailColumnDefs.map((col) => col.key)
 });
 const defaultSchedule = {
@@ -1405,6 +1948,7 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
       typeof fallback?.calcLabel === "string" && fallback.calcLabel.trim()
         ? fallback.calcLabel.trim()
         : defaultCalcLabel,
+    formulaColumns: sanitizeFormulaColumnDrafts(fallback?.formulaColumns),
     detailColumns: normalizeDetailColumns(fallback?.detailColumns)
   };
   const cutoffDay = Math.max(
@@ -1425,6 +1969,7 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
       typeof raw?.calcLabel === "string" && raw.calcLabel.trim()
         ? raw.calcLabel.trim()
         : fallbackFields.calcLabel,
+    formulaColumns: sanitizeFormulaColumnDrafts(raw?.formulaColumns || fallbackFields.formulaColumns),
     detailColumns: normalizeDetailColumns(raw?.detailColumns),
     updatedAt
   };
@@ -2041,6 +2586,7 @@ const loadSchedule = () => {
   schedule.calcMethod = normalizedTop.calcMethod;
   schedule.calcFormula = normalizedTop.calcFormula;
   schedule.calcLabel = normalizedTop.calcLabel;
+  schedule.formulaColumns = normalizedTop.formulaColumns;
   schedule.detailColumns = normalizedTop.detailColumns;
 
   const rawAutoSchedules = Array.isArray(schedule.autoSchedules)
@@ -2056,6 +2602,7 @@ const loadSchedule = () => {
         calcMethod: schedule.calcMethod,
         calcFormula: schedule.calcFormula,
         calcLabel: schedule.calcLabel,
+        formulaColumns: schedule.formulaColumns,
         detailColumns: schedule.detailColumns
       }
     ];
@@ -2334,6 +2881,7 @@ const getAutoModalDraft = (cutoffDay) =>
       calcMethod: inferCalcMethodFromFormula(formulaTerms),
       calcFormula: getFormulaFromInputs(),
       calcLabel: getFormulaResultName(),
+      formulaColumns: getFormulaColumnDraftsFromInputs(),
       detailColumns: getSelectedDetailColumns()
     },
     schedule
@@ -2356,6 +2904,8 @@ const applyAutoScheduleToModal = (cutoffDay) => {
     skipPreview: true
   });
   populateFormulaInputs(formulaTerms, active.calcLabel || defaultCalcLabel);
+  setFormulaColumnDrafts(active.formulaColumns || []);
+  ensureFormulaColumnDraftBox();
   updateAutoPreviewText();
   if (isModalOpen) updateFormulaResultPreview();
   return active;
@@ -2544,6 +3094,7 @@ const createBill = ({
   calcMethod,
   calcFormula,
   calcLabel,
+  formulaColumns,
   cutoffDay,
   detailColumns,
   dailyRows,
@@ -2556,6 +3107,7 @@ const createBill = ({
       ? detailColumns
       : defaultSchedule.detailColumns;
   const normalizedFormula = normalizeCalcFormula(calcFormula, meters);
+  const normalizedFormulaColumns = sanitizeFormulaColumnDrafts(formulaColumns);
   const daily = dailyRows.map((row) => ({
     ...row,
     bill_units: getBillUnits(row, calcMethod, normalizedFormula)
@@ -2580,6 +3132,7 @@ const createBill = ({
     calcMethod,
     calcFormula: normalizedFormula,
     calcLabel: (calcLabel || defaultCalcLabel).trim(),
+    formulaColumns: normalizedFormulaColumns,
     cutoffDay: cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns: normalizedColumns,
     source,
@@ -2617,7 +3170,7 @@ const renderHistory = () => {
         ? formatDate(manualIssueDate)
         : bill.periodEnd || bill.periodStart || "";
       const actionButtons = bill.auto
-        ? `<button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติใบเสร็จ</button>
+        ? `<button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติรายงาน</button>
            <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`
         : `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดาวน์โหลด</button>
            <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดูตัวอย่าง</button>
@@ -2708,12 +3261,12 @@ const showReceiptHistory = (id) => {
   );
   if (receiptTitle) {
     receiptTitle.textContent = isAutoBill
-      ? `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`
-      : `ประวัติใบเสร็จ • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดวัน)`;
+      ? `ประวัติรายงานบิล • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`
+      : `ประวัติรายงานบิล • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดวัน)`;
   }
   if (!dates.length) {
     receiptRows.innerHTML =
-      '<tr><td class="empty" colspan="5">ยังไม่มีประวัติใบเสร็จ</td></tr>';
+      '<tr><td class="empty" colspan="5">ยังไม่มีประวัติรายงานบิล</td></tr>';
   } else {
     receiptRows.innerHTML = dates
       .map((date, idx) => {
@@ -2749,7 +3302,7 @@ const showReceiptHistory = (id) => {
       .forEach((btn) => {
         btn.addEventListener("click", () => {
           const date = btn.getAttribute("data-date");
-          alert(`ดาวน์โหลดใบเสร็จ เดือน ${date || ""}`);
+          alert(`ดาวน์โหลดรายงานบิล เดือน ${date || ""}`);
         });
       });
     receiptRows
@@ -2826,15 +3379,21 @@ const runAutoIfDue = async () => {
       meterProfiles
     );
     const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
+    const formulaColumnMeters = getMetersFromFormulaColumns(
+      autoConfig.formulaColumns || [],
+      meterProfiles
+    );
+    const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
     createBill({
       periodStart: startStr,
       periodEnd: endStr,
-      meters: formulaMeters,
+      meters: selectedMeters,
       rate: autoConfig.defaultRate,
       rateType: autoConfig.rateType,
       calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
       calcFormula,
       calcLabel: autoConfig.calcLabel || defaultCalcLabel,
+      formulaColumns: autoConfig.formulaColumns || [],
       cutoffDay,
       detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
       auto: true,
@@ -2848,6 +3407,7 @@ const openModal = (mode = billMode) => {
   if (!billModal) return;
   billModal.classList.remove("hidden");
   isModalOpen = true;
+  resetFormulaColumnDraftBoxes();
   setDefaultRange(schedule.cutoffDay);
   if (billRateInput) billRateInput.value = schedule.defaultRate;
   if (billType && schedule.rateType) billType.value = schedule.rateType;
@@ -2861,6 +3421,8 @@ const openModal = (mode = billMode) => {
     skipPreview: true
   });
   populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
+  setFormulaColumnDrafts(schedule.formulaColumns || []);
+  ensureFormulaColumnDraftBox();
   setBillMode(mode);
 };
 
@@ -2880,8 +3442,14 @@ const handleConfirm = async () => {
     return;
   }
   const calcLabel = getFormulaResultName();
+  const formulaColumns = getFormulaColumnDraftsFromInputs();
   const calcMethod = inferCalcMethodFromFormula(calcFormula);
-  const selectedMeters = getMetersFromFormula(calcFormula, selectedMeterPool);
+  const formulaMeters = getMetersFromFormula(calcFormula, selectedMeterPool);
+  const formulaColumnMeters = getMetersFromFormulaColumns(
+    formulaColumns,
+    selectedMeterPool
+  );
+  const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
   const selectedDetailColumns = getSelectedDetailColumns();
   const detailColumns = selectedDetailColumns.length
     ? selectedDetailColumns
@@ -2900,6 +3468,7 @@ const handleConfirm = async () => {
       calcMethod,
       calcFormula,
       calcLabel,
+      formulaColumns,
       detailColumns
     };
     const savedAutoSchedule = upsertAutoSchedule({
@@ -2909,6 +3478,7 @@ const handleConfirm = async () => {
       calcMethod,
       calcFormula,
       calcLabel,
+      formulaColumns,
       detailColumns,
       updatedAt: Date.now()
     });
@@ -2958,6 +3528,7 @@ const handleConfirm = async () => {
     calcMethod,
     calcFormula,
     calcLabel,
+    formulaColumns,
     cutoffDay: schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns,
     auto: false,
@@ -2967,12 +3538,7 @@ const handleConfirm = async () => {
 
   schedule = {
     ...schedule,
-    defaultRate: rateVal,
-    rateType: rateTypeVal,
-    calcMethod,
-    calcFormula,
-    calcLabel,
-    detailColumns
+    ...buildDefaultScheduleFields()
   };
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);
@@ -3035,6 +3601,16 @@ calcModeSingleBtn?.addEventListener("click", () => {
 });
 calcModeFormulaBtn?.addEventListener("click", () => {
   setCalcInputMode("formula");
+  ensureFormulaColumnDraftBox();
+});
+formulaAddColumnBtn?.addEventListener("click", () => {
+  addFormulaColumnDraftBox();
+});
+formulaAddCalcColumnBtn?.addEventListener("click", () => {
+  addFormulaCalcColumnDraftBox();
+});
+formulaRemoveColumnBtn?.addEventListener("click", () => {
+  removeFormulaColumnDraftBox();
 });
 [
   formulaMeterLeft,
