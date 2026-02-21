@@ -50,6 +50,7 @@ const billRateInput = document.getElementById("bill-rate");
 const billType = document.getElementById("bill-type");
 const calcModeSingleBtn = document.getElementById("calc-mode-single");
 const calcModeFormulaBtn = document.getElementById("calc-mode-formula");
+const calcModeResetBtn = document.getElementById("calc-mode-reset");
 const formulaInlineGrid = document.getElementById("formula-inline-grid");
 const formulaColumnBuilder = document.getElementById("formula-column-builder");
 const formulaAddColumnBtn = document.getElementById("formula-add-column-btn");
@@ -1180,8 +1181,51 @@ const syncFormulaValueOptionsForMeterSelects = ({
     formulaValueRight.dataset.lastValue = formulaValueRight.value;
   }
 };
+const resetCalcInputsByMode = (mode) => {
+  const activeMeters = getSelectedMetersForFormula();
+  const isSingle = mode === "single";
+  const meterOptions = activeMeters.length
+    ? `<option value="">เลือกมิเตอร์</option>${activeMeters
+      .map((meter) => `<option value="${getMeterKey(meter)}">${getMeterLabel(meter)}</option>`)
+      .join("")}`
+    : '<option value="">ไม่มีมิเตอร์</option>';
+
+  if (formulaMeterLeft) {
+    formulaMeterLeft.innerHTML = meterOptions;
+    formulaMeterLeft.value = "";
+    formulaMeterLeft.disabled = !activeMeters.length;
+  }
+  if (formulaMeterRight) {
+    formulaMeterRight.innerHTML = meterOptions;
+    formulaMeterRight.value = "";
+    formulaMeterRight.disabled = !activeMeters.length;
+  }
+  if (formulaOperator) {
+    formulaOperator.value = "-";
+  }
+  syncFormulaValueOptionsForMeterSelects({
+    leftPreferredField: "",
+    rightPreferredField: "",
+    preserveExisting: false
+  });
+
+  resetFormulaColumnDraftBoxes();
+  if (!activeMeters.length) {
+    if (formulaResultName) {
+      formulaResultName.value = isSingle ? "" : defaultCalcLabel;
+    }
+    if (formulaResultValue) formulaResultValue.value = "-";
+    formulaTerms = [];
+    return;
+  }
+  if (formulaResultName) {
+    formulaResultName.value = "";
+  }
+  if (formulaResultValue) formulaResultValue.value = "-";
+  formulaTerms = [];
+};
 const setCalcInputMode = (mode, options = {}) => {
-  const { skipPreview = false } = options;
+  const { skipPreview = false, resetInputs = false } = options;
   calcInputMode = mode === "single" ? "single" : "formula";
   const isSingle = calcInputMode === "single";
   calcModeSingleBtn?.classList.toggle("active", isSingle);
@@ -1218,27 +1262,28 @@ const setCalcInputMode = (mode, options = {}) => {
   if (isSingle && formulaResultValue) {
     formulaResultValue.value = "-";
   }
+  if (resetInputs) {
+    resetCalcInputsByMode(calcInputMode);
+  }
   if (!skipPreview && isModalOpen) updateFormulaResultPreview();
 };
 const buildFormulaFromInputs = () => {
   const activeMeters = getSelectedMetersForFormula();
+  if (!activeMeters.length) return [];
   const meterMap = new Map(
     activeMeters.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
   );
   const firstKey = String(formulaMeterLeft?.value || "").trim();
   const secondKey = String(formulaMeterRight?.value || "").trim();
-  const firstMeter = meterMap.get(firstKey) || activeMeters[0] || null;
-  const secondMeter = meterMap.get(secondKey) || activeMeters[1] || firstMeter;
-  const firstField = formulaFieldLabelMap[formulaValueLeft?.value]
-    ? formulaValueLeft.value
-    : defaultFormulaField;
-  const secondField = formulaFieldLabelMap[formulaValueRight?.value]
-    ? formulaValueRight.value
-    : defaultFormulaField;
+  const firstMeter = meterMap.get(firstKey) || null;
+  const secondMeter = meterMap.get(secondKey) || null;
+  const firstField = formulaFieldLabelMap[formulaValueLeft?.value] ? formulaValueLeft.value : "";
+  const secondField = formulaFieldLabelMap[formulaValueRight?.value] ? formulaValueRight.value : "";
   const operator = formulaOperators.includes(formulaOperator?.value)
     ? formulaOperator.value
     : "-";
   if (calcInputMode === "single") {
+    if (!firstMeter || !firstField) return [];
     return normalizeCalcFormula(
       [
         {
@@ -1251,6 +1296,7 @@ const buildFormulaFromInputs = () => {
       activeMeters
     );
   }
+  if (!firstMeter || !firstField || !secondMeter || !secondField) return [];
   return normalizeCalcFormula(
     [
       {
@@ -3671,6 +3717,7 @@ const runAutoIfDue = async () => {
 
 const openModal = (mode = billMode) => {
   if (!billModal) return;
+  const targetMode = mode === "auto" ? "auto" : "manual";
   billModal.classList.remove("hidden");
   isModalOpen = true;
   resetFormulaColumnDraftBoxes();
@@ -3678,18 +3725,25 @@ const openModal = (mode = billMode) => {
   if (billRateInput) billRateInput.value = schedule.defaultRate;
   if (billType && schedule.rateType) billType.value = schedule.rateType;
   renderColumnSelector(schedule.detailColumns);
-  formulaTerms = getFormulaForContext(
-    schedule.calcFormula,
-    schedule.calcMethod,
-    getSelectedMetersForFormula()
-  );
-  setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
-    skipPreview: true
-  });
-  populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
-  setFormulaColumnDrafts(schedule.formulaColumns || []);
-  ensureFormulaColumnDraftBox();
-  setBillMode(mode);
+  if (targetMode === "auto") {
+    formulaTerms = getFormulaForContext(
+      schedule.calcFormula,
+      schedule.calcMethod,
+      getSelectedMetersForFormula()
+    );
+    setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
+      skipPreview: true
+    });
+    populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
+    setFormulaColumnDrafts(schedule.formulaColumns || []);
+    ensureFormulaColumnDraftBox();
+  } else {
+    setCalcInputMode("single", {
+      skipPreview: true,
+      resetInputs: true
+    });
+  }
+  setBillMode(targetMode);
 };
 
 const handleConfirm = async () => {
@@ -3702,13 +3756,13 @@ const handleConfirm = async () => {
     parseFloat(billRateInput.value || `${schedule.defaultRate}`) ||
     schedule.defaultRate;
   const rateTypeVal = billType?.value || schedule.rateType;
+  const formulaColumns = getFormulaColumnDraftsFromInputs();
   const calcFormula = getFormulaFromInputs();
-  if (!calcFormula.length) {
-    alert("กรุณากำหนดสูตรคำนวณอย่างน้อย 1 พจน์");
+  if (!calcFormula.length && !formulaColumns.length) {
+    alert("กรุณากำหนดสูตรคำนวณอย่างน้อย 1 พจน์ หรือเพิ่มคอลัมน์คำนวณ");
     return;
   }
   const calcLabel = getFormulaResultName();
-  const formulaColumns = getFormulaColumnDraftsFromInputs();
   const calcMethod = inferCalcMethodFromFormula(calcFormula);
   const formulaMeters = getMetersFromFormula(calcFormula, selectedMeterPool);
   const formulaColumnMeters = getMetersFromFormulaColumns(
@@ -3878,11 +3932,13 @@ billFlowAutoBtn?.addEventListener("click", () => {
   setBillMode("auto");
 });
 calcModeSingleBtn?.addEventListener("click", () => {
-  setCalcInputMode("single");
+  setCalcInputMode("single", { resetInputs: true });
 });
 calcModeFormulaBtn?.addEventListener("click", () => {
-  setCalcInputMode("formula");
-  ensureFormulaColumnDraftBox();
+  setCalcInputMode("formula", { resetInputs: true });
+});
+calcModeResetBtn?.addEventListener("click", () => {
+  setCalcInputMode(calcInputMode, { resetInputs: true });
 });
 formulaAddColumnBtn?.addEventListener("click", () => {
   addFormulaColumnDraftBox();

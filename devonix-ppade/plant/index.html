@@ -233,9 +233,23 @@
           </div>
           <div class="field">
             <label>รูปแบบคำนวณหน่วย</label>
-            <div class="calc-mode-switch" id="calc-mode-switch" role="tablist" aria-label="รูปแบบคำนวณหน่วย">
-              <button class="calc-mode-btn active" id="calc-mode-single" type="button">ออกบิลค่าเดี่ยว</button>
-              <button class="calc-mode-btn" id="calc-mode-formula" type="button">ออกบิลแบบคำนวณ</button>
+            <div class="calc-mode-actions">
+              <div class="calc-mode-switch" id="calc-mode-switch" role="tablist" aria-label="รูปแบบคำนวณหน่วย">
+                <button class="calc-mode-btn active" id="calc-mode-single" type="button">ออกบิลค่าเดี่ยว</button>
+                <button class="calc-mode-btn" id="calc-mode-formula" type="button">ออกบิลแบบคำนวณ</button>
+              </div>
+              <button
+                class="ghost icon-btn calc-reset-btn"
+                id="calc-mode-reset"
+                type="button"
+                aria-label="รีเซ็ตรูปแบบคำนวณหน่วย"
+                title="รีเซ็ตค่ารูปแบบคำนวณหน่วย"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M20 4v4h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
             </div>
           </div>
           <div class="field">
