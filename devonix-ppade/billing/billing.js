@@ -2975,7 +2975,7 @@ const openAutoRoundHistoryModal = (cutoffDay) => {
     .slice()
     .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
   if (autoRoundModalTitle) {
-    autoRoundModalTitle.textContent = `ประวัติการออกบิลอัตโนมัติ • รอบวันที่ ${day} (${records.length} ใบ)`;
+    autoRoundModalTitle.textContent = `ประวัติการออกบิลอัตโนมัติ. • รอบวันที่ ${day} (${records.length} ใบ)`;
   }
   if (!records.length) {
     autoRoundModalRows.innerHTML =
