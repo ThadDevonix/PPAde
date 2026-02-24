@@ -44,6 +44,7 @@ const billModalClose = document.getElementById("bill-modal-close");
 const billModalTitle = document.getElementById("bill-modal-title");
 const billCancel = document.getElementById("bill-cancel");
 const billConfirm = document.getElementById("bill-confirm");
+const billDeleteCutoff = document.getElementById("bill-delete-cutoff");
 const billStart = document.getElementById("bill-start");
 const billEnd = document.getElementById("bill-end");
 const billRateInput = document.getElementById("bill-rate");
@@ -1559,11 +1560,32 @@ const applyColumnHandlers = () => {
   });
   updateColumnSelectedCount();
 };
+const updateAutoDeleteButtonState = (cutoffDay) => {
+  if (!billDeleteCutoff) return;
+  const normalizedDay =
+    Number(cutoffDay) ||
+    Number(billCutoff?.value) ||
+    Number(schedule?.cutoffDay) ||
+    defaultSchedule.cutoffDay;
+  billDeleteCutoff.textContent = `ลบรอบวันที่ ${normalizedDay}`;
+  if (!isModalOpen || billMode !== "auto" || !canDeleteAutoSchedules()) {
+    billDeleteCutoff.classList.add("hidden");
+    billDeleteCutoff.disabled = true;
+    return;
+  }
+  const hasSchedule =
+    typeof getAutoScheduleByCutoff === "function"
+      ? Boolean(getAutoScheduleByCutoff(normalizedDay))
+      : false;
+  billDeleteCutoff.classList.toggle("hidden", !hasSchedule);
+  billDeleteCutoff.disabled = !hasSchedule;
+};
 const closeModal = () => {
   billModal?.classList.add("hidden");
   isModalOpen = false;
   autoScheduleEditorCutoffDay = null;
   autoModalCutoffDay = null;
+  updateAutoDeleteButtonState(schedule?.cutoffDay);
   resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
 };
@@ -3186,6 +3208,28 @@ const getAutoModalDraft = (cutoffDay) =>
     },
     schedule
   );
+const resetAutoModalForCreateOnly = (preferredCutoffDay) => {
+  const fallbackCutoffDay =
+    Number(preferredCutoffDay) || Number(schedule?.cutoffDay) || defaultSchedule.cutoffDay;
+  const nextCutoffDay = getAvailableAutoCutoffDay(fallbackCutoffDay);
+  autoScheduleEditorCutoffDay = null;
+  autoModalCutoffDay = nextCutoffDay;
+  if (billCutoff) billCutoff.value = String(nextCutoffDay);
+  if (billRateInput) billRateInput.value = defaultSchedule.defaultRate;
+  if (billType) billType.value = defaultSchedule.rateType;
+  renderColumnSelector(defaultSchedule.detailColumns);
+  setFormulaColumnDrafts([]);
+  setCalcInputMode("single", {
+    skipPreview: true,
+    resetInputs: true
+  });
+  if (formulaResultName) formulaResultName.value = "";
+  updateScheduleInfo(nextCutoffDay);
+  updateAutoPreviewText();
+  updateAutoDeleteButtonState(nextCutoffDay);
+  if (isModalOpen) updateFormulaResultPreview();
+  return nextCutoffDay;
+};
 const applyAutoScheduleToModal = (cutoffDay) => {
   const normalizedDay =
     Number(cutoffDay) || schedule.cutoffDay || defaultSchedule.cutoffDay;
@@ -3208,6 +3252,7 @@ const applyAutoScheduleToModal = (cutoffDay) => {
   setFormulaColumnDrafts(active.formulaColumns || []);
   ensureFormulaColumnDraftBox();
   updateAutoPreviewText();
+  updateAutoDeleteButtonState(normalizedDay);
   if (isModalOpen) updateFormulaResultPreview();
   return active;
 };
@@ -3240,6 +3285,9 @@ const setBillMode = (mode) => {
     updateAutoPreviewText();
     if (isModalOpen) updateFormulaResultPreview();
   }
+  updateAutoDeleteButtonState(
+    Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay
+  );
   hideReceiptHistory();
   closeReceiptPreview();
   closeAutoRoundModal();
@@ -3796,7 +3844,8 @@ const openAutoScheduleEditor = (cutoffDay) => {
   closeAutoQueueActionMenus();
   openModal("auto", { autoEditorCutoffDay: targetDay });
 };
-const deleteAutoSchedule = (cutoffDay) => {
+const deleteAutoSchedule = (cutoffDay, options = {}) => {
+  const { resetToCreateOnly = false } = options;
   if (!canDeleteAutoSchedules()) {
     alert("เฉพาะ Super Admin เท่านั้นที่ลบรอบอัตโนมัติได้");
     return;
@@ -3804,7 +3853,12 @@ const deleteAutoSchedule = (cutoffDay) => {
   const targetDay = Number(cutoffDay);
   if (!Number.isFinite(targetDay) || targetDay < 1) return;
   const targetSchedule = getAutoScheduleByCutoff(targetDay);
-  if (!targetSchedule) return;
+  if (!targetSchedule) {
+    if (resetToCreateOnly && isModalOpen && billMode === "auto") {
+      resetAutoModalForCreateOnly(targetDay);
+    }
+    return;
+  }
   const ok = confirm(`ต้องการลบรอบอัตโนมัติวันที่ ${targetDay} ใช่หรือไม่?`);
   if (!ok) return;
   schedule.autoSchedules = getAutoSchedules().filter(
@@ -3821,7 +3875,11 @@ const deleteAutoSchedule = (cutoffDay) => {
   renderAutoQueue();
   updateSummary();
   if (isModalOpen && billMode === "auto") {
-    applyAutoScheduleToModal(schedule.cutoffDay);
+    if (resetToCreateOnly) {
+      resetAutoModalForCreateOnly(targetDay);
+    } else {
+      applyAutoScheduleToModal(schedule.cutoffDay);
+    }
   }
 };
 
@@ -4126,6 +4184,7 @@ document.addEventListener("click", (event) => {
 billCutoff?.addEventListener("change", () => {
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   updateScheduleInfo(cutoffDay);
+  updateAutoDeleteButtonState(cutoffDay);
   if (isModalOpen && billMode === "auto") {
     const editingCutoffDay = Number(autoScheduleEditorCutoffDay);
     const isEditingSameCutoff =
@@ -4140,6 +4199,7 @@ billCutoff?.addEventListener("change", () => {
       if (billCutoff) billCutoff.value = String(fallbackDay);
       updateScheduleInfo(fallbackDay);
       updateAutoPreviewText();
+      updateAutoDeleteButtonState(fallbackDay);
       alert(`มีรอบอัตโนมัติวันที่ ${cutoffDay} อยู่แล้ว กรุณาเลือกวันอื่น`);
       return;
     }
@@ -4239,6 +4299,12 @@ const initBilling = async () => {
 billNewBtn?.addEventListener("click", () => openModal(billMode));
 billConfirm?.addEventListener("click", () => {
   handleConfirm();
+});
+billDeleteCutoff?.addEventListener("click", () => {
+  if (!(isModalOpen && billMode === "auto")) return;
+  const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : defaultSchedule.cutoffDay;
+  if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return;
+  deleteAutoSchedule(cutoffDay, { resetToCreateOnly: true });
 });
 billScheduleRemove?.addEventListener("click", () => {
   const ok = confirm("รีเซ็ตการตั้งค่าบิลอัตโนมัติกลับเป็นวันที่ 5 ใช่หรือไม่?");
