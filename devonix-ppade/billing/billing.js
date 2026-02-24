@@ -184,6 +184,8 @@ let formulaPreviewRequestId = 0;
 let calcInputMode = "formula";
 let billMode = "manual";
 let formulaColumnDrafts = [];
+let autoScheduleEditorCutoffDay = null;
+let autoModalCutoffDay = null;
 
 const updateFormulaColumnButtonState = () => {
   const atMax = formulaColumnDrafts.length >= maxFormulaDraftColumns;
@@ -1560,6 +1562,8 @@ const applyColumnHandlers = () => {
 const closeModal = () => {
   billModal?.classList.add("hidden");
   isModalOpen = false;
+  autoScheduleEditorCutoffDay = null;
+  autoModalCutoffDay = null;
   resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
 };
@@ -2209,6 +2213,20 @@ const listAutoCutoffDays = () =>
     .map((item) => Number(item?.cutoffDay))
     .filter((day) => Number.isFinite(day) && day >= 1 && day <= 31)
     .sort((a, b) => a - b);
+const getAvailableAutoCutoffDay = (preferredDay) => {
+  const usedDays = new Set(listAutoCutoffDays());
+  const preferred = Number(preferredDay);
+  if (Number.isFinite(preferred) && preferred >= 1 && preferred <= 31 && !usedDays.has(preferred)) {
+    return preferred;
+  }
+  for (let day = 1; day <= 31; day += 1) {
+    if (!usedDays.has(day)) return day;
+  }
+  return Math.max(
+    1,
+    Math.min(31, Number(preferredDay) || Number(schedule?.cutoffDay) || defaultSchedule.cutoffDay)
+  );
+};
 const getAutoScheduleByCutoff = (cutoffDay) => {
   const target = Number(cutoffDay);
   if (!Number.isFinite(target)) return null;
@@ -3171,6 +3189,7 @@ const getAutoModalDraft = (cutoffDay) =>
 const applyAutoScheduleToModal = (cutoffDay) => {
   const normalizedDay =
     Number(cutoffDay) || schedule.cutoffDay || defaultSchedule.cutoffDay;
+  autoModalCutoffDay = normalizedDay;
   const matched = getAutoScheduleByCutoff(normalizedDay);
   const active = matched || getAutoModalDraft(normalizedDay);
   if (billCutoff) billCutoff.value = String(normalizedDay);
@@ -3775,11 +3794,7 @@ const openAutoScheduleEditor = (cutoffDay) => {
   if (!Number.isFinite(targetDay) || targetDay < 1) return;
   if (!getAutoScheduleByCutoff(targetDay)) return;
   closeAutoQueueActionMenus();
-  openModal("auto");
-  if (billCutoff) {
-    billCutoff.value = String(targetDay);
-  }
-  applyAutoScheduleToModal(targetDay);
+  openModal("auto", { autoEditorCutoffDay: targetDay });
 };
 const deleteAutoSchedule = (cutoffDay) => {
   if (!canDeleteAutoSchedules()) {
@@ -3867,29 +3882,48 @@ const runAutoIfDue = async () => {
   }
 };
 
-const openModal = (mode = billMode) => {
+const openModal = (mode = billMode, options = {}) => {
   if (!billModal) return;
   const targetMode = mode === "auto" ? "auto" : "manual";
+  const requestedEditorCutoffDay = Number(options?.autoEditorCutoffDay);
+  const canEditExistingAutoSchedule =
+    targetMode === "auto" &&
+    Number.isFinite(requestedEditorCutoffDay) &&
+    requestedEditorCutoffDay >= 1 &&
+    Boolean(getAutoScheduleByCutoff(requestedEditorCutoffDay));
+  autoScheduleEditorCutoffDay = canEditExistingAutoSchedule
+    ? requestedEditorCutoffDay
+    : null;
+  autoModalCutoffDay = null;
+  const initialAutoCutoffDay =
+    targetMode === "auto"
+      ? canEditExistingAutoSchedule
+        ? requestedEditorCutoffDay
+        : getAvailableAutoCutoffDay(schedule.cutoffDay)
+      : schedule.cutoffDay;
   billModal.classList.remove("hidden");
   isModalOpen = true;
   resetFormulaColumnDraftBoxes();
-  setDefaultRange(schedule.cutoffDay);
+  setDefaultRange(initialAutoCutoffDay);
   if (billRateInput) billRateInput.value = schedule.defaultRate;
   if (billType && schedule.rateType) billType.value = schedule.rateType;
   renderColumnSelector(schedule.detailColumns);
   if (targetMode === "auto") {
+    const activeAutoSchedule =
+      (canEditExistingAutoSchedule && getAutoScheduleByCutoff(initialAutoCutoffDay)) || schedule;
     formulaTerms = getFormulaForContext(
-      schedule.calcFormula,
-      schedule.calcMethod,
+      activeAutoSchedule.calcFormula,
+      activeAutoSchedule.calcMethod,
       getSelectedMetersForFormula()
     );
     setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
       skipPreview: true
     });
-    populateFormulaInputs(formulaTerms, schedule.calcLabel || defaultCalcLabel);
-    setFormulaColumnDrafts(schedule.formulaColumns || []);
+    populateFormulaInputs(formulaTerms, activeAutoSchedule.calcLabel || defaultCalcLabel);
+    setFormulaColumnDrafts(activeAutoSchedule.formulaColumns || []);
     ensureFormulaColumnDraftBox();
   } else {
+    autoScheduleEditorCutoffDay = null;
     setCalcInputMode("single", {
       skipPreview: true,
       resetInputs: true
@@ -3931,6 +3965,28 @@ const handleConfirm = async () => {
 
   if (billMode === "auto") {
     const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
+    const editingCutoffDay = Number(autoScheduleEditorCutoffDay);
+    const isEditingExistingSchedule =
+      Number.isFinite(editingCutoffDay) &&
+      editingCutoffDay >= 1 &&
+      Boolean(getAutoScheduleByCutoff(editingCutoffDay));
+    const hasDuplicateCutoff = getAutoSchedules().some((item) => {
+      const day = Number(item?.cutoffDay);
+      if (!Number.isFinite(day) || day < 1) return false;
+      if (day !== cutoffDay) return false;
+      if (isEditingExistingSchedule && day === editingCutoffDay) return false;
+      return true;
+    });
+    if (hasDuplicateCutoff) {
+      alert(`มีรอบอัตโนมัติวันที่ ${cutoffDay} อยู่แล้ว กรุณาเลือกวันอื่นหรือใช้เมนู "แก้ไขรอบนี้"`);
+      return;
+    }
+    const isMovingSchedule = isEditingExistingSchedule && editingCutoffDay !== cutoffDay;
+    if (isMovingSchedule) {
+      schedule.autoSchedules = getAutoSchedules().filter(
+        (item) => Number(item?.cutoffDay) !== editingCutoffDay
+      );
+    }
     const hadSchedule = Boolean(getAutoScheduleByCutoff(cutoffDay));
     schedule = {
       ...schedule,
@@ -3961,8 +4017,13 @@ const handleConfirm = async () => {
     const { runDate, startStr, endStr } = getAutoPreviewRange(cutoffDay);
     const allDays = listAutoCutoffDays().join(", ");
     closeModal();
+    const successActionLabel = isMovingSchedule
+      ? "ย้ายรอบอัตโนมัติแล้ว"
+      : hadSchedule
+        ? "อัปเดตรอบอัตโนมัติแล้ว"
+        : "เพิ่มรอบอัตโนมัติแล้ว";
     alert(
-      `${hadSchedule ? "อัปเดตรอบอัตโนมัติแล้ว" : "เพิ่มรอบอัตโนมัติแล้ว"}\nตัดรอบวันที่ ${
+      `${successActionLabel}\nตัดรอบวันที่ ${
         savedAutoSchedule.cutoffDay
       }\nระบบจะรันทุกเดือนวันที่ ${savedAutoSchedule.cutoffDay}\nรอบถัดไป: ${formatDate(
         runDate
@@ -4066,6 +4127,22 @@ billCutoff?.addEventListener("change", () => {
   const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
   updateScheduleInfo(cutoffDay);
   if (isModalOpen && billMode === "auto") {
+    const editingCutoffDay = Number(autoScheduleEditorCutoffDay);
+    const isEditingSameCutoff =
+      Number.isFinite(editingCutoffDay) && editingCutoffDay >= 1 && cutoffDay === editingCutoffDay;
+    if (Boolean(getAutoScheduleByCutoff(cutoffDay)) && !isEditingSameCutoff) {
+      const fallbackDay =
+        (Number.isFinite(autoModalCutoffDay) && autoModalCutoffDay >= 1
+          ? autoModalCutoffDay
+          : Number.isFinite(editingCutoffDay) && editingCutoffDay >= 1
+            ? editingCutoffDay
+            : getAvailableAutoCutoffDay(schedule.cutoffDay));
+      if (billCutoff) billCutoff.value = String(fallbackDay);
+      updateScheduleInfo(fallbackDay);
+      updateAutoPreviewText();
+      alert(`มีรอบอัตโนมัติวันที่ ${cutoffDay} อยู่แล้ว กรุณาเลือกวันอื่น`);
+      return;
+    }
     applyAutoScheduleToModal(cutoffDay);
     return;
   }
