@@ -655,6 +655,12 @@ tbody tr.selected {
   display: block;
   width: 100%;
 }
+#bill-history-panel .history-table .period-meta {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #60708b;
+}
 .btn-danger {
   background: #fff5f5;
   color: #d94646;
@@ -1874,6 +1880,11 @@ tbody tr.selected {
 #auto-round-modal .history-table tbody td:nth-child(2) {
   text-align: left;
 }
+.auto-created-by {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #60708b;
+}
 #bill-auto-preview-field {
   margin-top: -2px;
 }
@@ -2668,6 +2679,9 @@ body.plant-page .shell {
   z-index: 1;
   max-width: none;
   width: 100%;
+}
+body.plant-page.access-checking .shell {
+  visibility: hidden;
 }
 body.plant-page .top-controls {
   margin-bottom: 8px;

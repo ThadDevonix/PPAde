@@ -1,4 +1,6 @@
 /* eslint-disable no-unused-vars -- shared globals for split plant page scripts */
+document.body.classList.add("access-checking");
+
 const backBtn = document.getElementById("back-btn");
 backBtn?.addEventListener("click", () => {
   window.location.href = "../index.html";
@@ -26,6 +28,130 @@ const meterCreateIn1Input = document.getElementById("meter-create-in-1");
 const meterCreateIn2Input = document.getElementById("meter-create-in-2");
 const meterCreateOut1Input = document.getElementById("meter-create-out-1");
 const meterCreateOut2Input = document.getElementById("meter-create-out-2");
+
+const plantReadText = (...values) => {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (text) return text;
+  }
+  return "";
+};
+const normalizePlantRole = (value) => plantReadText(value).toLowerCase();
+const toPositivePlantInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = Math.trunc(parsed);
+  return normalized > 0 ? normalized : null;
+};
+const normalizePlantSiteIds = (values) => {
+  if (!Array.isArray(values)) return [];
+  const dedup = new Set();
+  const collect = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => collect(item));
+      return;
+    }
+    if (value && typeof value === "object") {
+      const siteId = toPositivePlantInt(value.id ?? value.site_id ?? value.siteId);
+      if (siteId) dedup.add(siteId);
+      collect(value.siteIds);
+      collect(value.site_ids);
+      collect(value.allowedSiteIds);
+      collect(value.allowed_site_ids);
+      return;
+    }
+    if (typeof value === "string" && value.includes(",")) {
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => collect(part));
+      return;
+    }
+    const siteId = toPositivePlantInt(value);
+    if (siteId) dedup.add(siteId);
+  };
+  values.forEach((value) => collect(value));
+  return Array.from(dedup);
+};
+const extractPlantUserSiteIds = (user) =>
+  normalizePlantSiteIds([
+    user?.siteIds,
+    user?.site_ids,
+    user?.allowedSiteIds,
+    user?.allowed_site_ids,
+    user?.sites,
+    user?.permissions?.siteIds,
+    user?.permissions?.site_ids,
+    user?.permissions?.allowedSiteIds,
+    user?.permissions?.allowed_site_ids,
+    user?.data?.siteIds,
+    user?.data?.site_ids,
+    user?.data?.allowedSiteIds,
+    user?.data?.allowed_site_ids
+  ]);
+const getSelectedPlantSiteId = (targetPlant) =>
+  toPositivePlantInt(targetPlant?.apiId ?? targetPlant?.siteId ?? targetPlant?.site_id ?? targetPlant?.id);
+const redirectToLogin = () => {
+  const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const search = new URLSearchParams();
+  search.set("redirect", target);
+  window.location.href = `../login/index.html?${search.toString()}`;
+};
+const redirectToHome = () => {
+  window.location.href = "../index.html";
+};
+const denyPlantAccess = (message) => {
+  localStorage.removeItem("selectedPlant");
+  localStorage.removeItem("selectedMeter");
+  if (message) alert(message);
+  redirectToHome();
+};
+let plantAccessPromise = null;
+const ensurePlantAccess = async () => {
+  if (plantAccessPromise) return plantAccessPromise;
+  plantAccessPromise = (async () => {
+    if (!plant || typeof plant !== "object") {
+      denyPlantAccess("ไม่พบ Plant ที่เลือก หรือคุณไม่มีสิทธิ์เข้าถึง");
+      return false;
+    }
+    try {
+      const response = await fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "same-origin"
+      });
+      if (!response.ok) {
+        redirectToLogin();
+        return false;
+      }
+      const payload = await response.json().catch(() => ({}));
+      const user = payload?.user && typeof payload.user === "object" ? payload.user : null;
+      if (!user) {
+        redirectToLogin();
+        return false;
+      }
+      const role = normalizePlantRole(user?.role);
+      if (role === "superadmin") return true;
+      const plantSiteId = getSelectedPlantSiteId(plant);
+      if (!plantSiteId) {
+        denyPlantAccess("ไม่พบ Site ID ของ Plant นี้ จึงไม่สามารถยืนยันสิทธิ์ได้");
+        return false;
+      }
+      const allowedSiteIds = extractPlantUserSiteIds(user);
+      if (!allowedSiteIds.includes(plantSiteId)) {
+        denyPlantAccess("คุณไม่มีสิทธิ์เข้าถึง Plant นี้");
+        return false;
+      }
+      return true;
+    } catch {
+      redirectToLogin();
+      return false;
+    }
+  })();
+  return plantAccessPromise;
+};
+window.ensurePlantAccess = ensurePlantAccess;
 
 
 // toggle meters/billing

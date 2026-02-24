@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { validatePassword, verifyPassword } from "./auth/password.js";
 import { createSession, deleteSession, getSession } from "./auth/sessionStore.js";
 import { getUserByEmail, sanitizeUser } from "./auth/userStore.js";
+import { applyUserAccessOverride, upsertUserAccessOverride } from "./auth/userAccessOverrideStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "devonix-ppade");
@@ -735,15 +736,40 @@ const normalizeCreateUserPayload = (payload, context = {}) => {
 
   const siteIds = normalizeSiteIds([
     ...(Array.isArray(safePayload.siteIds) ? safePayload.siteIds : []),
-    ...(Array.isArray(safePayload.site_ids) ? safePayload.site_ids : [])
+    ...(Array.isArray(safePayload.site_ids) ? safePayload.site_ids : []),
+    ...(Array.isArray(safePayload.allowedSiteIds) ? safePayload.allowedSiteIds : []),
+    ...(Array.isArray(safePayload.allowed_site_ids) ? safePayload.allowed_site_ids : []),
+    ...(Array.isArray(safePayload.permissions?.siteIds) ? safePayload.permissions.siteIds : []),
+    ...(Array.isArray(safePayload.permissions?.site_ids) ? safePayload.permissions.site_ids : []),
+    ...(Array.isArray(safePayload.data?.siteIds) ? safePayload.data.siteIds : []),
+    ...(Array.isArray(safePayload.data?.site_ids) ? safePayload.data.site_ids : [])
   ]);
 
   if (role === "admin") {
     safePayload.siteIds = siteIds;
     safePayload.site_ids = siteIds;
+    safePayload.allowedSiteIds = siteIds;
+    safePayload.allowed_site_ids = siteIds;
+    safePayload.permissions = {
+      ...(safePayload.permissions && typeof safePayload.permissions === "object"
+        ? safePayload.permissions
+        : {}),
+      siteIds,
+      site_ids: siteIds
+    };
   } else if (role === "superadmin") {
     delete safePayload.siteIds;
     delete safePayload.site_ids;
+    delete safePayload.allowedSiteIds;
+    delete safePayload.allowed_site_ids;
+    if (safePayload.permissions && typeof safePayload.permissions === "object") {
+      delete safePayload.permissions.siteIds;
+      delete safePayload.permissions.site_ids;
+    }
+    if (safePayload.data && typeof safePayload.data === "object") {
+      delete safePayload.data.siteIds;
+      delete safePayload.data.site_ids;
+    }
   }
 
   const hasPasswordField = ["password", "new_password", "newPassword"].some((key) =>
@@ -857,7 +883,82 @@ const normalizeUserFromApi = (user, fallbackEmail = "") => {
     canViewAllSites: role === "superadmin",
     isActive: Number(user.is_active ?? user.isActive ?? user.active ?? 1) !== 0
   };
-  return normalized;
+  return applyUserAccessOverride(normalized);
+};
+
+const arraysEqual = (left, right) => {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+};
+const mergeUserOverrideToRow = (row) => {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  const normalized = normalizeUserFromApi(row);
+  if (!normalized) return row;
+
+  const role = normalizeRole(normalized.role);
+  const siteIds = normalizeSiteIds(Array.isArray(normalized.siteIds) ? normalized.siteIds : []);
+  const rowRole = normalizeRole(readUserField(row.role, row.user_role, row.userRole));
+  const rowSiteIds = extractUserSiteIds(row);
+  if (rowRole === role && arraysEqual(rowSiteIds, siteIds)) {
+    return row;
+  }
+
+  return {
+    ...row,
+    role,
+    user_role: role,
+    userRole: role,
+    siteIds,
+    site_ids: siteIds,
+    allowedSiteIds: siteIds,
+    allowed_site_ids: siteIds,
+    permissions: {
+      ...(row.permissions && typeof row.permissions === "object" ? row.permissions : {}),
+      siteIds,
+      site_ids: siteIds
+    },
+    data: {
+      ...(row.data && typeof row.data === "object" ? row.data : {}),
+      siteIds,
+      site_ids: siteIds
+    }
+  };
+};
+const applyUserOverridesToPayload = (payload) => {
+  const listKeys = ["data", "items", "rows", "list", "users", "result"];
+  if (Array.isArray(payload)) {
+    return payload.map((row) => mergeUserOverrideToRow(row));
+  }
+  if (!payload || typeof payload !== "object") return payload;
+
+  const nextPayload = { ...payload };
+  let changed = false;
+  listKeys.forEach((key) => {
+    if (Array.isArray(payload[key])) {
+      nextPayload[key] = payload[key].map((row) => mergeUserOverrideToRow(row));
+      changed = true;
+      return;
+    }
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) return;
+    const nextNested = { ...nested };
+    let nestedChanged = false;
+    listKeys.forEach((nestedKey) => {
+      if (!Array.isArray(nested[nestedKey])) return;
+      nextNested[nestedKey] = nested[nestedKey].map((row) => mergeUserOverrideToRow(row));
+      nestedChanged = true;
+    });
+    if (nestedChanged) {
+      nextPayload[key] = nextNested;
+      changed = true;
+    }
+  });
+  if (changed) return nextPayload;
+  return mergeUserOverrideToRow(payload);
 };
 
 const mergeNormalizedUsers = (...users) => {
@@ -1075,19 +1176,21 @@ const tryUpstreamLogin = async (email, password) => {
   const payloadRootUser = normalizeUserFromApi(payload, email);
   const meUser = await fetchCurrentUserFromUpstream(token, upstreamCookie);
   const usersApiUser = await fetchUserFromUsersApi(email, token, upstreamCookie);
-  const normalizedUser = mergeNormalizedUsers(
-    usersApiUser,
-    meUser,
-    payloadUser,
-    payloadRootUser
-  ) || {
-    id: email,
-    email: normalizeEmail(email),
-    name: email,
-    role: "",
-    siteIds: [],
-    canViewAllSites: false
-  };
+  const normalizedUser = applyUserAccessOverride(
+    mergeNormalizedUsers(
+      usersApiUser,
+      meUser,
+      payloadUser,
+      payloadRootUser
+    ) || {
+      id: email,
+      email: normalizeEmail(email),
+      name: email,
+      role: "",
+      siteIds: [],
+      canViewAllSites: false
+    }
+  );
   if (!normalizedUser?.isActive) {
     return {
       ok: false,
@@ -1472,6 +1575,21 @@ export const handleRequest = async (req, res) => {
         const suffix = url.pathname.slice("/api/users".length);
         const upstreamUrl = `${upstreamUsersApi}${suffix}${url.search}`;
         const shouldNormalizeUsersWritePayload = ["POST", "PUT", "PATCH"].includes(method);
+        if (method === "GET") {
+          await proxyRequest(
+            req,
+            res,
+            upstreamUrl,
+            {
+              Authorization: authHeader,
+              Cookie: upstreamCookie
+            },
+            {
+              transformResponseBody: applyUserOverridesToPayload
+            }
+          );
+          return;
+        }
         if (shouldNormalizeUsersWritePayload) {
           let payload = {};
           try {
@@ -1523,19 +1641,39 @@ export const handleRequest = async (req, res) => {
             return;
           }
 
-          await proxyRequest(
-            req,
-            res,
-            upstreamUrl,
-            {
-              Authorization: authHeader,
-              Cookie: upstreamCookie,
-              "Content-Type": "application/json; charset=utf-8"
-            },
-            {
-              bodyBuffer: Buffer.from(JSON.stringify(normalizedUserWrite.payload))
-            }
+          const upstreamHeaders = buildProxyRequestHeaders(req, method, {
+            Authorization: authHeader,
+            Cookie: upstreamCookie,
+            "Content-Type": "application/json; charset=utf-8"
+          });
+          const upstreamRes = await fetch(upstreamUrl, {
+            method,
+            headers: upstreamHeaders,
+            body: Buffer.from(JSON.stringify(normalizedUserWrite.payload))
+          });
+          const rawBody = await upstreamRes.text();
+          const body = applyJsonBodyTransform(
+            rawBody,
+            upstreamRes.headers.get("content-type"),
+            applyUserOverridesToPayload
           );
+
+          if (upstreamRes.ok) {
+            const overrideUserId =
+              readEntityIdFromPayload(normalizedUserWrite.payload) || targetUserId || "";
+            upsertUserAccessOverride({
+              id: overrideUserId,
+              email: normalizedUserWrite.email,
+              role: normalizedUserWrite.role,
+              siteIds: normalizedUserWrite.siteIds
+            });
+          }
+
+          res.writeHead(upstreamRes.status, {
+            ...corsHeaders,
+            "Content-Type": upstreamRes.headers.get("content-type") || "application/json; charset=utf-8"
+          });
+          res.end(body);
           return;
         }
         await proxyRequest(req, res, upstreamUrl, {

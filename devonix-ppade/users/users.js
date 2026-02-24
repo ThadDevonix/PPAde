@@ -205,6 +205,40 @@ const extractRows = (payload) => {
   return [];
 };
 
+const readUserIdFromRow = (row) => {
+  if (!row || typeof row !== "object") return "";
+  return normalizeEntityId(row.id ?? row.user_id ?? row.userId);
+};
+
+const extractUserIdFromPayload = (payload, fallbackEmail = "") => {
+  const directId = readUserIdFromRow(payload);
+  if (directId) return directId;
+
+  const nestedUserId = readUserIdFromRow(payload?.user);
+  if (nestedUserId) return nestedUserId;
+
+  const rows = extractRows(payload);
+  if (!rows.length) return "";
+
+  const expectedEmail = normalizeEmail(fallbackEmail);
+  if (expectedEmail) {
+    const matched = rows.find((row) => {
+      const rowEmail = normalizeEmail(
+        row?.email ?? row?.user_email ?? row?.userEmail ?? row?.username
+      );
+      return rowEmail && rowEmail === expectedEmail;
+    });
+    const matchedId = readUserIdFromRow(matched);
+    if (matchedId) return matchedId;
+  }
+
+  for (const row of rows) {
+    const rowId = readUserIdFromRow(row);
+    if (rowId) return rowId;
+  }
+  return "";
+};
+
 const normalizeUser = (row) => {
   if (!row || typeof row !== "object") return null;
   const email = normalizeEmail(
@@ -217,13 +251,7 @@ const normalizeUser = (row) => {
   );
   const id = row.id ?? row.user_id ?? row.userId;
   if (id === undefined || id === null || !email) return null;
-  const siteIds = normalizeSiteIds([
-    ...(Array.isArray(row.siteIds) ? row.siteIds : []),
-    ...(Array.isArray(row.site_ids) ? row.site_ids : []),
-    ...(Array.isArray(row.allowedSiteIds) ? row.allowedSiteIds : []),
-    ...(Array.isArray(row.allowed_site_ids) ? row.allowed_site_ids : []),
-    ...(Array.isArray(row.sites) ? row.sites : [])
-  ]);
+  const siteIds = extractUserSiteIds(row);
   return {
     id,
     email,
@@ -258,9 +286,30 @@ const normalizeSiteIds = (values) => {
   if (!Array.isArray(values)) return [];
   const dedup = new Set();
   values.forEach((value) => {
+    if (Array.isArray(value)) {
+      normalizeSiteIds(value).forEach((siteId) => dedup.add(siteId));
+      return;
+    }
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const siteId = toPositiveInt(value.id ?? value.site_id ?? value.siteId);
       if (siteId) dedup.add(siteId);
+      normalizeSiteIds([
+        value.siteIds,
+        value.site_ids,
+        value.allowedSiteIds,
+        value.allowed_site_ids
+      ]).forEach((nestedId) => dedup.add(nestedId));
+      return;
+    }
+    if (typeof value === "string" && value.includes(",")) {
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => {
+          const siteId = toPositiveInt(part);
+          if (siteId) dedup.add(siteId);
+        });
       return;
     }
     const siteId = toPositiveInt(value);
@@ -268,6 +317,22 @@ const normalizeSiteIds = (values) => {
   });
   return Array.from(dedup);
 };
+const extractUserSiteIds = (row) =>
+  normalizeSiteIds([
+    row.siteIds,
+    row.site_ids,
+    row.allowedSiteIds,
+    row.allowed_site_ids,
+    row.sites,
+    row.permissions?.siteIds,
+    row.permissions?.site_ids,
+    row.permissions?.allowedSiteIds,
+    row.permissions?.allowed_site_ids,
+    row.data?.siteIds,
+    row.data?.site_ids,
+    row.data?.allowedSiteIds,
+    row.data?.allowed_site_ids
+  ]);
 
 const extractSiteRows = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -817,6 +882,66 @@ const requestUpdateUser = async (id, payload) => {
   if (lastResponse) return lastResponse;
   throw new Error("ไม่พบ API สำหรับแก้ไขผู้ใช้");
 };
+const requestUpdateUserSites = async (id, siteIds) => {
+  const encodedId = encodeURIComponent(String(id));
+  const normalizedSiteIds = normalizeSiteIds(Array.isArray(siteIds) ? siteIds : []);
+  const payloadSiteIds = { siteIds: normalizedSiteIds };
+  const payloadSiteIdsSnake = { site_ids: normalizedSiteIds };
+  const payloadCompat = {
+    siteIds: normalizedSiteIds,
+    site_ids: normalizedSiteIds,
+    allowedSiteIds: normalizedSiteIds,
+    allowed_site_ids: normalizedSiteIds
+  };
+  const attempts = [
+    { method: "PUT", url: `/api/users/${encodedId}/sites`, body: payloadSiteIds },
+    { method: "PATCH", url: `/api/users/${encodedId}/sites`, body: payloadSiteIds },
+    { method: "PUT", url: `/api/users/${encodedId}/sites`, body: payloadSiteIdsSnake },
+    { method: "PATCH", url: `/api/users/${encodedId}/sites`, body: payloadSiteIdsSnake },
+    { method: "PUT", url: `/api/users/${encodedId}/sites`, body: payloadCompat },
+    { method: "PATCH", url: `/api/users/${encodedId}/sites`, body: payloadCompat },
+    { method: "PUT", url: `/api/users/${encodedId}/sites?id=${encodedId}`, body: payloadSiteIds },
+    { method: "PATCH", url: `/api/users/${encodedId}/sites?id=${encodedId}`, body: payloadSiteIdsSnake }
+  ];
+
+  let lastResponse = null;
+  for (const attempt of attempts) {
+    const response = await fetchWithTimeout(attempt.url, {
+      method: attempt.method,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(attempt.body)
+    });
+    lastResponse = response;
+    if (response.ok) return response;
+    if (![404, 405].includes(response.status)) return response;
+  }
+  if (lastResponse) return lastResponse;
+  throw new Error("ไม่พบ API สำหรับบันทึกสิทธิ์ Plant");
+};
+
+const requestFindUserIdByEmail = async (email) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return "";
+
+  const response = await fetchWithTimeout("/api/users", {
+    method: "GET",
+    credentials: "same-origin"
+  });
+  if (!response.ok) return "";
+
+  const payload = await parseResponsePayload(response);
+  const rows = extractRows(payload);
+  const matched = rows.find((row) => {
+    const rowEmail = normalizeEmail(
+      row?.email ?? row?.user_email ?? row?.userEmail ?? row?.username
+    );
+    return rowEmail && rowEmail === normalizedEmail;
+  });
+  return readUserIdFromRow(matched);
+};
 
 const submitUserForm = async () => {
   const wasEditMode = isEditMode();
@@ -871,6 +996,12 @@ const submitUserForm = async () => {
   if (role === "admin") {
     payload.siteIds = selectedSiteIds;
     payload.site_ids = selectedSiteIds;
+    payload.allowedSiteIds = selectedSiteIds;
+    payload.allowed_site_ids = selectedSiteIds;
+    payload.permissions = {
+      siteIds: selectedSiteIds,
+      site_ids: selectedSiteIds
+    };
   }
 
   try {
@@ -889,6 +1020,24 @@ const submitUserForm = async () => {
       throw new Error(
         responseMessage(body, wasEditMode ? "แก้ไขผู้ใช้ไม่สำเร็จ" : "เพิ่มผู้ใช้ไม่สำเร็จ")
       );
+    }
+    if (role === "admin") {
+      let targetUserId = wasEditMode ? normalizeEntityId(editingUserId) : "";
+      if (!targetUserId) {
+        targetUserId = extractUserIdFromPayload(body, email);
+      }
+      if (!targetUserId) {
+        targetUserId = await requestFindUserIdByEmail(email);
+      }
+      if (!targetUserId) {
+        throw new Error("ไม่พบรหัสผู้ใช้สำหรับบันทึกสิทธิ์ Plant");
+      }
+
+      const sitesResponse = await requestUpdateUserSites(targetUserId, selectedSiteIds);
+      const sitesPayload = await parseResponsePayload(sitesResponse);
+      if (!sitesResponse.ok) {
+        throw new Error(responseMessage(sitesPayload, "บันทึกสิทธิ์ Plant ไม่สำเร็จ"));
+      }
     }
     closeCreateModal();
     setMessage(wasEditMode ? "แก้ไขผู้ใช้สำเร็จ" : "เพิ่มผู้ใช้สำเร็จ", "success");

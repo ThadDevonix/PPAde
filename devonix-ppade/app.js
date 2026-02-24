@@ -65,6 +65,7 @@ const escapeHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 const normalizeRole = (value) => readString(value).toLowerCase();
+const normalizeEmail = (value) => readString(value).toLowerCase();
 const normalizePlantNameKey = (value) => value.trim().toLowerCase();
 const normalizeLocationValue = (value) => readString(value) || "Thailand";
 const normalizeSiteCodeKey = (value) =>
@@ -93,6 +94,99 @@ const parseLoosePositiveId = (value) => {
   const parsed = Number(match[1]);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 };
+const normalizeSiteIds = (values) => {
+  if (!Array.isArray(values)) return [];
+  const dedup = new Set();
+  const collect = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => collect(item));
+      return;
+    }
+    if (value && typeof value === "object") {
+      const siteId = parseLoosePositiveId(value.id ?? value.site_id ?? value.siteId);
+      if (siteId) dedup.add(siteId);
+      collect(value.siteIds);
+      collect(value.site_ids);
+      collect(value.allowedSiteIds);
+      collect(value.allowed_site_ids);
+      return;
+    }
+    if (typeof value === "string" && value.includes(",")) {
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => collect(part));
+      return;
+    }
+    const siteId = parseLoosePositiveId(value);
+    if (siteId) dedup.add(siteId);
+  };
+
+  values.forEach((value) => collect(value));
+  return Array.from(dedup);
+};
+const extractUserSiteIds = (user) =>
+  normalizeSiteIds([
+    user?.siteIds,
+    user?.site_ids,
+    user?.allowedSiteIds,
+    user?.allowed_site_ids,
+    user?.sites,
+    user?.permissions?.siteIds,
+    user?.permissions?.site_ids,
+    user?.permissions?.allowedSiteIds,
+    user?.permissions?.allowed_site_ids,
+    user?.data?.siteIds,
+    user?.data?.site_ids,
+    user?.data?.allowedSiteIds,
+    user?.data?.allowed_site_ids
+  ]);
+const extractRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "rows", "list", "result", "users"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const resolveUserSiteIds = async (user) => {
+  const base = extractUserSiteIds(user);
+  if (base.length || normalizeRole(user?.role) === "superadmin") return base;
+
+  const email = normalizeEmail(user?.email ?? user?.user_email ?? user?.username);
+  if (!email) return base;
+  try {
+    const response = await fetch("/api/users", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) return base;
+    const payload = await response.json().catch(() => ({}));
+    const rows = extractRows(payload);
+    const matched = rows.find((row) => {
+      const rowEmail = normalizeEmail(
+        row?.email ?? row?.user_email ?? row?.userEmail ?? row?.username
+      );
+      return rowEmail && rowEmail === email;
+    });
+    if (!matched) return base;
+    const resolved = extractUserSiteIds(matched);
+    return resolved.length ? resolved : base;
+  } catch {
+    return base;
+  }
+};
+const getPlantSiteIdNumber = (plant) =>
+  parseLoosePositiveId(plant?.apiId ?? plant?.siteId ?? plant?.site_id ?? plant?.id);
 const getMeterIdentityKeyForCount = (meter, fallbackIndex) => {
   const meterIdCandidates = [meter?.apiId, meter?.device_id, meter?.deviceId, meter?.id];
   for (const candidate of meterIdCandidates) {
@@ -441,8 +535,8 @@ const fetchDevicesFromApi = async () => {
   return normalizeApiDevices(payload);
 };
 const getPlantSiteId = (plant) => {
-  const apiId = Number(plant?.apiId);
-  if (Number.isFinite(apiId) && apiId > 0) return String(apiId);
+  const siteId = getPlantSiteIdNumber(plant);
+  if (siteId) return String(siteId);
   return "-";
 };
 const getPlantMeterCount = (plant) => {
@@ -728,8 +822,15 @@ let isHydratingPlants = false;
 let plantsLoadError = "";
 let isLocatingPlantLocation = false;
 let currentUserRole = "";
+let currentUserSiteIdSet = new Set();
 const canDeletePlants = () => currentUserRole === "superadmin";
 const canDeleteMeters = () => currentUserRole === "superadmin";
+const canAccessPlant = (plant) => {
+  if (normalizeRole(currentUserRole) === "superadmin") return true;
+  if (!currentUserSiteIdSet.size) return false;
+  const siteId = getPlantSiteIdNumber(plant);
+  return Boolean(siteId && currentUserSiteIdSet.has(siteId));
+};
 
 const redirectToLogin = () => {
   const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -744,6 +845,7 @@ const setAuthUser = (user) => {
 };
 const ensureAuthenticated = async () => {
   currentUserRole = "";
+  currentUserSiteIdSet = new Set();
   try {
     const response = await fetch("/api/auth/me", {
       method: "GET",
@@ -759,6 +861,7 @@ const ensureAuthenticated = async () => {
       return null;
     }
     currentUserRole = normalizeRole(payload.user?.role);
+    currentUserSiteIdSet = new Set(await resolveUserSiteIds(payload.user));
     setAuthUser(payload.user);
     return payload.user;
   } catch {
@@ -830,7 +933,7 @@ const render = (data) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-id");
       if (!id) return;
-      const plant = plants.find((p) => p.id === id);
+      const plant = data.find((p) => p.id === id);
       if (plant) openPlantModal("edit", plant);
     });
   });
@@ -1211,6 +1314,7 @@ const applyFilters = () => {
   const plantText = inputs.plant.value.trim().toLowerCase();
 
   const filtered = plants.filter((p) => {
+    if (!canAccessPlant(p)) return false;
     const siteId = getPlantSiteId(p).toLowerCase();
     const siteName = readString(p.name, p.site_name).toLowerCase();
     const matchesPlant =

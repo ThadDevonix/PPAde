@@ -5,7 +5,9 @@ if (!plant || typeof plant !== "object") {
   };
 }
 
-nameEl.textContent = plant.name;
+if (nameEl) {
+  nameEl.textContent = "กำลังตรวจสอบสิทธิ์...";
+}
 
 const normalizeLocalMeters = (meters) =>
   normalizeMeterRows(
@@ -648,8 +650,6 @@ const hydratePlantMetersFromApi = async () => {
   }
 };
 
-applyPlantMeters(plantMeters, { persistPlant: false });
-
 meterNewBtn?.addEventListener("click", () => {
   editingPlantMeterIndex = null;
   resetMeterCreateForm();
@@ -680,10 +680,18 @@ document.addEventListener("click", (event) => {
   }
 );
 const bootstrapPlantPage = async () => {
+  const hasAccess = typeof ensurePlantAccess === "function"
+    ? await ensurePlantAccess()
+    : true;
+  if (!hasAccess) return;
+  if (nameEl) {
+    nameEl.textContent = plant?.name || "Plant";
+  }
   setMode(false);
+  applyPlantMeters(plantMeters, { persistPlant: false });
   await hydrateCurrentUserRole();
-  renderPlantMeters();
   await hydratePlantMetersFromApi();
   await initBilling();
+  document.body.classList.remove("access-checking");
 };
 bootstrapPlantPage();

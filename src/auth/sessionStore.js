@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { applyUserAccessOverride } from "./userAccessOverrideStore.js";
 
 const configuredSessionSecret = String(
   process.env.AUTH_SESSION_SECRET ||
@@ -153,8 +154,7 @@ const normalizeSession = (payload) => {
   const siteIds = normalizeSiteIds(payload.sids ?? payload.siteIds ?? payload.site_ids);
   const canViewAllSites =
     payload.all === true || payload.canViewAllSites === true || role === "superadmin";
-
-  return {
+  const baseSession = {
     userId: payload.uid ?? payload.userId ?? payload.id ?? email,
     email,
     name,
@@ -164,6 +164,27 @@ const normalizeSession = (payload) => {
     upstreamToken: readText(payload.ut ?? payload.upstreamToken),
     upstreamCookie: readText(payload.uc ?? payload.upstreamCookie),
     expiresAt
+  };
+  const overridden = applyUserAccessOverride({
+    id: baseSession.userId,
+    email: baseSession.email,
+    role: baseSession.role,
+    siteIds: baseSession.siteIds,
+    canViewAllSites: baseSession.canViewAllSites
+  });
+  const overriddenRole = String(overridden?.role || baseSession.role).trim().toLowerCase();
+  const overriddenSiteIds = normalizeSiteIds(
+    Array.isArray(overridden?.siteIds) ? overridden.siteIds : baseSession.siteIds
+  );
+
+  return {
+    ...baseSession,
+    role: overriddenRole,
+    siteIds: overriddenSiteIds,
+    canViewAllSites:
+      overriddenRole === "superadmin" ||
+      overridden?.canViewAllSites === true ||
+      baseSession.canViewAllSites === true
   };
 };
 

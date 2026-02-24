@@ -704,6 +704,62 @@ const escapeHtml = (value) =>
 const homePlantsStorageKey = "plantsDataV2";
 const normalizeSiteToken = (value) => String(value || "").trim().toLowerCase();
 let currentUserRole = "";
+let currentUserProfile = null;
+const normalizeCreatorSnapshot = (user) => {
+  const source = user && typeof user === "object" ? user : {};
+  const idRaw = source?.id;
+  const id =
+    idRaw === undefined || idRaw === null ? "" : String(idRaw).trim();
+  const name = readText(
+    source?.name,
+    source?.full_name,
+    source?.fullName,
+    source?.display_name,
+    source?.displayName,
+    source?.username
+  );
+  const email = readText(source?.email);
+  const role = normalizeRole(source?.role);
+  return { id, name, email, role };
+};
+const getCurrentCreatorSnapshot = () => {
+  const profile = normalizeCreatorSnapshot(currentUserProfile);
+  const role = profile.role || normalizeRole(currentUserRole);
+  const name =
+    profile.name || profile.email || (profile.id ? `ID ${profile.id}` : "");
+  return {
+    id: profile.id,
+    name,
+    email: profile.email,
+    role
+  };
+};
+const getBillCreatorSnapshot = (bill) => {
+  const nested = normalizeCreatorSnapshot(bill?.createdBy);
+  const flat = normalizeCreatorSnapshot({
+    id: bill?.createdById,
+    name: bill?.createdByName,
+    email: bill?.createdByEmail,
+    role: bill?.createdByRole
+  });
+  const id = nested.id || flat.id;
+  const email = nested.email || flat.email;
+  const role = nested.role || flat.role;
+  const name = nested.name || flat.name || email || (id ? `ID ${id}` : "");
+  return { id, name, email, role };
+};
+const getBillCreatorLabel = (bill) =>
+  getBillCreatorSnapshot(bill).name || "ไม่ระบุผู้สร้าง";
+const getCurrentPlantSnapshot = () => {
+  const name = readText(plant?.name) || "PONIX";
+  const siteCode = readText(plant?.siteCode, plant?.site_code);
+  const apiId = Number(plant?.apiId);
+  return {
+    name,
+    siteCode,
+    apiId: Number.isFinite(apiId) && apiId > 0 ? apiId : null
+  };
+};
 const isSuperAdminRole = (role) =>
   normalizeRole(role)
     .replace(/[^a-z]/g, "") === "superadmin";
@@ -967,6 +1023,7 @@ const deleteMeterInApi = async (meter, targetPlant = plant) => {
 };
 const hydrateCurrentUserRole = async () => {
   currentUserRole = "";
+  currentUserProfile = null;
   try {
     const response = await fetch("/api/auth/me", {
       method: "GET",
@@ -974,7 +1031,10 @@ const hydrateCurrentUserRole = async () => {
     });
     if (!response.ok) return;
     const payload = await response.json().catch(() => ({}));
-    currentUserRole = normalizeRole(payload?.user?.role);
+    const user = payload?.user && typeof payload.user === "object" ? payload.user : null;
+    if (!user) return;
+    currentUserRole = normalizeRole(user?.role);
+    currentUserProfile = { ...user };
   } catch {
     // ignore role lookup errors
   }
@@ -1646,7 +1706,8 @@ const buildReceiptHtml = ({
     1
   );
   const rate = parseNumber(bill.rate);
-  const plantName = plant?.name || "PONIX";
+  const plantName = readText(bill?.plantName, plant?.name) || "PONIX";
+  const creatorLabel = getBillCreatorLabel(bill);
   const issueLabel = formatThaiDateShort(issueDate);
   const periodLabel =
     bill?.periodStart && bill?.periodEnd
@@ -1661,7 +1722,8 @@ const buildReceiptHtml = ({
     )}</span></div>`;
   const companyMetaHtml = [
     buildMetaLineHtml("บริษัท", plantName),
-    buildMetaLineHtml("เลขที่บิล", billCode)
+    buildMetaLineHtml("เลขที่บิล", billCode),
+    buildMetaLineHtml("ผู้สร้าง", creatorLabel)
   ].join("");
   const periodMetaHtml = [
     buildMetaLineHtml("ช่วงบิล", periodLabel),
@@ -2066,6 +2128,33 @@ let meterProfiles = [];
 let historyKey = "billingHistory";
 let scheduleKey = "billingSchedule";
 let sequenceKey = "billingSequence";
+const billingCacheResetVersionKey = "billingCacheResetV20260224";
+const billingStoragePrefixes = [
+  "billingHistory",
+  "billingSchedule",
+  "billingSequence"
+];
+const clearBillingStorageOnce = () => {
+  try {
+    if (localStorage.getItem(billingCacheResetVersionKey) === "done") return;
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key) keys.push(key);
+    }
+    keys.forEach((key) => {
+      const shouldRemove = billingStoragePrefixes.some(
+        (prefix) => key === prefix || key.startsWith(`${prefix}:`)
+      );
+      if (shouldRemove) {
+        localStorage.removeItem(key);
+      }
+    });
+    localStorage.setItem(billingCacheResetVersionKey, "done");
+  } catch {
+    // ignore storage access errors
+  }
+};
 
 const normalizeDetailColumns = (columns) => {
   if (!Array.isArray(columns) || !columns.length) {
@@ -2895,6 +2984,7 @@ const openAutoRoundHistoryModal = (cutoffDay) => {
     autoRoundModalRows.innerHTML = records
       .map((bill) => {
         const displayTotals = getBillDisplayTotals(bill);
+        const creatorLabel = getBillCreatorLabel(bill);
         const createdAtValue = Number(bill?.createdAt);
         const createdAtDate = Number.isFinite(createdAtValue)
           ? new Date(createdAtValue)
@@ -2909,7 +2999,7 @@ const openAutoRoundHistoryModal = (cutoffDay) => {
             <td>${bill.periodStart} - ${bill.periodEnd}</td>
             <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
             <td>${formatCurrency(displayTotals.amount)}</td>
-            <td>${createdLabel}</td>
+            <td><div>${createdLabel}</div><div class="auto-created-by">${escapeHtml(creatorLabel)}</div></td>
             <td>
               <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" type="button">ดูตัวอย่าง</button>
             </td>
@@ -3401,6 +3491,8 @@ const createBill = ({
   createdAt = Date.now()
 }) => {
   const meterPool = Array.isArray(meters) ? meters.filter(Boolean) : [];
+  const creator = getCurrentCreatorSnapshot();
+  const plantSnapshot = getCurrentPlantSnapshot();
   const billRate = roundTo(parseNumber(rate), rateDecimalPlaces);
   const normalizedColumns =
     Array.isArray(detailColumns) && detailColumns.length
@@ -3433,6 +3525,14 @@ const createBill = ({
     id: `${createdAt}-${billSequence}`,
     billNo: billSequence,
     createdAt,
+    plantName: plantSnapshot.name,
+    plantApiId: plantSnapshot.apiId,
+    plantSiteCode: plantSnapshot.siteCode,
+    createdBy: creator,
+    createdById: creator.id,
+    createdByName: creator.name,
+    createdByEmail: creator.email,
+    createdByRole: creator.role,
     periodStart,
     periodEnd,
     rate: billRate,
@@ -3483,6 +3583,7 @@ const renderHistory = () => {
         .filter((name) => String(name || "").trim())
         .join(", ");
       const displayTotals = getBillDisplayTotals(bill);
+      const creatorLabel = getBillCreatorLabel(bill);
       const badgeLabel = bill.auto ? "อัตโนมัติ" : "กำหนดวัน";
       const badgeClass = bill.auto ? "auto" : "manual";
       const manualIssueDate = getManualIssueDate(bill);
@@ -3502,6 +3603,7 @@ const renderHistory = () => {
           <td class="period-cell">
             <span class="badge ${badgeClass}">${badgeLabel}</span>
             <div class="period-range">${bill.periodStart} - ${bill.periodEnd}</div>
+            <div class="period-meta">ผู้สร้าง: ${escapeHtml(creatorLabel)}</div>
           </td>
           <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
           <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
@@ -4042,6 +4144,7 @@ window.addEventListener("resize", () => {
   if (isReceiptPreviewOpen) sizeReceiptSheet();
 });
 
+clearBillingStorageOnce();
 historyKey = buildStorageKey("billingHistoryV2");
 scheduleKey = buildStorageKey("billingScheduleV1");
 sequenceKey = buildStorageKey("billingSequenceV1");
