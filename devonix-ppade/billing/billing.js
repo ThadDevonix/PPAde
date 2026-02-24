@@ -129,6 +129,7 @@ const defaultFormulaField = "energy_out";
 const defaultCalcLabel = "ผลคำนวณ";
 const maxFormulaDraftColumns = 5;
 const maxBillPeriodDays = 31;
+const rateDecimalPlaces = 3;
 const detailColumnDefs = [
   { key: "energy_in", label: "energy_in (kWh)" },
   { key: "energy_out", label: "energy_out (kWh)" },
@@ -146,11 +147,13 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
     .map((draft) => {
       const type = draft?.type === "calc" ? "calc" : "basic";
       const name = String(draft?.name || "").trim();
+      const include = draft?.include !== false;
       if (type === "calc") {
         const operator = formulaOperators.includes(draft?.operator) ? draft.operator : "-";
         return {
           type,
           name,
+          include,
           leftMeterKey: String(draft?.leftMeterKey || "").trim(),
           leftField: normalizeFormulaFieldKey(draft?.leftField),
           operator,
@@ -161,6 +164,7 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
       return {
         type,
         name,
+        include,
         meterKey: String(draft?.meterKey || "").trim(),
         field: normalizeFormulaFieldKey(draft?.field)
       };
@@ -205,9 +209,21 @@ const renderFormulaColumnDraftBoxes = () => {
     item.className = "formula-column-item";
     item.dataset.columnIndex = String(index + 1);
     item.dataset.columnType = draftType;
+    const includeLabel = document.createElement("label");
+    includeLabel.className = "formula-column-include";
+    const includeCheckbox = document.createElement("input");
+    includeCheckbox.type = "checkbox";
+    includeCheckbox.className = "formula-column-include-checkbox";
+    includeCheckbox.checked = draft?.include !== false;
+    includeCheckbox.setAttribute("aria-label", `เลือกคอลัมน์ ${index + 1} เพื่อรวมยอด`);
+    includeLabel.append(includeCheckbox);
+    includeCheckbox.addEventListener("change", () => {
+      item.classList.toggle("is-excluded", !includeCheckbox.checked);
+    });
     const orderBadge = document.createElement("span");
     orderBadge.className = "formula-column-order";
     orderBadge.textContent = String(index + 1);
+    item.classList.toggle("is-excluded", !includeCheckbox.checked);
     if (draftType === "basic") {
       const preferredMeterKey = String(draft?.meterKey || draft?.leftMeterKey || "").trim();
       const meterKey = meterByKey.has(preferredMeterKey) ? preferredMeterKey : firstMeterKey;
@@ -265,7 +281,7 @@ const renderFormulaColumnDraftBoxes = () => {
         renderFormulaColumnDraftBoxes();
       });
 
-      item.append(orderBadge, nameInput, meterSelect, fieldSelect);
+      item.append(includeLabel, orderBadge, nameInput, meterSelect, fieldSelect);
     } else {
       const preferredLeftMeterKey = String(draft?.leftMeterKey || draft?.meterKey || "").trim();
       const preferredRightMeterKey = String(draft?.rightMeterKey || draft?.meterKey || "").trim();
@@ -382,6 +398,7 @@ const renderFormulaColumnDraftBoxes = () => {
       });
 
       item.append(
+        includeLabel,
         orderBadge,
         nameInput,
         leftMeterSelect,
@@ -406,6 +423,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
         return {
           type: "basic",
           name: String(item.querySelector(".formula-column-name-input")?.value || ""),
+          include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
           meterKey: String(item.querySelector(".formula-column-meter-basic-select")?.value || ""),
           field: String(item.querySelector(".formula-column-field-basic-select")?.value || "")
         };
@@ -413,6 +431,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
       return {
         type: "calc",
         name: String(item.querySelector(".formula-column-name-input")?.value || ""),
+        include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
         leftMeterKey: String(item.querySelector(".formula-column-meter-left-select")?.value || ""),
         leftField: String(item.querySelector(".formula-column-field-left-select")?.value || ""),
         operator: String(item.querySelector(".formula-column-operator-select")?.value || "-"),
@@ -457,6 +476,7 @@ const addFormulaColumnDraftBox = () => {
   formulaColumnDrafts.push({
     type: "basic",
     name: "",
+    include: true,
     meterKey: getMeterKey(firstMeter),
     field: fieldKeys.length
       ? resolvePreferredFormulaField(fieldKeys, [defaultFormulaField])
@@ -483,6 +503,7 @@ const addFormulaCalcColumnDraftBox = () => {
   formulaColumnDrafts.push({
     type: "calc",
     name: "",
+    include: true,
     leftMeterKey: getMeterKey(firstMeter),
     leftField: leftFieldKeys.length
       ? resolvePreferredFormulaField(leftFieldKeys, [defaultFormulaField])
@@ -1485,7 +1506,11 @@ const closeModal = () => {
 const hideReceiptHistory = () => {
   receiptHistory?.classList.add("hidden");
 };
-const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
+const buildReceiptHtml = ({
+  bill,
+  issueDate,
+  rowsPerPage = 32
+}) => {
   const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
   const formulaTerms = Array.isArray(bill?.calcFormula) && bill.calcFormula.length
     ? normalizeCalcFormula(bill.calcFormula, meterPool, false)
@@ -1560,6 +1585,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         type: "calc",
         header,
         title: expression,
+        include: draft.include !== false,
         operator: draft.operator,
         leftTerm,
         rightTerm
@@ -1572,6 +1598,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
       type: "basic",
       header,
       title: fallbackTitle,
+      include: draft.include !== false,
       term
     };
   });
@@ -1620,10 +1647,6 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   );
   const rate = parseNumber(bill.rate);
   const plantName = plant?.name || "PONIX";
-  const receiptLogoSrc = new URL(
-    "../assets/logo_d_v2-01-1.png",
-    window.location.href
-  ).href;
   const issueLabel = formatThaiDateShort(issueDate);
   const periodLabel =
     bill?.periodStart && bill?.periodEnd
@@ -1643,7 +1666,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   const periodMetaHtml = [
     buildMetaLineHtml("ช่วงบิล", periodLabel),
     buildMetaLineHtml("วันที่ออกรายงาน", issueLabel),
-    buildMetaLineHtml("อัตรา", `${formatNumber(rate, 2)} บาท/kWh`)
+    buildMetaLineHtml("อัตรา", `${formatNumber(rate, rateDecimalPlaces)} บาท/kWh`)
   ].join("");
   const requestedRowsPerPage = Math.max(1, rowsPerPage - 1);
   const dataRowsPerPage =
@@ -1668,8 +1691,13 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   `;
   const buildRowsHtml = (rows, { includeTotalRow = false } = {}) => {
     const rowsHtml = rows
-      .map((row) => `
-        <tr>
+      .map((row) => {
+        const rowDate = parseDateInput(row.date);
+        const dayOfWeek = rowDate ? rowDate.getDay() : -1;
+        const weekendClass =
+          dayOfWeek === 6 ? "weekend-sat" : dayOfWeek === 0 ? "weekend-sun" : "";
+        return `
+        <tr${weekendClass ? ` class="${weekendClass}"` : ""}>
           <td class="date-cell">${formatThaiDateShort(row.date)}</td>
           ${useDraftColumns
       ? row.draftValues
@@ -1682,7 +1710,8 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         : ""}
           ${showUsageColumn ? `<td class="num-cell">${formatNumber(row.units, 1)}</td>` : ""}
         </tr>
-      `)
+      `;
+      })
       .join("");
     return includeTotalRow ? `${rowsHtml}${buildTotalRowHtml()}` : rowsHtml;
   };
@@ -1705,15 +1734,16 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
   const summaryColumns = useDraftColumns
     ? formulaColumnDefs.map((column, index) => ({
       label: column.header || `คอลัมน์ ${index + 1}`,
-      total: draftColumnTotals[index]
+      total: draftColumnTotals[index],
+      included: column.include !== false
     }))
     : showFormulaColumns
       ? [
-        { label: termOneHeader, total: leftColumnTotal },
-        { label: termTwoHeader, total: rightColumnTotal },
-        { label: usageHeaderText, total: totalKwh }
+        { label: termOneHeader, total: leftColumnTotal, included: true },
+        { label: termTwoHeader, total: rightColumnTotal, included: true },
+        { label: usageHeaderText, total: totalKwh, included: true }
       ]
-      : [{ label: usageHeaderText, total: totalKwh }];
+      : [{ label: usageHeaderText, total: totalKwh, included: true }];
   const summaryColumnItems = summaryColumns.map((column) => {
     const total = parseNumber(column.total);
     const amount = roundTo(total * rate, 2);
@@ -1724,27 +1754,31 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
     };
   });
   const totalAmount = roundTo(
-    summaryColumnItems.reduce((sum, item) => sum + parseNumber(item.amount), 0),
+    summaryColumnItems.reduce(
+      (sum, item) => sum + (item.included ? parseNumber(item.amount) : 0),
+      0
+    ),
     2
   );
   const summaryBreakdownHtml = summaryColumnItems
     .map((column) => {
-      return `<div class="row breakdown"><span class="summary-expression">${escapeHtml(
-        column.label
-      )} ${formatNumber(
-        column.total,
-        1
-      )} × ${formatNumber(rate, 2)}</span><span class="summary-amount">${formatNumber(
-        column.amount,
-        2
-      )} บาท</span></div>`;
+      return `<div class="row breakdown${column.included ? "" : " is-excluded"}">
+        <span class="summary-expression">
+          <span class="summary-label">${escapeHtml(column.label)}</span>
+          <span class="summary-calc">${formatNumber(column.total, 1)} × ${formatNumber(
+        rate,
+        rateDecimalPlaces
+      )}</span>
+        </span>
+        <span class="summary-amount">${formatNumber(column.amount, 2)} บาท</span>
+      </div>`;
     })
     .join("");
   const summaryHtml = `
     <div class="receipt-summary simple">
       <div class="box">
         ${summaryBreakdownHtml}
-        <div class="row total"><span class="summary-expression">ยอดรวมบิลงวดนี้</span><span class="summary-amount">${formatNumber(
+        <div class="row total"><span class="summary-expression">ยอดรวมทั้งสิ้น</span><span class="summary-amount">${formatNumber(
           totalAmount,
           2
         )} บาท</span></div>
@@ -1790,11 +1824,14 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
       termTwoHeader
     )}</th>`
     : "";
+  const weekendLegendHtml = `
+    <div class="receipt-weekend-legend" aria-label="คำอธิบายสีวันเสาร์และอาทิตย์">
+      <span class="legend-item sat"><span class="legend-swatch"></span>วันเสาร์</span>
+      <span class="legend-item sun"><span class="legend-swatch"></span>วันอาทิตย์</span>
+    </div>
+  `;
   const buildPage = (rows, pageIndex) => `
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
-      <div class="receipt-logo">
-        <img src="${escapeHtml(receiptLogoSrc)}" alt="Devonix logo" />
-      </div>
       <div class="receipt-title">
         <h2>รายงานบิลพลังงาน</h2>
         <p>Billing Report</p>
@@ -1810,6 +1847,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         </div>
       </div>
       <div class="receipt-divider"></div>
+      ${weekendLegendHtml}
       <div class="receipt-table-area">
         <table class="receipt-table receipt-usage-table">
           ${colgroupHtml}
@@ -1828,6 +1866,7 @@ const buildReceiptHtml = ({ bill, issueDate, rowsPerPage = 32 }) => {
         </table>
       </div>
       ${pageIndex === pageCount - 1 ? summaryHtml : ""}
+      <div class="receipt-power-note">Powered By Devonix</div>
     </div>
   `;
   return Array.from({ length: pageCount }, (_, pageIndex) => {
@@ -2059,7 +2098,9 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
     Number.isFinite(rawUpdatedAt) && rawUpdatedAt > 0 ? rawUpdatedAt : null;
   return {
     cutoffDay,
-    defaultRate: Number.isFinite(rate) ? roundTo(rate, 2) : defaultSchedule.defaultRate,
+    defaultRate: Number.isFinite(rate)
+      ? roundTo(rate, rateDecimalPlaces)
+      : defaultSchedule.defaultRate,
     rateType: raw?.rateType || fallbackFields.rateType,
     calcMethod: raw?.calcMethod || fallbackFields.calcMethod,
     calcFormula: Array.isArray(raw?.calcFormula) ? raw.calcFormula : fallbackFields.calcFormula,
@@ -2943,7 +2984,7 @@ const renderAutoQueue = () => {
           <td>${escapeHtml(updatedAtLabel)}</td>
           <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(
         autoConfig.defaultRate,
-        2
+        rateDecimalPlaces
       )}/kWh • ${escapeHtml(rateTypeLabel)}</td>
           <td><span class="queue-status ready">${billCount} ใบ</span></td>
           <td>
@@ -3199,6 +3240,7 @@ const calculateFormulaColumnBillTotals = ({
     if (column.type === "calc") {
       return {
         type: "calc",
+        include: column.include !== false,
         operator: column.operator,
         leftTerm: buildFormulaColumnTerm(column.leftMeterKey, column.leftField, safeMeters),
         rightTerm: buildFormulaColumnTerm(column.rightMeterKey, column.rightField, safeMeters)
@@ -3206,10 +3248,18 @@ const calculateFormulaColumnBillTotals = ({
     }
     return {
       type: "basic",
+      include: column.include !== false,
       term: buildFormulaColumnTerm(column.meterKey, column.field, safeMeters)
     };
   });
-  const columnTotals = columnDefs.map((column) =>
+  const includedColumnDefs = columnDefs.filter((column) => column.include !== false);
+  if (!includedColumnDefs.length) {
+    return {
+      totalKwh: 0,
+      amount: 0
+    };
+  }
+  const columnTotals = includedColumnDefs.map((column) =>
     roundTo(
       safeRows.reduce((sum, row) => sum + parseNumber(getFormulaColumnValue(row, column)), 0),
       1
@@ -3351,7 +3401,7 @@ const createBill = ({
   createdAt = Date.now()
 }) => {
   const meterPool = Array.isArray(meters) ? meters.filter(Boolean) : [];
-  const billRate = roundTo(parseNumber(rate), 2);
+  const billRate = roundTo(parseNumber(rate), rateDecimalPlaces);
   const normalizedColumns =
     Array.isArray(detailColumns) && detailColumns.length
       ? detailColumns
@@ -3453,7 +3503,7 @@ const renderHistory = () => {
             <span class="badge ${badgeClass}">${badgeLabel}</span>
             <div class="period-range">${bill.periodStart} - ${bill.periodEnd}</div>
           </td>
-          <td>${formatNumber(bill.rate, 2)}</td>
+          <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
           <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
           <td>${formatCurrency(displayTotals.amount)}</td>
           <td>
@@ -3879,7 +3929,7 @@ const handleConfirm = async () => {
     `สร้างบิลใบที่ ${bill.billNo}\nช่วง ${bill.periodStart} - ${bill.periodEnd}\nพลังงานรวม ${formatNumber(
       bill.totalKwh,
       1
-    )} kWh x ฿${formatNumber(bill.rate, 2)} = ${formatCurrency(bill.amount)}`
+    )} kWh x ฿${formatNumber(bill.rate, rateDecimalPlaces)} = ${formatCurrency(bill.amount)}`
   );
 };
 
