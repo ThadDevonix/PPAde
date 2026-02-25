@@ -160,7 +160,7 @@ const extractRows = (payload) => {
 };
 const resolveUserSiteIds = async (user) => {
   const base = extractUserSiteIds(user);
-  if (base.length || normalizeRole(user?.role) === "superadmin") return base;
+  if (normalizeRole(user?.role) === "superadmin") return base;
 
   const email = normalizeEmail(user?.email ?? user?.user_email ?? user?.username);
   if (!email) return base;

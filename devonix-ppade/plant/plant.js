@@ -91,6 +91,51 @@ const extractPlantUserSiteIds = (user) =>
     user?.data?.allowedSiteIds,
     user?.data?.allowed_site_ids
   ]);
+const normalizePlantEmail = (value) => plantReadText(value).toLowerCase();
+const extractPlantRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "rows", "list", "result", "users"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const resolvePlantUserSiteIds = async (user) => {
+  const base = extractPlantUserSiteIds(user);
+  if (normalizePlantRole(user?.role) === "superadmin") return base;
+  const email = normalizePlantEmail(
+    user?.email ?? user?.user_email ?? user?.userEmail ?? user?.username
+  );
+  if (!email) return base;
+  try {
+    const response = await fetch("/api/users", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) return base;
+    const payload = await response.json().catch(() => ({}));
+    const rows = extractPlantRows(payload);
+    const matched = rows.find((row) => {
+      const rowEmail = normalizePlantEmail(
+        row?.email ?? row?.user_email ?? row?.userEmail ?? row?.username
+      );
+      return rowEmail && rowEmail === email;
+    });
+    if (!matched) return base;
+    const resolved = extractPlantUserSiteIds(matched);
+    return resolved.length ? resolved : base;
+  } catch {
+    return base;
+  }
+};
 const getSelectedPlantSiteId = (targetPlant) =>
   toPositivePlantInt(targetPlant?.apiId ?? targetPlant?.siteId ?? targetPlant?.site_id ?? targetPlant?.id);
 const redirectToLogin = () => {
@@ -138,7 +183,7 @@ const ensurePlantAccess = async () => {
         denyPlantAccess("ไม่พบ Site ID ของ Plant นี้ จึงไม่สามารถยืนยันสิทธิ์ได้");
         return false;
       }
-      const allowedSiteIds = extractPlantUserSiteIds(user);
+      const allowedSiteIds = await resolvePlantUserSiteIds(user);
       if (!allowedSiteIds.includes(plantSiteId)) {
         denyPlantAccess("คุณไม่มีสิทธิ์เข้าถึง Plant นี้");
         return false;
