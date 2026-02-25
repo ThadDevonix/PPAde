@@ -697,6 +697,83 @@ const readText = (...values) => {
   }
   return "";
 };
+const defaultAutoScheduleTimezone = "Asia/Bangkok";
+const autoDateFormatterByTimezone = new Map();
+const getDateFormatterByTimezone = (timeZone) => {
+  const key = readText(timeZone);
+  if (!key) return null;
+  if (!autoDateFormatterByTimezone.has(key)) {
+    autoDateFormatterByTimezone.set(
+      key,
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: key,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      })
+    );
+  }
+  return autoDateFormatterByTimezone.get(key);
+};
+const getDatePartsInTimeZone = (value = new Date(), preferredTimeZone = "") => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  const candidates = [];
+  [
+    readText(preferredTimeZone),
+    readText(plant?.timezone, plant?.timeZone),
+    defaultAutoScheduleTimezone
+  ].forEach((zone) => {
+    if (!zone || candidates.includes(zone)) return;
+    candidates.push(zone);
+  });
+  for (const zone of candidates) {
+    try {
+      const formatter = getDateFormatterByTimezone(zone);
+      if (!formatter) continue;
+      const parts = formatter.formatToParts(date);
+      const year = Number(parts.find((part) => part.type === "year")?.value);
+      const month = Number(parts.find((part) => part.type === "month")?.value);
+      const day = Number(parts.find((part) => part.type === "day")?.value);
+      if (!year || !month || !day) continue;
+      return {
+        year,
+        month,
+        day,
+        timeZone: zone
+      };
+    } catch {
+      // try fallback timezone
+    }
+  }
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    timeZone: ""
+  };
+};
+const getAutoScheduleTimezone = () =>
+  readText(getDatePartsInTimeZone(new Date())?.timeZone) || defaultAutoScheduleTimezone;
+const getAutoRunContextForCurrentMonth = (cutoffDay, options = {}) => {
+  const normalizedCutoffDay =
+    Number(cutoffDay) || schedule?.cutoffDay || defaultSchedule.cutoffDay;
+  const referenceDate = options?.referenceDate instanceof Date
+    ? options.referenceDate
+    : new Date();
+  const preferredTimeZone = readText(options?.timeZone);
+  const current = getDatePartsInTimeZone(referenceDate, preferredTimeZone);
+  if (!current) return null;
+  const effectiveDay = clampDay(current.year, current.month - 1, normalizedCutoffDay);
+  const runDate = new Date(current.year, current.month - 1, effectiveDay);
+  return {
+    ...current,
+    cutoffDay: normalizedCutoffDay,
+    effectiveDay,
+    runDate,
+    shouldRunNow: current.day > effectiveDay
+  };
+};
 const escapeHtml = (value) =>
   String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -2154,7 +2231,7 @@ let meterProfiles = [];
 let historyKey = "billingHistory";
 let scheduleKey = "billingSchedule";
 let sequenceKey = "billingSequence";
-const billingCacheResetVersionKey = "billingCacheResetV20260224R1";
+const billingCacheResetVersionKey = "billingDataPurgeV20260225R3";
 const billingStoragePrefixes = [
   "billingHistory",
   "billingSchedule",
@@ -2169,8 +2246,8 @@ const clearBillingStorageOnce = () => {
       if (key) keys.push(key);
     }
     keys.forEach((key) => {
-      const shouldRemove = billingStoragePrefixes.some(
-        (prefix) => key === prefix || key.startsWith(`${prefix}:`)
+      const shouldRemove = billingStoragePrefixes.some((prefix) =>
+        typeof prefix === "string" && prefix ? key.startsWith(prefix) : false
       );
       if (shouldRemove) {
         localStorage.removeItem(key);
@@ -2276,16 +2353,18 @@ const updateScheduleInfo = (cutoffDay = schedule.cutoffDay) => {
   const dayValue = Number(cutoffDay) || defaultSchedule.cutoffDay;
   const allDays = listAutoCutoffDays();
   const dayListText = allDays.length ? allDays.join(", ") : `${dayValue}`;
+  const scheduleTimezone = getAutoScheduleTimezone();
   if (billCyclePill)
-    billCyclePill.textContent = `สร้างอัตโนมัติวันที่ ${dayListText}`;
+    billCyclePill.textContent = `สร้างอัตโนมัติหลังวันที่ ${dayListText}`;
   if (billCutoffPill)
     billCutoffPill.textContent = `ตัดรอบวันที่ ${dayValue}`;
   if (billScheduleDesc)
-    billScheduleDesc.textContent = `ระบบจะสร้างบิลอัตโนมัติวันที่ ${dayListText} ของเดือน`;
+    billScheduleDesc.textContent =
+      `ระบบจะสร้างบิลอัตโนมัติหลังวันที่ ${dayListText} ของเดือน (เวลา ${scheduleTimezone})`;
   if (billAutoDay) billAutoDay.textContent = `${dayValue}`;
   if (billAutoNote) {
     const nextRun = getNextRunDate(dayValue);
-    billAutoNote.textContent = `ครั้งถัดไป: ${formatDate(nextRun)}`;
+    billAutoNote.textContent = `รอบถัดไป: ${formatDate(nextRun)} (เวลา ${scheduleTimezone})`;
   }
   billScheduleInfo?.classList.remove("hidden");
 };
@@ -2952,17 +3031,9 @@ const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
 const getNextRunDate = (cutoffDay) => {
   const normalizedCutoffDay =
     Number(cutoffDay) || schedule.cutoffDay || defaultSchedule.cutoffDay;
-  const today = new Date();
-  const thisRunDay = clampDay(
-    today.getFullYear(),
-    today.getMonth(),
-    normalizedCutoffDay
-  );
-  let candidate = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    thisRunDay
-  );
+  const runContext = getAutoRunContextForCurrentMonth(normalizedCutoffDay);
+  if (!runContext) return new Date();
+  let candidate = runContext.runDate;
   const { start, end } = getAutoPeriodForRunDate(candidate, normalizedCutoffDay);
   const startStr = formatDate(start);
   const endStr = formatDate(end);
@@ -2973,8 +3044,8 @@ const getNextRunDate = (cutoffDay) => {
       b.periodStart === startStr &&
       b.periodEnd === endStr
   );
-  if (today > candidate || alreadyGenerated) {
-    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  if (runContext.shouldRunNow && alreadyGenerated) {
+    const nextMonth = new Date(runContext.year, runContext.month, 1);
     const nextRunDay = clampDay(
       nextMonth.getFullYear(),
       nextMonth.getMonth(),
@@ -3884,19 +3955,13 @@ const deleteAutoSchedule = (cutoffDay, options = {}) => {
 };
 
 const runAutoIfDue = async () => {
-  const today = new Date();
   const autoSchedules = getAutoSchedules();
   if (!autoSchedules.length) return;
   for (const autoConfig of autoSchedules) {
     const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
-    const effectiveDay = clampDay(
-      today.getFullYear(),
-      today.getMonth(),
-      cutoffDay
-    );
-    // Allow catch-up on/after cutoff day (not only exactly on that day).
-    if (today.getDate() < effectiveDay) continue;
-    const runDate = new Date(today.getFullYear(), today.getMonth(), effectiveDay);
+    const runContext = getAutoRunContextForCurrentMonth(cutoffDay);
+    if (!runContext?.shouldRunNow) continue;
+    const runDate = runContext.runDate;
     const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
     const startStr = formatDate(start);
     const endStr = formatDate(end);
@@ -4074,6 +4139,7 @@ const handleConfirm = async () => {
     updateSummary();
     const { runDate, startStr, endStr } = getAutoPreviewRange(cutoffDay);
     const allDays = listAutoCutoffDays().join(", ");
+    const scheduleTimezone = getAutoScheduleTimezone();
     closeModal();
     const successActionLabel = isMovingSchedule
       ? "ย้ายรอบอัตโนมัติแล้ว"
@@ -4083,7 +4149,7 @@ const handleConfirm = async () => {
     alert(
       `${successActionLabel}\nตัดรอบวันที่ ${
         savedAutoSchedule.cutoffDay
-      }\nระบบจะรันทุกเดือนวันที่ ${savedAutoSchedule.cutoffDay}\nรอบถัดไป: ${formatDate(
+      }\nระบบจะรันทุกเดือนหลังวันที่ ${savedAutoSchedule.cutoffDay} (เวลา ${scheduleTimezone})\nรอบตัดถัดไป: ${formatDate(
         runDate
       )}\nช่วงบิลรอบถัดไป: ${startStr} - ${endStr}\nวันที่ตัดรอบที่ตั้งไว้: ${allDays}`
     );
