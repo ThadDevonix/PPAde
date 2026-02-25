@@ -2829,11 +2829,11 @@ body.plant-page .meter-row-edit {
 }
 body.plant-page .meter-row-actions {
   position: relative;
-  z-index: 40;
+  z-index: 2;
 }
 body.plant-page .auto-queue-actions {
   position: relative;
-  z-index: 40;
+  z-index: 2;
 }
 body.plant-page .auto-queue-menu-toggle {
   min-width: 34px;
@@ -2845,7 +2845,7 @@ body.plant-page .meter-row-menu {
   top: auto;
   bottom: calc(100% + 6px);
   right: 0;
-  z-index: 120;
+  z-index: 8;
   min-width: 112px;
   display: grid;
   gap: 4px;
@@ -2917,7 +2917,7 @@ body.plant-page .calc-mode-btn.active {
   box-shadow: 0 8px 14px rgba(37, 99, 235, 0.4);
 }
 body.plant-page #meter-create-modal {
-  z-index: 30;
+  z-index: 220;
 }
 body.plant-page #meter-create-modal .modal-content.small {
   width: min(440px, 92vw);
@@ -2959,6 +2959,7 @@ body.plant-page .panel-sub {
 }
 body.plant-page .modal {
   background: rgba(3, 12, 30, 0.5);
+  z-index: 200;
 }
 body.plant-page .modal-content {
   border-radius: 16px;
