@@ -2228,6 +2228,9 @@ let schedule = { ...defaultSchedule };
 let history = [];
 let billSequence = 0;
 let meterProfiles = [];
+const billingHistoryStoragePrefix = "billingHistoryV2";
+const billingScheduleStoragePrefix = "billingScheduleV1";
+const billingSequenceStoragePrefix = "billingSequenceV1";
 let historyKey = "billingHistory";
 let scheduleKey = "billingSchedule";
 let sequenceKey = "billingSequence";
@@ -2903,11 +2906,176 @@ const getDailyEnergyForRange = async (startStr, endStr) => {
   return { rows: apiRows, source: "api" };
 };
 
+const parsePositiveStorageInt = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const normalized = Math.trunc(num);
+  return normalized > 0 ? normalized : null;
+};
+const normalizeStorageIdentityToken = (value) => {
+  const normalized = normalizeSiteToken(value).replace(/[^a-z0-9_-]+/g, "_");
+  return normalized.replace(/^_+|_+$/g, "");
+};
+const getPlantStorageIdentity = (targetPlant = plant) => {
+  const apiId = parsePositiveStorageInt(
+    targetPlant?.apiId ?? targetPlant?.siteId ?? targetPlant?.site_id ?? targetPlant?.id
+  );
+  if (apiId) return `id:${apiId}`;
+  const siteCode = normalizeStorageIdentityToken(
+    readText(targetPlant?.siteCode, targetPlant?.site_code)
+  );
+  if (siteCode) return `code:${siteCode}`;
+  const safeName = readText(targetPlant?.name).replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return safeName ? `name:${safeName}` : "default";
+};
 const buildStorageKey = (prefix) => {
-  const safePlant = plant?.name
-    ? plant.name.replace(/[^a-zA-Z0-9_-]+/g, "_")
+  return `${prefix}:${getPlantStorageIdentity()}`;
+};
+const buildLegacyNameStorageKey = (prefix, targetPlant = plant) => {
+  const safePlant = targetPlant?.name
+    ? targetPlant.name.replace(/[^a-zA-Z0-9_-]+/g, "_")
     : "default";
   return `${prefix}:${safePlant}`;
+};
+const parseStoredBills = (rawValue) => {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+const billBelongsToPlantSnapshot = (bill, plantSnapshot) => {
+  if (!bill || typeof bill !== "object") return false;
+  const snapshotApiId = parsePositiveStorageInt(plantSnapshot?.apiId);
+  const billApiId = parsePositiveStorageInt(bill?.plantApiId);
+  if (snapshotApiId && billApiId && snapshotApiId === billApiId) return true;
+  const snapshotSiteCode = normalizeSiteToken(plantSnapshot?.siteCode);
+  const billSiteCode = normalizeSiteToken(bill?.plantSiteCode);
+  if (snapshotSiteCode && billSiteCode && snapshotSiteCode === billSiteCode) return true;
+  if (!snapshotApiId && !snapshotSiteCode) {
+    const snapshotName = normalizeSiteToken(plantSnapshot?.name);
+    const billPlantName = normalizeSiteToken(bill?.plantName);
+    if (snapshotName && billPlantName && snapshotName === billPlantName) return true;
+  }
+  return false;
+};
+const getBillMigrationSignature = (bill) => {
+  const billNo = parsePositiveStorageInt(bill?.billNo) || 0;
+  const periodStart = readText(bill?.periodStart);
+  const periodEnd = readText(bill?.periodEnd);
+  const cutoffDay = parsePositiveStorageInt(bill?.cutoffDay) || 0;
+  if (billNo && periodStart && periodEnd) {
+    return `bill:${billNo}|${periodStart}|${periodEnd}|${cutoffDay}`;
+  }
+  const createdAt = Number(bill?.createdAt) || 0;
+  const total = Number(bill?.total) || 0;
+  if (periodStart && periodEnd && createdAt) {
+    return `time:${periodStart}|${periodEnd}|${createdAt}|${total}`;
+  }
+  return `raw:${JSON.stringify(bill)}`;
+};
+const getMaxBillNo = (items) =>
+  Array.isArray(items)
+    ? items.reduce((maxValue, item) => {
+      const billNo = parsePositiveStorageInt(item?.billNo) || 0;
+      return billNo > maxValue ? billNo : maxValue;
+    }, 0)
+    : 0;
+const getStorageKeySuffix = (key, prefix) => {
+  const head = `${prefix}:`;
+  if (typeof key !== "string" || !key.startsWith(head)) return "";
+  return key.slice(head.length);
+};
+const findLegacyHistorySourcesForPlant = (plantSnapshot) => {
+  const sources = [];
+  const prefix = `${billingHistoryStoragePrefix}:`;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || key === historyKey || !key.startsWith(prefix)) continue;
+      const entries = parseStoredBills(localStorage.getItem(key));
+      if (!entries.length) continue;
+      const matchCount = entries.filter((bill) => billBelongsToPlantSnapshot(bill, plantSnapshot)).length;
+      if (!matchCount) continue;
+      sources.push({
+        key,
+        suffix: getStorageKeySuffix(key, billingHistoryStoragePrefix),
+        entries,
+        matchCount,
+        maxBillNo: getMaxBillNo(entries)
+      });
+    }
+  } catch {
+    return [];
+  }
+  return sources.sort(
+    (a, b) =>
+      b.matchCount - a.matchCount ||
+      b.maxBillNo - a.maxBillNo ||
+      b.entries.length - a.entries.length
+  );
+};
+const migrateBillingStorageToStablePlantKey = () => {
+  const plantSnapshot = getCurrentPlantSnapshot();
+  const legacyNameHistoryKey = buildLegacyNameStorageKey(billingHistoryStoragePrefix);
+  let sources = findLegacyHistorySourcesForPlant(plantSnapshot);
+  if (!sources.length && legacyNameHistoryKey !== historyKey) {
+    const legacyEntries = parseStoredBills(localStorage.getItem(legacyNameHistoryKey));
+    if (legacyEntries.length) {
+      sources = [
+        {
+          key: legacyNameHistoryKey,
+          suffix: getStorageKeySuffix(legacyNameHistoryKey, billingHistoryStoragePrefix),
+          entries: legacyEntries,
+          matchCount: legacyEntries.length,
+          maxBillNo: getMaxBillNo(legacyEntries)
+        }
+      ];
+    }
+  }
+  if (!sources.length) return;
+
+  const existing = parseStoredBills(localStorage.getItem(historyKey));
+  const bySignature = new Map();
+  existing.forEach((bill) => {
+    bySignature.set(getBillMigrationSignature(bill), bill);
+  });
+  sources.forEach((source) => {
+    source.entries.forEach((bill) => {
+      const signature = getBillMigrationSignature(bill);
+      if (!bySignature.has(signature)) bySignature.set(signature, bill);
+    });
+  });
+  const mergedHistory = Array.from(bySignature.values());
+  if (mergedHistory.length !== existing.length) {
+    localStorage.setItem(historyKey, JSON.stringify(mergedHistory));
+  }
+
+  if (!localStorage.getItem(scheduleKey)) {
+    for (const source of sources) {
+      if (!source.suffix) continue;
+      const sourceScheduleKey = `${billingScheduleStoragePrefix}:${source.suffix}`;
+      const sourceSchedule = localStorage.getItem(sourceScheduleKey);
+      if (!sourceSchedule) continue;
+      localStorage.setItem(scheduleKey, sourceSchedule);
+      break;
+    }
+  }
+
+  let targetSequence = Number(localStorage.getItem(sequenceKey)) || 0;
+  sources.forEach((source) => {
+    if (!source.suffix) return;
+    const sourceSequenceKey = `${billingSequenceStoragePrefix}:${source.suffix}`;
+    const sourceSequence = Number(localStorage.getItem(sourceSequenceKey)) || 0;
+    if (sourceSequence > targetSequence) targetSequence = sourceSequence;
+  });
+  const maxMergedBillNo = getMaxBillNo(mergedHistory);
+  if (maxMergedBillNo > targetSequence) targetSequence = maxMergedBillNo;
+  if (targetSequence > (Number(localStorage.getItem(sequenceKey)) || 0)) {
+    localStorage.setItem(sequenceKey, String(targetSequence));
+  }
 };
 
 const loadSchedule = () => {
@@ -4348,9 +4516,10 @@ window.addEventListener("resize", () => {
 });
 
 clearBillingStorageOnce();
-historyKey = buildStorageKey("billingHistoryV2");
-scheduleKey = buildStorageKey("billingScheduleV1");
-sequenceKey = buildStorageKey("billingSequenceV1");
+historyKey = buildStorageKey(billingHistoryStoragePrefix);
+scheduleKey = buildStorageKey(billingScheduleStoragePrefix);
+sequenceKey = buildStorageKey(billingSequenceStoragePrefix);
+migrateBillingStorageToStablePlantKey();
 loadSchedule();
 loadHistory();
 
