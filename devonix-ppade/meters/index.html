@@ -28,9 +28,15 @@
     <section class="panel">
       <div class="meter-chart-head">
         <h3>ภาพรวมพลังงานมิเตอร์</h3>
-        <div class="meter-total-box" aria-live="polite">
-          <span class="label" id="total-kwh-label">Total kWh</span>
-          <strong id="total-kwh-value">-</strong>
+        <div class="meter-head-summary">
+          <div class="meter-total-box" aria-live="polite">
+            <span class="label" id="total-kwh-label">Total kWh</span>
+            <strong id="total-kwh-value">-</strong>
+          </div>
+          <div class="meter-live-box" aria-live="polite">
+            <span class="k">Total kWh : Live ล่าสุด</span>
+            <strong id="meter-live-value">-</strong>
+          </div>
         </div>
       </div>
       <div class="meter-chart-controls">

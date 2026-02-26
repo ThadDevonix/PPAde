@@ -23,6 +23,7 @@ const chartBox = document.getElementById("chart-box");
 const totalKwhValue = document.getElementById("total-kwh-value");
 const totalKwhLabel = document.getElementById("total-kwh-label");
 const totalKwhBox = totalKwhValue?.closest(".meter-total-box");
+const meterLiveValue = document.getElementById("meter-live-value");
 
 const periodSwitch = document.getElementById("chart-period-switch");
 const periodButtons = Array.from(
@@ -70,18 +71,31 @@ const thaiMonthFull = [
 ];
 
 let selectedPeriod = "day";
+const meterLivePollIntervalMs = 20 * 1000;
+let meterLivePollTimer = null;
+let meterLiveRequestToken = 0;
+let meterLiveInitialized = false;
 const readStrictPositiveId = (value) => {
   if (Number.isFinite(value) && value > 0) {
     return Math.trunc(value);
   }
   if (typeof value !== "string") return null;
   const text = value.trim();
-  if (!/^\d+$/.test(text)) return null;
-  const parsed = Number(text);
+  if (!text) return null;
+  if (/^\d+$/.test(text)) {
+    const parsed = Number(text);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+  // Accept only explicit ID-like forms to avoid accidentally parsing
+  // random numbers from labels/names.
+  const match = text.match(/^(?:device|meter|id)-(\d+)$/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 const selectedMeterId = (() => {
   const candidates = [
+    meterData?.apiId,
     meterData?.device_id,
     meterData?.deviceId,
     meterData?.meter_id,
@@ -137,10 +151,56 @@ const readLooseNumber = (row, keys) => {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : null;
 };
+const rowTimestampKeys = [
+  "reading_time",
+  "readingTime",
+  "datetime",
+  "timestamp",
+  "ts",
+  "time",
+  "created_at",
+  "createdAt"
+];
+const readRowTimestampValue = (row) => readLooseValue(row, rowTimestampKeys);
+const readRowLiveTimestampValue = (row) => {
+  const readingTime = readLooseValue(row, ["reading_time", "readingTime"]);
+  if (readingTime !== undefined && readingTime !== null && String(readingTime).trim()) {
+    return {
+      value: readingTime,
+      fromReadingTime: true
+    };
+  }
+  return {
+    value: readRowTimestampValue(row),
+    fromReadingTime: false
+  };
+};
+const toDateFromLiveTimestamp = (row) => {
+  const liveStamp = readRowLiveTimestampValue(row);
+  const rawValue = liveStamp?.value;
+  const parsed = toDate(rawValue);
+  if (!liveStamp?.fromReadingTime || typeof rawValue !== "string") return parsed;
+  const text = rawValue.trim();
+  if (!text || !/z$/i.test(text)) return parsed;
+  const localCandidate = toDate(text.replace(/z$/i, ""));
+  if (!localCandidate) return parsed;
+  if (!parsed) return localCandidate;
+  const nowMs = Date.now();
+  const parsedMs = parsed.getTime();
+  const localMs = localCandidate.getTime();
+  const parsedLooksFuture = parsedMs - nowMs > 2 * 60 * 60 * 1000;
+  const localNotFarFuture = localMs - nowMs <= 2 * 60 * 60 * 1000;
+  // Some devices send local clock time with "Z". Prefer local when UTC parse
+  // clearly jumps into the future.
+  if (parsedLooksFuture && localNotFarFuture) return localCandidate;
+  return parsed;
+};
 const readSolarSeriesValue = (row) => {
   return readLooseNumber(row, [
     "solar_in",
     "solarIn",
+    "value_in",
+    "valueIn",
     "solar in",
     "energy_in",
     "energyIn",
@@ -156,6 +216,8 @@ const readGridSeriesValue = (row) => {
   return readLooseNumber(row, [
     "self_use",
     "selfUse",
+    "value_out",
+    "valueOut",
     "self use",
     "energy_out",
     "energyOut",
@@ -481,11 +543,7 @@ const summarizeMonthFromRows = (rows) => {
 };
 const summarizeCreatedAtRange = (rows, timeZone = chartTimeZone) => {
   const dates = (Array.isArray(rows) ? rows : [])
-    .map((row) =>
-      toDate(
-        readLooseValue(row, ["created_at", "createdAt", "datetime", "timestamp", "ts", "time"])
-      )
-    )
+    .map((row) => toDate(readRowTimestampValue(row)))
     .filter(Boolean)
     .sort((a, b) => a.getTime() - b.getTime());
   if (!dates.length) return "";
@@ -586,19 +644,287 @@ const rowMatchesSelectedMeter = (row, wantedDeviceId, options = {}) => {
   }
   return true;
 };
+const setMeterLiveText = (text) => {
+  if (!meterLiveValue) return;
+  meterLiveValue.classList.remove("is-live-split");
+  meterLiveValue.textContent = readText(text) || "-";
+};
+const setMeterLiveDual = ({ energyInText = "-", energyOutText = "-", timeText = "" } = {}) => {
+  if (!meterLiveValue) return;
+  meterLiveValue.classList.add("is-live-split");
+  meterLiveValue.textContent = "";
+
+  const inRow = document.createElement("span");
+  inRow.className = "meter-live-row in";
+  const inTag = document.createElement("span");
+  inTag.className = "tag";
+  inTag.textContent = "IN";
+  const inValue = document.createElement("span");
+  inValue.className = "value";
+  inValue.textContent = energyInText;
+  inRow.append(inTag, inValue);
+
+  const outRow = document.createElement("span");
+  outRow.className = "meter-live-row out";
+  const outTag = document.createElement("span");
+  outTag.className = "tag";
+  outTag.textContent = "OUT";
+  const outValue = document.createElement("span");
+  outValue.className = "value";
+  outValue.textContent = energyOutText;
+  outRow.append(outTag, outValue);
+
+  meterLiveValue.append(inRow, outRow);
+  if (timeText) {
+    const stamp = document.createElement("span");
+    stamp.className = "meter-live-time";
+    stamp.textContent = `อัปเดต ${timeText}`;
+    meterLiveValue.append(stamp);
+  }
+};
+const buildLiveQueryCandidates = () => {
+  const queries = [];
+  const hasMeterId = Number.isFinite(selectedMeterId) && selectedMeterId > 0;
+  if (Number.isFinite(selectedSiteId) && selectedSiteId > 0) {
+    if (hasMeterId) {
+      queries.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&device_id=${encodeURIComponent(
+          selectedMeterId
+        )}&period=live`
+      );
+      queries.push(
+        `site_id=${encodeURIComponent(selectedSiteId)}&period=live&device_id=${encodeURIComponent(
+          selectedMeterId
+        )}`
+      );
+      return queries;
+    }
+    queries.push(`site_id=${encodeURIComponent(selectedSiteId)}&period=live`);
+  }
+  if (hasMeterId) {
+    queries.push(`period=live&device_id=${encodeURIComponent(selectedMeterId)}`);
+    return queries;
+  }
+  if (selectedEnergyName) {
+    queries.push(`period=live&name=${encodeURIComponent(selectedEnergyName)}`);
+  }
+  return queries;
+};
+const extractLiveRows = (payload, context = {}) => {
+  const scopedDeviceId = parseLoosePositiveId(context.scopedDeviceId);
+  const annotateScopedRow = (row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+    if (!Number.isFinite(scopedDeviceId) || scopedDeviceId <= 0) return row;
+    return {
+      ...row,
+      __queryDeviceScoped: true,
+      __queryDeviceId: scopedDeviceId
+    };
+  };
+  const directRows = [];
+  if (!payload || typeof payload !== "object") return [];
+  const queue = [payload];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+    if (rowHasEnergyInOut(current) || rowHasEnergyTotal(current)) {
+      directRows.push(annotateScopedRow(current));
+    }
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === "object") queue.push(value);
+    });
+  }
+  if (directRows.length) {
+    const rowsWithTimestamp = directRows.filter((row) => {
+      const stamp = toDateFromLiveTimestamp(row);
+      return Boolean(stamp);
+    });
+    return rowsWithTimestamp.length ? rowsWithTimestamp : directRows;
+  }
+  const seriesRows = extractSeriesRows(payload, context);
+  if (seriesRows.length) return seriesRows;
+  const energyRows = extractEnergyRows(payload, context);
+  if (energyRows.length) return energyRows;
+  return [];
+};
+const resolveLatestLiveRow = (rows) => {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  if (!sourceRows.length) return null;
+  const wantedDeviceId = Number(selectedMeterId);
+  const strictDeviceId =
+    Number.isFinite(wantedDeviceId) &&
+    wantedDeviceId > 0 &&
+    rowsContainExplicitDeviceId(sourceRows);
+
+  const filterByMeter = (useStrictDeviceId) =>
+    sourceRows.filter((row) =>
+      rowMatchesSelectedMeter(row, wantedDeviceId, {
+        strictDeviceId: useStrictDeviceId
+      })
+    );
+
+  let scopedRows = filterByMeter(strictDeviceId);
+  if (!scopedRows.length && strictDeviceId) {
+    scopedRows = filterByMeter(false);
+  }
+  const candidates = scopedRows.length ? scopedRows : sourceRows;
+  let latestWithStamp = null;
+  let latestStampMs = -Infinity;
+  let latestWithoutStamp = null;
+  candidates.forEach((row) => {
+    const hasAnyMetric =
+      parseFiniteNumber(readSolarSeriesValue(row)) !== null ||
+      parseFiniteNumber(readGridSeriesValue(row)) !== null ||
+      parseFiniteNumber(readEnergyTotalValue(row)) !== null;
+    if (!hasAnyMetric) return;
+    latestWithoutStamp = row;
+    const stamp = toDateFromLiveTimestamp(row);
+    const stampMs = stamp ? stamp.getTime() : NaN;
+    if (Number.isFinite(stampMs) && stampMs >= latestStampMs) {
+      latestWithStamp = row;
+      latestStampMs = stampMs;
+    }
+  });
+  return latestWithStamp || latestWithoutStamp;
+};
+const resolveLatestLiveSummary = (rows) => {
+  const latestLiveRow = resolveLatestLiveRow(rows);
+  if (latestLiveRow) {
+    const energyIn = parseFiniteNumber(readSolarSeriesValue(latestLiveRow));
+    const energyOut = parseFiniteNumber(readGridSeriesValue(latestLiveRow));
+    const energyTotal = parseFiniteNumber(readEnergyTotalValue(latestLiveRow));
+    const stamp = toDateFromLiveTimestamp(latestLiveRow);
+    const stampMs = stamp ? stamp.getTime() : null;
+    if (energyIn !== null || energyOut !== null) {
+      return {
+        mode: "dual",
+        energyIn,
+        energyOut,
+        stampMs
+      };
+    }
+    if (energyTotal !== null) {
+      return {
+        mode: "single",
+        energyKwh: energyTotal,
+        stampMs
+      };
+    }
+  }
+  const seriesRows = normalizeChartRows(rows, {
+    period: "day",
+    limit: 0,
+    deviceId: selectedMeterId,
+    forceDualMetrics: true
+  });
+  const latestSeries = [...seriesRows]
+    .reverse()
+    .find((row) => parseFiniteNumber(row?.solarIn) !== null || parseFiniteNumber(row?.selfUse) !== null);
+  if (latestSeries) {
+    return {
+      mode: "dual",
+      energyIn: parseFiniteNumber(latestSeries.solarIn),
+      energyOut: parseFiniteNumber(latestSeries.selfUse),
+      stampMs: Number.isFinite(Number(latestSeries.stampMs)) ? Number(latestSeries.stampMs) : null
+    };
+  }
+  const energyRows = normalizeDailyEnergyRows(rows, { deviceId: selectedMeterId });
+  const latestEnergy = [...energyRows]
+    .reverse()
+    .find((row) => parseFiniteNumber(row?.energyKwh) !== null);
+  if (latestEnergy) {
+    return {
+      mode: "single",
+      energyKwh: parseFiniteNumber(latestEnergy.energyKwh),
+      stampMs: Number.isFinite(Number(latestEnergy.stampMs)) ? Number(latestEnergy.stampMs) : null
+    };
+  }
+  return null;
+};
+const formatLiveStamp = (stampMs) => {
+  if (!Number.isFinite(Number(stampMs))) return "";
+  const parts = getDatePartsInTimeZone(Number(stampMs), chartTimeZone);
+  if (!parts) return "";
+  return `${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}`;
+};
+const applyMeterLiveSummary = (summary) => {
+  if (!summary || typeof summary !== "object") {
+    setMeterLiveText("-");
+    return;
+  }
+  const timeText = formatLiveStamp(summary.stampMs);
+  if (summary.mode === "dual") {
+    const inText =
+      summary.energyIn === null || summary.energyIn === undefined
+        ? "-"
+        : `${formatMetric(Math.max(0, summary.energyIn))} kWh`;
+    const outText =
+      summary.energyOut === null || summary.energyOut === undefined
+        ? "-"
+        : `${formatMetric(Math.max(0, summary.energyOut))} kWh`;
+    setMeterLiveDual({
+      energyInText: inText,
+      energyOutText: outText,
+      timeText
+    });
+    return;
+  }
+  if (summary.mode === "single" && summary.energyKwh !== null && summary.energyKwh !== undefined) {
+    const suffix = timeText ? ` • ${timeText}` : "";
+    setMeterLiveText(`${formatMetric(Math.max(0, summary.energyKwh))} kWh${suffix}`);
+    return;
+  }
+  setMeterLiveText("-");
+};
+const refreshMeterLiveSummary = async () => {
+  if (!meterLiveValue) return;
+  const token = Date.now() + Math.random();
+  meterLiveRequestToken = token;
+  if (!meterLiveInitialized) setMeterLiveText("กำลังโหลด...");
+  try {
+    const queries = buildLiveQueryCandidates();
+    if (!queries.length) {
+      setMeterLiveText("-");
+      meterLiveInitialized = true;
+      return;
+    }
+    const rows = await requestRowsFromCandidates(
+      queries,
+      extractLiveRows,
+      energyApiCandidates
+    );
+    if (meterLiveRequestToken !== token) return;
+    const summary = resolveLatestLiveSummary(rows);
+    applyMeterLiveSummary(summary);
+    meterLiveInitialized = true;
+  } catch {
+    if (meterLiveRequestToken !== token) return;
+    setMeterLiveText("-");
+    meterLiveInitialized = true;
+  }
+};
+const stopMeterLivePolling = () => {
+  if (!meterLivePollTimer) return;
+  window.clearInterval(meterLivePollTimer);
+  meterLivePollTimer = null;
+};
+const startMeterLivePolling = () => {
+  if (!meterLiveValue) return;
+  stopMeterLivePolling();
+  refreshMeterLiveSummary();
+  meterLivePollTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    refreshMeterLiveSummary();
+  }, meterLivePollIntervalMs);
+};
 const resolveRowDateKey = (row) => {
   const explicit = normalizeDateKey(readLooseValue(row, ["date", "day"]));
   if (explicit) return explicit;
-  const stamp = toDate(
-    readLooseValue(row, [
-      "datetime",
-      "timestamp",
-      "ts",
-      "time",
-      "created_at",
-      "createdAt"
-    ])
-  );
+  const stamp = toDate(readRowTimestampValue(row));
   return stamp ? formatDateKey(stamp, chartTimeZone) : "";
 };
 const resolveYearMonthIndexFromLabel = (value) => {
@@ -648,16 +974,7 @@ const resolveRowYearForYear = (row, fallbackYear = NaN) => {
   const explicitDateKey = normalizeDateKey(readLooseValue(row, ["date", "day"]));
   const explicitParts = parseDateKeyParts(explicitDateKey);
   if (Number.isFinite(explicitParts?.year)) return Number(explicitParts.year);
-  const stamp = toDate(
-    readLooseValue(row, [
-      "datetime",
-      "timestamp",
-      "ts",
-      "time",
-      "created_at",
-      "createdAt"
-    ])
-  );
+  const stamp = toDate(readRowTimestampValue(row));
   const stampParts = getDatePartsInTimeZone(stamp, chartTimeZone);
   if (Number.isFinite(stampParts?.year)) return Number(stampParts.year);
   if (Number.isFinite(Number(fallbackYear)) && Number(fallbackYear) > 0) {
@@ -698,8 +1015,8 @@ const rowHasEnergyInOut = (row) =>
   row &&
   typeof row === "object" &&
   !Array.isArray(row) &&
-  (readLooseNumber(row, ["energy_in", "energyIn"]) !== null ||
-    readLooseNumber(row, ["energy_out", "energyOut"]) !== null);
+  (readLooseNumber(row, ["energy_in", "energyIn", "value_in", "valueIn"]) !== null ||
+    readLooseNumber(row, ["energy_out", "energyOut", "value_out", "valueOut"]) !== null);
 const rowsContainEnergyInOut = (rows) =>
   (Array.isArray(rows) ? rows : []).some((row) => rowHasEnergyInOut(row));
 const rowHasEnergyTotal = (row) =>
@@ -712,20 +1029,8 @@ const rowHasTemporalHint = (row) =>
   typeof row === "object" &&
   !Array.isArray(row) &&
   Boolean(
-    readLooseValue(row, [
-      "datetime",
-      "timestamp",
-      "ts",
-      "time",
-      "created_at",
-      "createdAt",
-      "date",
-      "day",
-      "label",
-      "hour",
-      "month",
-      "year"
-    ])
+    readRowTimestampValue(row) ||
+      readLooseValue(row, ["date", "day", "label", "hour", "month", "year"])
   );
 const extractSummaryMeta = (payload) => {
   if (!payload || typeof payload !== "object") return null;
@@ -742,8 +1047,18 @@ const extractSummaryMeta = (payload) => {
     const summary = candidate?.summary;
     if (!summary || typeof summary !== "object" || Array.isArray(summary)) continue;
     const unit = readText(readLooseValue(summary, ["unit"]));
-    const energyIn = readLooseNumber(summary, ["energy_in", "energyIn"]);
-    const energyOut = readLooseNumber(summary, ["energy_out", "energyOut"]);
+    const energyIn = readLooseNumber(summary, [
+      "energy_in",
+      "energyIn",
+      "value_in",
+      "valueIn"
+    ]);
+    const energyOut = readLooseNumber(summary, [
+      "energy_out",
+      "energyOut",
+      "value_out",
+      "valueOut"
+    ]);
     if (unit || energyIn !== null || energyOut !== null) {
       return { unit, energyIn, energyOut };
     }
@@ -809,14 +1124,7 @@ const extractTimeseriesRows = (payload, scopedDeviceId = null) => {
             }
           }
           if (dateKey && !existingDate) next.date = dateKey;
-          const existingStamp = readLooseValue(next, [
-            "datetime",
-            "timestamp",
-            "ts",
-            "time",
-            "created_at",
-            "createdAt"
-          ]);
+          const existingStamp = readRowTimestampValue(next);
           if (!existingStamp && dateKey && period === "day") {
             const rawHour = Number(readLooseValue(next, ["hour"]));
             const label = readText(readLooseValue(next, ["label", "time", "time_label", "timeLabel"]));
@@ -952,16 +1260,7 @@ const normalizeMonthlyEnergyRows = (
           }
           return "";
         })();
-        const directStamp = toDate(
-          readLooseValue(row, [
-            "created_at",
-            "createdAt",
-            "datetime",
-            "timestamp",
-            "ts",
-            "time"
-          ])
-        );
+        const directStamp = toDate(readRowTimestampValue(row));
         const fallbackDate = resolvedDateKey
           ? toDate(`${resolvedDateKey}T00:00:00`)
           : null;
@@ -1062,16 +1361,7 @@ const normalizeDailyEnergyRows = (rows, { dateKey, deviceId } = {}) => {
     const normalized = sourceRows
       .map((row, idx) => {
         const explicitDateKey = resolveRowDateKey(row);
-        const stamp = toDate(
-          readLooseValue(row, [
-            "created_at",
-            "createdAt",
-            "datetime",
-            "timestamp",
-            "ts",
-            "time"
-          ])
-        );
+        const stamp = toDate(readRowTimestampValue(row));
         const pointDateKey = explicitDateKey || (stamp ? formatDateKey(stamp, chartTimeZone) : "");
         const energyTotal = readEnergyTotalValue(row);
         if (energyTotal === null) return null;
@@ -1182,16 +1472,7 @@ const normalizeChartRows = (
             dateKey = `${yearValue}-${pad2(monthValue)}-01`;
           }
         }
-        const directStamp = toDate(
-          readLooseValue(row, [
-            "datetime",
-            "timestamp",
-            "ts",
-            "time",
-            "created_at",
-            "createdAt"
-          ])
-        );
+        const directStamp = toDate(readRowTimestampValue(row));
         const stamp = directStamp || (dateKey ? toDate(`${dateKey}T00:00:00`) : null);
         const rawSolarValue = readSolarSeriesValue(row);
         const rawSelfUseValue = readGridSeriesValue(row);
@@ -1238,13 +1519,17 @@ const normalizeChartRows = (
 
     const deduped = [];
     normalized.forEach((row) => {
-      const prev = deduped[deduped.length - 1];
+      const prevIdx = deduped.length - 1;
+      const prev = deduped[prevIdx];
       if (
         prev &&
         prev.dateKey === row.dateKey &&
         prev.solarIn === row.solarIn &&
         prev.selfUse === row.selfUse
       ) {
+        // Keep the latest timestamp for identical values so "live updated time"
+        // reflects the most recent API reading instead of the first duplicate.
+        deduped[prevIdx] = row;
         return;
       }
       deduped.push(row);
@@ -1341,14 +1626,7 @@ const resolveHourFromRow = (row) => {
   const stampValue =
     Number.isFinite(Number(row.stampMs)) && Number(row.stampMs) > 0
       ? Number(row.stampMs)
-      : readLooseValue(row, [
-          "datetime",
-          "timestamp",
-          "ts",
-          "time",
-          "created_at",
-          "createdAt"
-        ]);
+      : readRowTimestampValue(row);
   const parts = getDatePartsInTimeZone(stampValue, chartTimeZone);
   if (!parts || !Number.isFinite(parts.hour)) return null;
   const hour = Math.trunc(parts.hour);
@@ -3226,5 +3504,11 @@ monthSelect?.addEventListener("change", () => {
 daySelect?.addEventListener("change", () => {
   loadChartBySelection();
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  refreshMeterLiveSummary();
+});
+window.addEventListener("beforeunload", stopMeterLivePolling);
 
 loadChartBySelection();
+startMeterLivePolling();

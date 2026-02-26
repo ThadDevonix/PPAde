@@ -871,10 +871,28 @@ const extractApiDeviceRows = (payload) => {
   }
   return [];
 };
+const parseLoosePositiveMeterInt = (value) => {
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && asNumber > 0) return Math.trunc(asNumber);
+  if (typeof value !== "string") return null;
+  const match = value.match(/(\d+)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+};
 const normalizeMeterRow = (row) => {
   if (!row || typeof row !== "object") return null;
-  const deviceId = Number(row.id ?? row.device_id ?? row.deviceId);
-  const siteId = Number(row.site_id ?? row.siteId);
+  const deviceId = parseLoosePositiveMeterInt(
+    row.id ??
+      row.apiId ??
+      row.device_id ??
+      row.deviceId ??
+      row.meter_id ??
+      row.meterId
+  );
+  const siteId = parseLoosePositiveMeterInt(
+    row.site_id ?? row.siteId ?? row.site ?? row.apiSiteId
+  );
   const name = readText(
     row.device_name,
     row.deviceName,
@@ -930,7 +948,11 @@ const normalizeMeterRow = (row) => {
       : serial;
   return {
     id: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+    apiId: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+    deviceId: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
+    device_id: Number.isFinite(deviceId) && deviceId > 0 ? deviceId : null,
     siteId: Number.isFinite(siteId) && siteId > 0 ? siteId : null,
+    site_id: Number.isFinite(siteId) && siteId > 0 ? siteId : null,
     siteCode: readText(row.site_code, row.siteCode),
     siteName: readText(row.site_name, row.siteName),
     name: name || serialLabel || serial || "Meter",

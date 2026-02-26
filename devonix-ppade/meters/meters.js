@@ -50,6 +50,337 @@ const syncPlantToHomeStorage = () => {
 
 let plantMeters = normalizeLocalMeters(plant.devices);
 let isSavingMeterCreate = false;
+const meterLiveEnergyApiCandidates = [
+  "/api/energy",
+  "http://localhost:3000/api/energy",
+  "http://127.0.0.1:3000/api/energy",
+  "https://solarmdb.devonix.co.th/api/energy"
+];
+const meterLivePollIntervalMs = 20 * 1000;
+const meterLiveDeviceFallbackCap = 8;
+let meterLivePollTimer = null;
+let meterLiveInFlight = false;
+
+const getMeterLiveKey = (meter) => {
+  const meterId = getMeterPersistId(meter);
+  if (Number.isFinite(meterId) && meterId > 0) return `id:${meterId}`;
+  const nameKey = normalizeSiteToken(readText(meter?.name, meter?.device_name, meter?.deviceName));
+  const snKey = normalizeSiteToken(
+    readText(
+      meter?.sn,
+      meter?.serial,
+      meter?.device_sn,
+      meter?.modbus_address_in,
+      meter?.modbusAddressIn
+    )
+  );
+  if (nameKey || snKey) return `${nameKey}|${snKey}`;
+  return "unknown";
+};
+const readMeterLiveLooseValue = (row, keys) =>
+  typeof readLooseValue === "function" ? readLooseValue(row, keys) : undefined;
+const readMeterLiveNumber = (row, keys) => {
+  const value = readMeterLiveLooseValue(row, keys);
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? num : null;
+};
+const readMeterLiveText = (row, keys) => readText(readMeterLiveLooseValue(row, keys));
+const readLiveRowTimestamp = (row) =>
+  readMeterLiveLooseValue(row, [
+    "reading_time",
+    "readingTime",
+    "datetime",
+    "timestamp",
+    "ts",
+    "time",
+    "created_at",
+    "createdAt"
+  ]);
+const readLiveRowDeviceId = (row) =>
+  parseLoosePositiveInt(
+    readMeterLiveLooseValue(row, [
+      "device_id",
+      "deviceId",
+      "meter_id",
+      "meterId",
+      "id"
+    ]) ??
+      row?.device?.id ??
+      row?.device?.device_id ??
+      row?.meter?.id ??
+      row?.meter?.meter_id ??
+      row?.__queryDeviceId
+  );
+const readLiveRowNameKey = (row) =>
+  normalizeSiteToken(
+    readMeterLiveText(row, ["device_name", "deviceName", "meter_name", "meterName", "name"])
+  );
+const readLiveRowSnKey = (row) =>
+  normalizeSiteToken(
+    readMeterLiveText(
+      row,
+      ["device_sn", "deviceSn", "sn", "serial", "modbus_address_in", "modbusAddressIn"]
+    )
+  );
+const readLiveReadingFromRow = (row) => {
+  const energyIn = readMeterLiveNumber(row, [
+    "energy_in",
+    "energyIn",
+    "value_in",
+    "valueIn",
+    "solar_in",
+    "solarIn",
+    "pv",
+    "power_in",
+    "powerIn"
+  ]);
+  const energyOut = readMeterLiveNumber(row, [
+    "energy_out",
+    "energyOut",
+    "value_out",
+    "valueOut",
+    "self_use",
+    "selfUse",
+    "mdb_in",
+    "mdbIn",
+    "power_out",
+    "powerOut"
+  ]);
+  const total = readMeterLiveNumber(row, [
+    "energy_total",
+    "energyTotal",
+    "total_energy",
+    "totalEnergy",
+    "energy",
+    "kwh",
+    "kw",
+    "value",
+    "power"
+  ]);
+  const unit =
+    readMeterLiveText(row, ["unit", "energy_unit", "energyUnit", "power_unit", "powerUnit"]) ||
+    "kWh";
+  const timestampRaw = readLiveRowTimestamp(row);
+  const parsedTimestamp = Date.parse(String(timestampRaw || ""));
+  return {
+    energyIn,
+    energyOut,
+    total,
+    unit,
+    timestamp: Number.isFinite(parsedTimestamp) ? parsedTimestamp : null
+  };
+};
+const getLiveReadingScore = (reading) => {
+  if (!reading || typeof reading !== "object") return 0;
+  let score = 0;
+  if (Number.isFinite(reading.energyIn)) score += 2;
+  if (Number.isFinite(reading.energyOut)) score += 2;
+  if (Number.isFinite(reading.total)) score += 1;
+  if (Number.isFinite(reading.timestamp)) score += 1;
+  return score;
+};
+const shouldPreferLiveReading = (candidate, current) => {
+  if (!current) return true;
+  const candidateTs = Number(candidate?.timestamp);
+  const currentTs = Number(current?.timestamp);
+  const candidateHasTs = Number.isFinite(candidateTs);
+  const currentHasTs = Number.isFinite(currentTs);
+  if (candidateHasTs && currentHasTs && candidateTs !== currentTs) {
+    return candidateTs > currentTs;
+  }
+  if (candidateHasTs && !currentHasTs) return true;
+  if (!candidateHasTs && currentHasTs) return false;
+  return getLiveReadingScore(candidate) >= getLiveReadingScore(current);
+};
+const setPreferredLiveReading = (map, key, reading) => {
+  if (!map || typeof map.set !== "function" || !key) return;
+  const current = map.get(key);
+  if (shouldPreferLiveReading(reading, current)) {
+    map.set(key, reading);
+  }
+};
+const extractLiveRowsFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object") return [];
+  const directRows =
+    typeof extractApiDeviceRows === "function" ? extractApiDeviceRows(payload) : [];
+  if (Array.isArray(directRows) && directRows.length) return directRows;
+
+  const rows = [];
+  const queue = [payload];
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) {
+      queue.push(...node);
+      continue;
+    }
+    const reading = readLiveReadingFromRow(node);
+    if (
+      Number.isFinite(reading.energyIn) ||
+      Number.isFinite(reading.energyOut) ||
+      Number.isFinite(reading.total)
+    ) {
+      rows.push(node);
+    }
+    Object.values(node).forEach((child) => {
+      if (child && typeof child === "object") queue.push(child);
+    });
+  }
+  return rows;
+};
+const buildMeterLiveMap = (meters, rows) => {
+  const byId = new Map();
+  const byName = new Map();
+  const bySn = new Map();
+  const anonymousReadings = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return;
+    const reading = readLiveReadingFromRow(row);
+    if (
+      !Number.isFinite(reading.energyIn) &&
+      !Number.isFinite(reading.energyOut) &&
+      !Number.isFinite(reading.total)
+    ) {
+      return;
+    }
+    const rowDeviceId = readLiveRowDeviceId(row);
+    const rowNameKey = readLiveRowNameKey(row);
+    const rowSnKey = readLiveRowSnKey(row);
+    if (Number.isFinite(rowDeviceId) && rowDeviceId > 0) {
+      setPreferredLiveReading(byId, rowDeviceId, reading);
+    }
+    if (rowNameKey) setPreferredLiveReading(byName, rowNameKey, reading);
+    if (rowSnKey) setPreferredLiveReading(bySn, rowSnKey, reading);
+    if (!(rowDeviceId || rowNameKey || rowSnKey)) {
+      anonymousReadings.push(reading);
+    }
+  });
+  const anonymousFallback =
+    anonymousReadings.length === 1 ? anonymousReadings[0] : null;
+  const nextMap = new Map();
+  (Array.isArray(meters) ? meters : []).forEach((meter) => {
+    const meterKey = getMeterLiveKey(meter);
+    if (!meterKey) return;
+    const meterId = getMeterPersistId(meter);
+    const hasMeterId = Number.isFinite(meterId) && meterId > 0;
+    const meterNameKey = normalizeSiteToken(
+      readText(meter?.name, meter?.device_name, meter?.deviceName)
+    );
+    const meterSnKey = normalizeSiteToken(
+      readText(
+        meter?.sn,
+        meter?.serial,
+        meter?.device_sn,
+        meter?.modbus_address_in,
+        meter?.modbusAddressIn
+      )
+    );
+    // Enforce device_id match when we have an ID to avoid cross-mapping readings.
+    const matched = hasMeterId
+      ? byId.get(meterId) || null
+      : (meterNameKey ? byName.get(meterNameKey) : null) ||
+        (meterSnKey ? bySn.get(meterSnKey) : null) ||
+        anonymousFallback;
+    if (matched) nextMap.set(meterKey, matched);
+  });
+  return nextMap;
+};
+const listMissingMeterIdsForLive = (meters, liveMap) => {
+  const ids = [];
+  const seen = new Set();
+  (Array.isArray(meters) ? meters : []).forEach((meter) => {
+    const meterId = getMeterPersistId(meter);
+    if (!Number.isFinite(meterId) || meterId <= 0) return;
+    const meterKey = getMeterLiveKey(meter);
+    if (!meterKey || (liveMap instanceof Map && liveMap.has(meterKey))) return;
+    if (seen.has(meterId)) return;
+    seen.add(meterId);
+    ids.push(meterId);
+  });
+  return ids;
+};
+const requestMeterLiveRows = async ({ deviceId = null } = {}) => {
+  const siteId = getPlantSiteIdForWrite();
+  if (!Number.isFinite(siteId) || siteId <= 0) return [];
+  const params = new URLSearchParams();
+  params.set("site_id", String(siteId));
+  params.set("period", "live");
+  const scopedDeviceId = parseLoosePositiveInt(deviceId);
+  if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
+    params.set("device_id", String(scopedDeviceId));
+  }
+  const search = `?${params.toString()}`;
+  let firstError = null;
+  for (const base of meterLiveEnergyApiCandidates) {
+    const url = `${base}${search}`;
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin"
+      });
+      if (!response.ok) {
+        if (!firstError) firstError = new Error(`GET ${url} failed (${response.status})`);
+        continue;
+      }
+      const payload = await response.json().catch(() => ({}));
+      const rows = extractLiveRowsFromPayload(payload);
+      if (Number.isFinite(scopedDeviceId) && scopedDeviceId > 0) {
+        return rows.map((row) =>
+          row && typeof row === "object" && !Array.isArray(row)
+            ? { ...row, __queryDeviceId: scopedDeviceId }
+            : row
+        );
+      }
+      return rows;
+    } catch (error) {
+      if (!firstError) firstError = error;
+    }
+  }
+  throw firstError || new Error("GET /api/energy failed");
+};
+const refreshMeterLiveReadings = async () => {
+  if (meterLiveInFlight) return;
+  if (!plantMeters.length) return;
+  meterLiveInFlight = true;
+  try {
+    const rows = await requestMeterLiveRows();
+    let nextLiveMap = buildMeterLiveMap(plantMeters, rows);
+    const missingIds = listMissingMeterIdsForLive(plantMeters, nextLiveMap).slice(
+      0,
+      meterLiveDeviceFallbackCap
+    );
+    if (missingIds.length) {
+      const scopedRowsList = await Promise.all(
+        missingIds.map((deviceId) =>
+          requestMeterLiveRows({ deviceId }).catch(() => [])
+        )
+      );
+      const mergedRows = rows.concat(...scopedRowsList);
+      nextLiveMap = buildMeterLiveMap(plantMeters, mergedRows);
+    }
+    renderPlantMeters();
+  } catch (error) {
+    console.warn("Failed to load live meter values", error);
+  } finally {
+    meterLiveInFlight = false;
+  }
+};
+const startMeterLivePolling = () => {
+  if (meterLivePollTimer) {
+    window.clearInterval(meterLivePollTimer);
+    meterLivePollTimer = null;
+  }
+  refreshMeterLiveReadings();
+  meterLivePollTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    refreshMeterLiveReadings();
+  }, meterLivePollIntervalMs);
+};
+const stopMeterLivePolling = () => {
+  if (!meterLivePollTimer) return;
+  window.clearInterval(meterLivePollTimer);
+  meterLivePollTimer = null;
+};
 
 const formatMeterSerialText = (meter) => {
   if (!meter || typeof meter !== "object") return "-";
@@ -671,6 +1002,10 @@ document.addEventListener("click", (event) => {
   if (target instanceof Element && target.closest(".meter-row-actions")) return;
   closeMeterRowMenus();
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshMeterLiveReadings();
+});
+window.addEventListener("beforeunload", stopMeterLivePolling);
 [meterCreateIn1Input, meterCreateIn2Input, meterCreateOut1Input, meterCreateOut2Input].forEach(
   (input) => {
     input?.addEventListener("input", () => {
@@ -691,6 +1026,7 @@ const bootstrapPlantPage = async () => {
   applyPlantMeters(plantMeters, { persistPlant: false });
   await hydrateCurrentUserRole();
   await hydratePlantMetersFromApi();
+  startMeterLivePolling();
   await initBilling();
   document.body.classList.remove("access-checking");
 };
