@@ -2668,7 +2668,10 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
         ? fallback.calcLabel.trim()
         : defaultCalcLabel,
     formulaColumns: sanitizeFormulaColumnDrafts(fallback?.formulaColumns),
-    detailColumns: normalizeDetailColumns(fallback?.detailColumns)
+    detailColumns: normalizeDetailColumns(fallback?.detailColumns),
+    updatedById: readText(fallback?.updatedById, fallback?.createdById),
+    updatedByName: readText(fallback?.updatedByName, fallback?.createdByName),
+    updatedByEmail: readText(fallback?.updatedByEmail, fallback?.createdByEmail)
   };
   const cutoffDay = Math.max(
     1,
@@ -2692,7 +2695,14 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
         : fallbackFields.calcLabel,
     formulaColumns: sanitizeFormulaColumnDrafts(raw?.formulaColumns || fallbackFields.formulaColumns),
     detailColumns: normalizeDetailColumns(raw?.detailColumns),
-    updatedAt
+    updatedAt,
+    updatedById: readText(raw?.updatedById, raw?.createdById, fallbackFields.updatedById),
+    updatedByName: readText(raw?.updatedByName, raw?.createdByName, fallbackFields.updatedByName),
+    updatedByEmail: readText(
+      raw?.updatedByEmail,
+      raw?.createdByEmail,
+      fallbackFields.updatedByEmail
+    )
   };
 };
 const getAutoSchedules = () =>
@@ -3890,6 +3900,11 @@ const renderAutoQueue = () => {
       const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
       const rateTypeLabel =
         rateTypeLabels[autoConfig.rateType] || autoConfig.rateType || "-";
+      const updatedByLabel = readText(
+        autoConfig?.updatedByName,
+        autoConfig?.updatedByEmail,
+        autoConfig?.updatedById
+      );
       const updatedAtLabel =
         Number.isFinite(Number(autoConfig?.updatedAt)) && Number(autoConfig.updatedAt) > 0
           ? formatDateTime(autoConfig.updatedAt)
@@ -3916,7 +3931,9 @@ const renderAutoQueue = () => {
           <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(
         autoConfig.defaultRate,
         rateDecimalPlaces
-      )}/kWh • ${escapeHtml(rateTypeLabel)}</td>
+      )}/kWh • ${escapeHtml(rateTypeLabel)}${
+        updatedByLabel ? ` • ผู้ตั้งค่า: ${escapeHtml(updatedByLabel)}` : ""
+      }</td>
           <td><span class="queue-status ready">${billCount} ใบ</span></td>
           <td>
             <div class="history-actions auto-queue-actions">
@@ -4835,6 +4852,7 @@ const handleConfirm = async () => {
 
   if (billMode === "auto") {
     if (!ensureAutoBillingPermission()) return;
+    const creator = getCurrentCreatorSnapshot();
     const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
     const editingCutoffDay = Number(autoScheduleEditorCutoffDay);
     const isEditingExistingSchedule =
@@ -4879,11 +4897,16 @@ const handleConfirm = async () => {
       calcLabel,
       formulaColumns,
       detailColumns,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      updatedById: creator.id,
+      updatedByName: creator.name,
+      updatedByEmail: creator.email
     });
     saveSchedule();
     updateScheduleInfo(cutoffDay);
+    await runAutoIfDue();
     renderAutoQueue();
+    renderHistory();
     updateSummary();
     const { runDate, startStr, endStr } = getAutoPreviewRange(cutoffDay);
     const allDays = listAutoCutoffDays().join(", ");
