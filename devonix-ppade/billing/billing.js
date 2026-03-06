@@ -2371,15 +2371,56 @@ const normalizeSchedulePayload = (value) => {
   };
 };
 const extractScheduleFromBillingPayload = (payload) => {
-  const candidates = [];
-  if (isRecord(payload)) candidates.push(payload);
-  if (isRecord(payload?.data)) candidates.push(payload.data);
-  if (isRecord(payload?.result)) candidates.push(payload.result);
-  for (const candidate of candidates) {
+  const objectCandidates = [];
+  const arrayCandidates = [];
+  const collectCandidate = (candidate) => {
+    if (Array.isArray(candidate)) {
+      arrayCandidates.push(candidate);
+      return;
+    }
+    if (isRecord(candidate)) objectCandidates.push(candidate);
+  };
+  collectCandidate(payload);
+  collectCandidate(payload?.data);
+  collectCandidate(payload?.result);
+  collectCandidate(payload?.items);
+
+  for (const rows of arrayCandidates) {
+    for (const row of rows) {
+      const normalized = normalizeSchedulePayload(row);
+      if (hasMeaningfulSchedule(normalized)) return normalized;
+    }
+  }
+
+  for (const candidate of objectCandidates) {
+    ["data", "result", "items", "rows", "list"].forEach((key) => {
+      if (Array.isArray(candidate?.[key])) arrayCandidates.push(candidate[key]);
+    });
+  }
+  for (const rows of arrayCandidates) {
+    for (const row of rows) {
+      const normalized = normalizeSchedulePayload(row);
+      if (hasMeaningfulSchedule(normalized)) return normalized;
+      if (isRecord(row)) {
+        const nested = normalizeSchedulePayload(
+          row.schedule ??
+            row.settings ??
+            row.billing_settings ??
+            row.billingSetting ??
+            row.billing_setting
+        );
+        if (hasMeaningfulSchedule(nested)) return nested;
+      }
+    }
+  }
+  for (const candidate of objectCandidates) {
     const nestedCandidates = [
       candidate.schedule,
       candidate.settings,
+      candidate.setting,
       candidate.billingSettings,
+      candidate.billing_setting,
+      candidate.billing_settings,
       candidate.config,
       candidate
     ];
@@ -2484,6 +2525,7 @@ const syncBillingSettingsToPrimaryApi = async () => {
     ...normalizeSchedulePayload(schedule),
     schedule: normalizeSchedulePayload(schedule),
     settings: normalizeSchedulePayload(schedule),
+    billing_settings: normalizeSchedulePayload(schedule),
     scope: "settings",
     type: "settings"
   };
@@ -4048,7 +4090,7 @@ const setBillMode = (mode) => {
   billAutoPreviewField?.classList.toggle("hidden", !isAuto);
   billCutoffField?.classList.toggle("hidden", !isAuto);
   billQueuePanel?.classList.toggle("hidden", !isAuto);
-  billHistoryPanel?.classList.toggle("hidden", isAuto);
+  billHistoryPanel?.classList.remove("hidden");
   if (billConfirm) {
     billConfirm.textContent = isAuto ? "บันทึกอัตโนมัติ" : "สร้างบิล";
   }
