@@ -2305,6 +2305,7 @@ const billingStoragePrefixes = [
 let billingStateSyncTask = Promise.resolve();
 let billingStateSaveQueued = false;
 let billingStateReady = false;
+let billingSettingsSyncSignature = "";
 const clearBillingStorageOnce = () => {
   try {
     if (localStorage.getItem(billingCacheResetVersionKey) === "done") return;
@@ -2328,6 +2329,67 @@ const clearBillingStorageOnce = () => {
 };
 const isRecord = (value) =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const billingScheduleFieldKeys = new Set([
+  "cutoffDay",
+  "cutoff_day",
+  "defaultRate",
+  "default_rate",
+  "rateType",
+  "rate_type",
+  "calcMethod",
+  "calc_method",
+  "calcFormula",
+  "calc_formula",
+  "calcLabel",
+  "calc_label",
+  "formulaColumns",
+  "formula_columns",
+  "detailColumns",
+  "detail_columns",
+  "autoSchedules",
+  "auto_schedules"
+]);
+const hasMeaningfulSchedule = (value) => {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  if (!keys.length) return false;
+  return keys.some((key) => billingScheduleFieldKeys.has(String(key || "").trim()));
+};
+const normalizeSchedulePayload = (value) => {
+  if (!isRecord(value)) return null;
+  return {
+    ...value,
+    cutoffDay: value.cutoffDay ?? value.cutoff_day,
+    defaultRate: value.defaultRate ?? value.default_rate,
+    rateType: value.rateType ?? value.rate_type,
+    calcMethod: value.calcMethod ?? value.calc_method,
+    calcFormula: value.calcFormula ?? value.calc_formula,
+    calcLabel: value.calcLabel ?? value.calc_label,
+    formulaColumns: value.formulaColumns ?? value.formula_columns,
+    detailColumns: value.detailColumns ?? value.detail_columns,
+    autoSchedules: value.autoSchedules ?? value.auto_schedules
+  };
+};
+const extractScheduleFromBillingPayload = (payload) => {
+  const candidates = [];
+  if (isRecord(payload)) candidates.push(payload);
+  if (isRecord(payload?.data)) candidates.push(payload.data);
+  if (isRecord(payload?.result)) candidates.push(payload.result);
+  for (const candidate of candidates) {
+    const nestedCandidates = [
+      candidate.schedule,
+      candidate.settings,
+      candidate.billingSettings,
+      candidate.config,
+      candidate
+    ];
+    for (const nested of nestedCandidates) {
+      const normalized = normalizeSchedulePayload(nested);
+      if (hasMeaningfulSchedule(normalized)) return normalized;
+    }
+  }
+  return null;
+};
 const buildBillingStateQueryString = (plantSnapshot = getCurrentPlantSnapshot()) => {
   const params = new URLSearchParams();
   if (Number.isFinite(Number(plantSnapshot?.apiId)) && Number(plantSnapshot.apiId) > 0) {
@@ -2338,6 +2400,55 @@ const buildBillingStateQueryString = (plantSnapshot = getCurrentPlantSnapshot())
   const siteName = readText(plantSnapshot?.name);
   if (siteName) params.set("site_name", siteName);
   return params.toString();
+};
+const buildBillingSettingsSearchCandidates = () => {
+  const baseQuery = buildBillingStateQueryString();
+  const baseParams = new URLSearchParams(baseQuery || "");
+  const candidates = [];
+  [
+    ["scope", "settings"],
+    ["type", "settings"],
+    ["mode", "settings"],
+    ["settings", "1"]
+  ].forEach(([key, value]) => {
+    const params = new URLSearchParams(baseParams);
+    params.set(key, value);
+    candidates.push(`?${params.toString()}`);
+  });
+  if (baseParams.toString()) {
+    candidates.push(`?${baseParams.toString()}`);
+  }
+  candidates.push("");
+  return Array.from(new Set(candidates));
+};
+const buildBillingSettingsSyncSignature = () => {
+  const plantSnapshot = getCurrentPlantSnapshot();
+  const identity = {
+    siteId:
+      Number.isFinite(Number(plantSnapshot?.apiId)) && Number(plantSnapshot.apiId) > 0
+        ? Math.trunc(Number(plantSnapshot.apiId))
+        : null,
+    siteCode: readText(plantSnapshot?.siteCode),
+    siteName: readText(plantSnapshot?.name)
+  };
+  return JSON.stringify({
+    identity,
+    schedule
+  });
+};
+const fetchBillingSettingsFromPrimaryApi = async () => {
+  const searches = buildBillingSettingsSearchCandidates();
+  for (const search of searches) {
+    const response = await fetch(`/api/billing${search}`, {
+      method: "GET",
+      credentials: "same-origin"
+    }).catch(() => null);
+    if (!response || !response.ok) continue;
+    const payload = await response.json().catch(() => ({}));
+    const schedulePayload = extractScheduleFromBillingPayload(payload);
+    if (schedulePayload) return schedulePayload;
+  }
+  return null;
 };
 const buildBillingStateRequestPayload = () => {
   const plantSnapshot = getCurrentPlantSnapshot();
@@ -2352,7 +2463,50 @@ const buildBillingStateRequestPayload = () => {
     billSequence
   };
 };
+const syncBillingSettingsToPrimaryApi = async () => {
+  if (!canManageAutoBilling()) return false;
+  const signature = buildBillingSettingsSyncSignature();
+  if (signature === billingSettingsSyncSignature) return true;
+  const plantSnapshot = getCurrentPlantSnapshot();
+  const siteId =
+    Number.isFinite(Number(plantSnapshot?.apiId)) && Number(plantSnapshot.apiId) > 0
+      ? Math.trunc(Number(plantSnapshot.apiId))
+      : null;
+  const siteCode = readText(plantSnapshot?.siteCode);
+  const siteName = readText(plantSnapshot?.name);
+  const payload = {
+    site_id: siteId,
+    siteId,
+    site_code: siteCode,
+    siteCode,
+    site_name: siteName,
+    siteName,
+    ...normalizeSchedulePayload(schedule),
+    schedule: normalizeSchedulePayload(schedule),
+    settings: normalizeSchedulePayload(schedule),
+    scope: "settings",
+    type: "settings"
+  };
+  const searches = ["?scope=settings", "?type=settings", ""];
+  for (const method of ["PUT"]) {
+    for (const search of searches) {
+      const response = await fetch(`/api/billing${search}`, {
+        method,
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+      }).catch(() => null);
+      if (!response || !response.ok) continue;
+      billingSettingsSyncSignature = signature;
+      return true;
+    }
+  }
+  return false;
+};
 const persistBillingStateToApi = async () => {
+  await syncBillingSettingsToPrimaryApi().catch(() => false);
   const query = buildBillingStateQueryString();
   if (!query) return;
   const response = await fetch(
@@ -2383,41 +2537,73 @@ const queueBillingStateSave = () => {
     .catch(() => null);
 };
 const hydrateBillingStateFromApi = async () => {
+  let hasAnyState = false;
+  let hasScheduleState = false;
+  const scheduleFromPrimary = await fetchBillingSettingsFromPrimaryApi().catch(() => null);
+  if (hasMeaningfulSchedule(scheduleFromPrimary)) {
+    try {
+      localStorage.setItem(scheduleKey, JSON.stringify(scheduleFromPrimary));
+      hasAnyState = true;
+      hasScheduleState = true;
+    } catch {
+      // ignore storage access errors
+    }
+  }
+
   const query = buildBillingStateQueryString();
-  if (!query) return false;
+  if (!query) {
+    if (hasAnyState) {
+      loadSchedule();
+      loadHistory();
+      billingSettingsSyncSignature = buildBillingSettingsSyncSignature();
+      return true;
+    }
+    return false;
+  }
   const response = await fetch(
     `${billingStateApiPath}${query ? `?${query}` : ""}`,
     {
       method: "GET",
       credentials: "same-origin"
     }
-  );
-  if (!response.ok) {
-    throw new Error(`GET ${billingStateApiPath} failed (${response.status})`);
+  ).catch(() => null);
+  if (!response || !response.ok) {
+    if (hasAnyState) {
+      loadSchedule();
+      loadHistory();
+      billingSettingsSyncSignature = buildBillingSettingsSyncSignature();
+    }
+    return hasAnyState;
   }
   const payload = await response.json().catch(() => ({}));
   const data = isRecord(payload?.data) ? payload.data : payload;
-  const hasState =
-    isRecord(data?.schedule) ||
-    Array.isArray(data?.history) ||
-    Number.isFinite(Number(data?.billSequence ?? data?.sequence));
-  if (!hasState) return false;
+  const scheduleFromState = normalizeSchedulePayload(data?.schedule);
+  const hasStateSchedule = hasMeaningfulSchedule(scheduleFromState);
+  const historyFromState = Array.isArray(data?.history) ? data.history : [];
+  const hasStateHistory = historyFromState.length > 0;
+  const sequenceValue = Number(data?.billSequence ?? data?.sequence);
+  const hasStateSequence = Number.isFinite(sequenceValue) && sequenceValue > 0;
   try {
-    if (isRecord(data?.schedule)) {
-      localStorage.setItem(scheduleKey, JSON.stringify(data.schedule));
+    if (!hasScheduleState && hasStateSchedule) {
+      localStorage.setItem(scheduleKey, JSON.stringify(scheduleFromState));
+      hasAnyState = true;
+      hasScheduleState = true;
     }
-    if (Array.isArray(data?.history)) {
-      localStorage.setItem(historyKey, JSON.stringify(data.history));
+    if (hasStateHistory) {
+      localStorage.setItem(historyKey, JSON.stringify(historyFromState));
+      hasAnyState = true;
     }
-    const sequenceValue = Number(data?.billSequence ?? data?.sequence);
-    if (Number.isFinite(sequenceValue) && sequenceValue >= 0) {
+    if (hasStateSequence) {
       localStorage.setItem(sequenceKey, String(Math.trunc(sequenceValue)));
+      hasAnyState = true;
     }
   } catch {
     // ignore storage access errors
   }
+  if (!hasAnyState) return false;
   loadSchedule();
   loadHistory();
+  billingSettingsSyncSignature = buildBillingSettingsSyncSignature();
   return true;
 };
 
