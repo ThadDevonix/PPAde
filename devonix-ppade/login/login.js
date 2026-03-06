@@ -1,8 +1,21 @@
 const form = document.getElementById("login-form");
 const emailInput = document.getElementById("email");
 const passwordInput = document.getElementById("password");
+const passwordToggleBtn = document.getElementById("password-toggle");
+const passwordToggleText = document.querySelector(".password-toggle-text");
 const submitBtn = document.getElementById("login-submit");
 const messageEl = document.getElementById("login-message");
+
+const setPasswordVisibility = (isVisible) => {
+  if (!passwordInput || !passwordToggleBtn) return;
+  passwordInput.type = isVisible ? "text" : "password";
+  passwordToggleBtn.classList.toggle("is-visible", isVisible);
+  passwordToggleBtn.setAttribute("aria-pressed", isVisible ? "true" : "false");
+  const buttonLabel = isVisible ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน";
+  passwordToggleBtn.setAttribute("aria-label", buttonLabel);
+  passwordToggleBtn.setAttribute("title", buttonLabel);
+  if (passwordToggleText) passwordToggleText.textContent = buttonLabel;
+};
 
 const setMessage = (text, type = "info") => {
   if (!messageEl) return;
@@ -63,6 +76,13 @@ const checkSession = async () => {
     // ignore session check errors
   }
 };
+
+passwordToggleBtn?.addEventListener("click", () => {
+  const isVisible = passwordInput?.type === "text";
+  setPasswordVisibility(!isVisible);
+});
+
+setPasswordVisibility(false);
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();

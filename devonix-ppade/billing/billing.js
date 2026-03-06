@@ -95,6 +95,13 @@ const deviceEnergyApiCandidates = [
   "http://127.0.0.1:3000/api/device-energy",
   "https://solarmdb.devonix.co.th/api/device-energy"
 ];
+const billingApiCandidates = [
+  "/api/billing",
+  "http://localhost:3000/api/billing",
+  "http://127.0.0.1:3000/api/billing",
+  "https://solarmdb.devonix.co.th/api/billing"
+];
+const billingStateApiPath = "/api/billing-state";
 const devicesApiCandidates = [
   "/api/devices",
   "http://localhost:3000/api/devices",
@@ -833,7 +840,7 @@ const getBillCreatorLabel = (bill) =>
 const getCurrentPlantSnapshot = () => {
   const name = readText(plant?.name) || "PONIX";
   const siteCode = readText(plant?.siteCode, plant?.site_code);
-  const apiId = Number(plant?.apiId);
+  const apiId = Number(plant?.apiId ?? plant?.siteId ?? plant?.site_id ?? plant?.id);
   return {
     name,
     siteCode,
@@ -844,7 +851,15 @@ const isSuperAdminRole = (role) =>
   normalizeRole(role)
     .replace(/[^a-z]/g, "") === "superadmin";
 const canDeleteMeters = () => currentUserRole !== "admin";
-const canDeleteAutoSchedules = () => isSuperAdminRole(currentUserRole);
+const canManageAutoBilling = () => isSuperAdminRole(currentUserRole);
+const canDeleteAutoSchedules = () => canManageAutoBilling();
+const ensureAutoBillingPermission = (showAlert = true) => {
+  if (canManageAutoBilling()) return true;
+  if (showAlert) {
+    alert("เฉพาะ Super Admin เท่านั้นที่ตั้งค่าออกบิลอัตโนมัติได้");
+  }
+  return false;
+};
 const normalizeDeviceStatus = (value) => {
   if (typeof value === "boolean") return value ? "online" : "offline";
   if (typeof value === "number") return value > 0 ? "online" : "offline";
@@ -1035,6 +1050,31 @@ const requestDeviceEnergyApi = async (search = "") => {
   if (lastHttpError) throw lastHttpError;
   if (lastNetworkError) throw lastNetworkError;
   throw new Error("GET /api/device-energy failed");
+};
+const requestBillingApi = async (search = "") => {
+  let lastHttpError = null;
+  let lastNetworkError = null;
+  for (const base of billingApiCandidates) {
+    const url = buildDevicesApiUrl(base, search);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin"
+      });
+      if (!response.ok) {
+        if (!lastHttpError) {
+          lastHttpError = new Error(`GET ${url} failed (${response.status})`);
+        }
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (!lastNetworkError) lastNetworkError = error;
+    }
+  }
+  if (lastHttpError) throw lastHttpError;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error("GET /api/billing failed");
 };
 const deleteMeterInApi = async (meter, targetPlant = plant) => {
   const parseLoosePositiveInt = (value) => {
@@ -2262,6 +2302,9 @@ const billingStoragePrefixes = [
   "billingSchedule",
   "billingSequence"
 ];
+let billingStateSyncTask = Promise.resolve();
+let billingStateSaveQueued = false;
+let billingStateReady = false;
 const clearBillingStorageOnce = () => {
   try {
     if (localStorage.getItem(billingCacheResetVersionKey) === "done") return;
@@ -2282,6 +2325,100 @@ const clearBillingStorageOnce = () => {
   } catch {
     // ignore storage access errors
   }
+};
+const isRecord = (value) =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const buildBillingStateQueryString = (plantSnapshot = getCurrentPlantSnapshot()) => {
+  const params = new URLSearchParams();
+  if (Number.isFinite(Number(plantSnapshot?.apiId)) && Number(plantSnapshot.apiId) > 0) {
+    params.set("site_id", String(Math.trunc(Number(plantSnapshot.apiId))));
+  }
+  const siteCode = readText(plantSnapshot?.siteCode);
+  if (siteCode) params.set("site_code", siteCode);
+  const siteName = readText(plantSnapshot?.name);
+  if (siteName) params.set("site_name", siteName);
+  return params.toString();
+};
+const buildBillingStateRequestPayload = () => {
+  const plantSnapshot = getCurrentPlantSnapshot();
+  return {
+    siteId: Number.isFinite(Number(plantSnapshot?.apiId)) && Number(plantSnapshot.apiId) > 0
+      ? Math.trunc(Number(plantSnapshot.apiId))
+      : null,
+    siteCode: readText(plantSnapshot?.siteCode),
+    siteName: readText(plantSnapshot?.name),
+    schedule,
+    history,
+    billSequence
+  };
+};
+const persistBillingStateToApi = async () => {
+  const query = buildBillingStateQueryString();
+  if (!query) return;
+  const response = await fetch(
+    `${billingStateApiPath}${query ? `?${query}` : ""}`,
+    {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      body: JSON.stringify(buildBillingStateRequestPayload())
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`PUT ${billingStateApiPath} failed (${response.status})`);
+  }
+};
+const queueBillingStateSave = () => {
+  if (!billingStateReady) return;
+  billingStateSaveQueued = true;
+  billingStateSyncTask = billingStateSyncTask
+    .catch(() => null)
+    .then(async () => {
+      if (!billingStateSaveQueued) return;
+      billingStateSaveQueued = false;
+      await persistBillingStateToApi();
+    })
+    .catch(() => null);
+};
+const hydrateBillingStateFromApi = async () => {
+  const query = buildBillingStateQueryString();
+  if (!query) return false;
+  const response = await fetch(
+    `${billingStateApiPath}${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      credentials: "same-origin"
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`GET ${billingStateApiPath} failed (${response.status})`);
+  }
+  const payload = await response.json().catch(() => ({}));
+  const data = isRecord(payload?.data) ? payload.data : payload;
+  const hasState =
+    isRecord(data?.schedule) ||
+    Array.isArray(data?.history) ||
+    Number.isFinite(Number(data?.billSequence ?? data?.sequence));
+  if (!hasState) return false;
+  try {
+    if (isRecord(data?.schedule)) {
+      localStorage.setItem(scheduleKey, JSON.stringify(data.schedule));
+    }
+    if (Array.isArray(data?.history)) {
+      localStorage.setItem(historyKey, JSON.stringify(data.history));
+    }
+    const sequenceValue = Number(data?.billSequence ?? data?.sequence);
+    if (Number.isFinite(sequenceValue) && sequenceValue >= 0) {
+      localStorage.setItem(sequenceKey, String(Math.trunc(sequenceValue)));
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  loadSchedule();
+  loadHistory();
+  return true;
 };
 
 const normalizeDetailColumns = (columns) => {
@@ -2814,6 +2951,157 @@ const resolveDailyUsageFromPayload = (payload, dateStr, meter) => {
   }
   return null;
 };
+const extractBillingRowsFromPayload = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const keys = ["data", "items", "rows", "list", "result", "billing", "bills", "days"];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of keys) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    for (const nestedKey of keys) {
+      if (Array.isArray(nested[nestedKey])) return nested[nestedKey];
+    }
+  }
+  return [];
+};
+const normalizeBillingRow = (row) => {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const date = normalizeDateValue(
+    row.date ?? row.day ?? row.datetime ?? row.timestamp ?? row.created_at ?? row.createdAt
+  );
+  if (!date) return null;
+  const usage = normalizeDailyUsageValue({
+    energy_in: row.energy_in ?? row.solar_in ?? row.solarIn ?? row.solar,
+    energy_out:
+      row.energy_out ??
+      row.self_use ??
+      row.selfUse ??
+      row.mdb_in ??
+      row.mdbIn ??
+      row.consumption,
+    mdb_out:
+      row.mdb_out ??
+      row.mdbOut ??
+      row.energy_export ??
+      row.energyExport ??
+      row.export
+  });
+  const by_meter = {};
+  const deviceRows = Array.isArray(row.devices)
+    ? row.devices
+    : Array.isArray(row.meters)
+      ? row.meters
+      : [];
+  deviceRows.forEach((device) => {
+    if (!device || typeof device !== "object") return;
+    const deviceType = normalizeSiteToken(
+      readText(device.device_type, device.deviceType, device.type)
+    );
+    const valueIn = parseNumber(
+      device.value_in ?? device.valueIn ?? device.energy_in ?? device.energyIn
+    );
+    const valueOut = parseNumber(
+      device.value_out ?? device.valueOut ?? device.energy_out ?? device.energyOut
+    );
+    const deviceUsage =
+      deviceType.includes("solar")
+        ? normalizeDailyUsageValue({
+            energy_in: valueIn,
+            energy_out: 0,
+            mdb_out: valueOut
+          })
+        : deviceType.includes("meter")
+          ? normalizeDailyUsageValue({
+              energy_in: valueIn,
+              energy_out: valueIn,
+              mdb_out: valueOut
+            })
+          : normalizeDailyUsageValue({
+              energy_in: valueIn,
+              energy_out: valueOut || valueIn,
+              mdb_out: valueOut
+            });
+    const keys = [
+      String(parseLoosePositiveMeterInt(device.device_id ?? device.deviceId ?? device.id) || ""),
+      readText(device.device_name, device.deviceName, device.name),
+      readText(device.device_sn, device.sn, device.serial)
+    ].filter((key) => key);
+    keys.forEach((key) => {
+      by_meter[key] = deviceUsage;
+    });
+  });
+  return {
+    date,
+    ...usage,
+    by_meter
+  };
+};
+const normalizeBillingRows = (rows, { startStr = "", endStr = "" } = {}) => {
+  const startDate = normalizeDateValue(startStr);
+  const endDate = normalizeDateValue(endStr);
+  const byDate = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const normalized = normalizeBillingRow(row);
+    if (!normalized) return;
+    if (startDate && normalized.date < startDate) return;
+    if (endDate && normalized.date > endDate) return;
+    byDate.set(normalized.date, normalized);
+  });
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+};
+const buildBillingApiSearchCandidates = (startStr, endStr) => {
+  const plantSiteId = Number(plant?.apiId);
+  const searchList = [];
+  const baseParams = new URLSearchParams();
+  if (Number.isFinite(plantSiteId) && plantSiteId > 0) {
+    baseParams.set("site_id", String(Math.trunc(plantSiteId)));
+  }
+  const normalizedStart = normalizeDateValue(startStr);
+  const normalizedEnd = normalizeDateValue(endStr);
+  if (normalizedStart) {
+    baseParams.set("start_date", normalizedStart);
+    baseParams.set("start", normalizedStart);
+    baseParams.set("from", normalizedStart);
+  }
+  if (normalizedEnd) {
+    baseParams.set("end_date", normalizedEnd);
+    baseParams.set("end", normalizedEnd);
+    baseParams.set("to", normalizedEnd);
+  }
+  if (normalizedStart || normalizedEnd) {
+    baseParams.set("period", "range");
+  }
+  searchList.push(baseParams.toString() ? `?${baseParams.toString()}` : "");
+
+  const start = parseDateInput(normalizedStart);
+  const end = parseDateInput(normalizedEnd);
+  if (start && end && start <= end) {
+    listMonthsBetween(start, end).forEach((monthToken) => {
+      const monthParams = new URLSearchParams(baseParams);
+      monthParams.set("period", "month");
+      monthParams.set("month", monthToken);
+      searchList.push(`?${monthParams.toString()}`);
+    });
+  }
+  return Array.from(new Set(searchList));
+};
+const fetchBillingRangeFromApi = async (startStr, endStr) => {
+  const searchCandidates = buildBillingApiSearchCandidates(startStr, endStr);
+  for (const search of searchCandidates) {
+    const response = await requestBillingApi(search).catch(() => null);
+    if (!response) continue;
+    const payload = await response.json().catch(() => null);
+    const rows = normalizeBillingRows(extractBillingRowsFromPayload(payload), {
+      startStr,
+      endStr
+    });
+    if (rows.length) return rows;
+  }
+  return [];
+};
 const fetchDeviceEnergyDayForMeter = async (meter, dateStr, monthPayloadCache = null) => {
   const meterId = Number(meter?.id);
   const dateParts = splitDateParts(dateStr);
@@ -2917,15 +3205,26 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
 };
 
 const fetchEnergyRange = async (startStr, endStr) => {
+  const billingRows = await fetchBillingRangeFromApi(startStr, endStr).catch(
+    () => []
+  );
+  if (billingRows.length) {
+    return {
+      rows: billingRows.sort((a, b) => a.date.localeCompare(b.date)),
+      source: "billing_api"
+    };
+  }
   const deviceRows = await fetchDeviceEnergyRange(startStr, endStr).catch(
     () => []
   );
-  return deviceRows.sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    rows: deviceRows.sort((a, b) => a.date.localeCompare(b.date)),
+    source: "api"
+  };
 };
 
 const getDailyEnergyForRange = async (startStr, endStr) => {
-  const apiRows = await fetchEnergyRange(startStr, endStr);
-  return { rows: apiRows, source: "api" };
+  return fetchEnergyRange(startStr, endStr);
 };
 
 const parsePositiveStorageInt = (value) => {
@@ -3166,7 +3465,12 @@ const loadSchedule = () => {
   }
 };
 const saveSchedule = () => {
-  localStorage.setItem(scheduleKey, JSON.stringify(schedule));
+  try {
+    localStorage.setItem(scheduleKey, JSON.stringify(schedule));
+  } catch {
+    // ignore storage access errors
+  }
+  queueBillingStateSave();
 };
 const loadHistory = () => {
   history = [];
@@ -3199,8 +3503,13 @@ const loadHistory = () => {
   }
 };
 const saveHistory = () => {
-  localStorage.setItem(historyKey, JSON.stringify(history));
-  localStorage.setItem(sequenceKey, String(billSequence));
+  try {
+    localStorage.setItem(historyKey, JSON.stringify(history));
+    localStorage.setItem(sequenceKey, String(billSequence));
+  } catch {
+    // ignore storage access errors
+  }
+  queueBillingStateSave();
 };
 const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
   const year = runDate.getFullYear();
@@ -3361,9 +3670,12 @@ const renderAutoQueue = () => {
         (bill) =>
           Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(cutoffDay)
       ).length;
-      const menuItems = [
-        `<button class="meter-row-menu-item" data-action="edit-schedule" data-cutoff="${cutoffDay}" type="button">แก้ไขรอบนี้</button>`
-      ];
+      const menuItems = [];
+      if (canManageAutoBilling()) {
+        menuItems.push(
+          `<button class="meter-row-menu-item" data-action="edit-schedule" data-cutoff="${cutoffDay}" type="button">แก้ไขรอบนี้</button>`
+        );
+      }
       if (canDeleteAutoSchedules()) {
         menuItems.push(
           `<button class="meter-row-menu-item danger" data-action="delete-schedule" data-cutoff="${cutoffDay}" type="button">ลบรอบนี้</button>`
@@ -3381,10 +3693,14 @@ const renderAutoQueue = () => {
           <td>
             <div class="history-actions auto-queue-actions">
               <button class="small-btn" data-action="view-history" data-cutoff="${cutoffDay}" type="button">ดูประวัติรอบนี้</button>
-              <button class="small-btn meter-row-edit auto-queue-menu-toggle" data-action="toggle-schedule-menu" data-cutoff="${cutoffDay}" type="button" aria-label="จัดการรอบนี้" title="จัดการรอบนี้">⋯</button>
+              ${
+  menuItems.length
+    ? `<button class="small-btn meter-row-edit auto-queue-menu-toggle" data-action="toggle-schedule-menu" data-cutoff="${cutoffDay}" type="button" aria-label="จัดการรอบนี้" title="จัดการรอบนี้">⋯</button>
               <div class="meter-row-menu auto-queue-menu hidden">
                 ${menuItems.join("")}
-              </div>
+              </div>`
+    : ""
+}
             </div>
           </td>
         </tr>
@@ -3519,12 +3835,24 @@ const applyAutoScheduleToModal = (cutoffDay) => {
 };
 
 const setBillMode = (mode) => {
-  billMode = mode === "auto" ? "auto" : "manual";
+  const requestedMode = mode === "auto" ? "auto" : "manual";
+  billMode = requestedMode;
   const isAuto = billMode === "auto";
+  const allowManageAuto = canManageAutoBilling();
   billFlowManualBtn?.classList.toggle("active", !isAuto);
   billFlowAutoBtn?.classList.toggle("active", isAuto);
   if (billNewBtn) {
-    billNewBtn.textContent = isAuto ? "ตั้งค่าอัตโนมัติ" : "สร้างบิลใหม่";
+    if (isAuto) {
+      billNewBtn.textContent = allowManageAuto ? "ตั้งค่าอัตโนมัติ" : "ดูรายการอัตโนมัติ";
+      billNewBtn.disabled = !allowManageAuto;
+      billNewBtn.title = allowManageAuto
+        ? ""
+        : "เฉพาะ Super Admin เท่านั้นที่ตั้งค่าออกบิลอัตโนมัติได้";
+    } else {
+      billNewBtn.textContent = "สร้างบิลใหม่";
+      billNewBtn.disabled = false;
+      billNewBtn.title = "";
+    }
   }
   if (billModalTitle) {
     billModalTitle.textContent = isAuto ? "ตั้งค่าออกบิลอัตโนมัติ" : "สร้างใบแจ้งค่าไฟ";
@@ -4099,6 +4427,7 @@ const deleteBill = (id) => {
   updateSummary();
 };
 const openAutoScheduleEditor = (cutoffDay) => {
+  if (!ensureAutoBillingPermission()) return;
   const targetDay = Number(cutoffDay);
   if (!Number.isFinite(targetDay) || targetDay < 1) return;
   if (!getAutoScheduleByCutoff(targetDay)) return;
@@ -4277,6 +4606,7 @@ const handleConfirm = async () => {
       : [...defaultSchedule.detailColumns];
 
   if (billMode === "auto") {
+    if (!ensureAutoBillingPermission()) return;
     const cutoffDay = billCutoff?.value ? Number(billCutoff.value) : 5;
     const editingCutoffDay = Number(autoScheduleEditorCutoffDay);
     const isEditingExistingSchedule =
@@ -4546,6 +4876,11 @@ loadSchedule();
 loadHistory();
 
 const initBilling = async () => {
+  const hydratedFromApi = await hydrateBillingStateFromApi().catch(() => false);
+  billingStateReady = true;
+  if (!hydratedFromApi) {
+    queueBillingStateSave();
+  }
   updateScheduleInfo(schedule.cutoffDay);
   await runAutoIfDue();
   renderAutoQueue();
@@ -4564,6 +4899,7 @@ billDeleteCutoff?.addEventListener("click", () => {
   deleteAutoSchedule(cutoffDay, { resetToCreateOnly: true });
 });
 billScheduleRemove?.addEventListener("click", () => {
+  if (!ensureAutoBillingPermission()) return;
   const ok = confirm("รีเซ็ตการตั้งค่าบิลอัตโนมัติกลับเป็นวันที่ 5 ใช่หรือไม่?");
   if (!ok) return;
   const defaultFields = buildDefaultScheduleFields();

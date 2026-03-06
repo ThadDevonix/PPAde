@@ -6,6 +6,7 @@ import { validatePassword, verifyPassword } from "./auth/password.js";
 import { createSession, deleteSession, getSession } from "./auth/sessionStore.js";
 import { getUserByEmail, sanitizeUser } from "./auth/userStore.js";
 import { applyUserAccessOverride, upsertUserAccessOverride } from "./auth/userAccessOverrideStore.js";
+import { readBillingState, writeBillingState } from "./billing/stateStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "devonix-ppade");
@@ -15,6 +16,7 @@ const upstreamDeviceEnergyApi = "https://solarmdb.devonix.co.th/api/device-energ
 const upstreamSitesApi = "https://solarmdb.devonix.co.th/api/sites";
 const upstreamDevicesApi = "https://solarmdb.devonix.co.th/api/devices";
 const upstreamUsersApi = "https://solarmdb.devonix.co.th/api/users";
+const upstreamBillingApi = "https://solarmdb.devonix.co.th/api/billing";
 const upstreamAuthLoginApi = "https://solarmdb.devonix.co.th/api/auth/login";
 const upstreamAuthLogoutApi = "https://solarmdb.devonix.co.th/api/auth/logout";
 const upstreamAuthMeApi = "https://solarmdb.devonix.co.th/api/auth/me";
@@ -61,21 +63,29 @@ const mime = (filePath) => {
 };
 
 const isAuthApiPath = (pathname) => pathname.startsWith("/api/auth/");
+const isBillingStateApiPath = (pathname) => pathname === "/api/billing-state";
 const isProxyApiPath = (pathname) =>
   pathname === "/api/energy" ||
   pathname === "/api/device-energy" ||
+  pathname === "/api/billing" ||
+  pathname.startsWith("/api/billing/") ||
   pathname === "/api/sites" ||
   pathname.startsWith("/api/sites/") ||
   pathname === "/api/devices" ||
   pathname.startsWith("/api/devices/") ||
   pathname === "/api/users" ||
   pathname.startsWith("/api/users/");
-const isApiPath = (pathname) => isAuthApiPath(pathname) || isProxyApiPath(pathname);
+const isApiPath = (pathname) =>
+  isAuthApiPath(pathname) || isBillingStateApiPath(pathname) || isProxyApiPath(pathname);
 const isLoginPath = (pathname) =>
   pathname === "/login" || pathname === "/login/" || pathname === "/login/index.html";
 
 const isPublicStaticPath = (pathname) =>
-  pathname === "/login" || pathname === "/login/" || pathname.startsWith("/login/");
+  pathname === "/login" ||
+  pathname === "/login/" ||
+  pathname.startsWith("/login/") ||
+  pathname === "/assets/Frame.svg" ||
+  pathname === "/assets/Meaw.png";
 
 const parseCookies = (cookieHeader = "") =>
   cookieHeader
@@ -446,6 +456,53 @@ const normalizeSiteIds = (values) => {
   });
   return Array.from(dedup);
 };
+
+const normalizeSiteToken = (value) => String(value || "").trim().toLowerCase();
+const cloneJsonValue = (value, fallback) => {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return fallback;
+  }
+};
+const readBillingStateIdentityFromQuery = (searchParams) => {
+  const siteId = toPositiveInt(
+    searchParams?.get("site_id") ??
+      searchParams?.get("siteId") ??
+      searchParams?.get("id")
+  );
+  const siteCode = String(
+    searchParams?.get("site_code") ?? searchParams?.get("siteCode") ?? ""
+  ).trim();
+  const siteName = String(
+    searchParams?.get("site_name") ?? searchParams?.get("siteName") ?? searchParams?.get("name") ?? ""
+  ).trim();
+  return { siteId, siteCode, siteName };
+};
+const readBillingStateIdentityFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { siteId: null, siteCode: "", siteName: "" };
+  }
+  const siteId = toPositiveInt(payload.siteId ?? payload.site_id ?? payload.id);
+  const siteCode = String(payload.siteCode ?? payload.site_code ?? "").trim();
+  const siteName = String(payload.siteName ?? payload.site_name ?? payload.name ?? "").trim();
+  return { siteId, siteCode, siteName };
+};
+const resolveBillingStateIdentity = (url, payload = null) => {
+  const queryIdentity = readBillingStateIdentityFromQuery(url?.searchParams);
+  const payloadIdentity = readBillingStateIdentityFromPayload(payload);
+  return {
+    siteId: queryIdentity.siteId ?? payloadIdentity.siteId ?? null,
+    siteCode: queryIdentity.siteCode || payloadIdentity.siteCode || "",
+    siteName: queryIdentity.siteName || payloadIdentity.siteName || ""
+  };
+};
+const hasBillingStateIdentity = (identity) =>
+  Boolean(
+    toPositiveInt(identity?.siteId) ||
+      normalizeSiteToken(identity?.siteCode) ||
+      normalizeSiteToken(identity?.siteName)
+  );
 
 const parsePositiveIdsFromParamValues = (values) => {
   const rawParts = [];
@@ -1434,6 +1491,105 @@ export const handleRequest = async (req, res) => {
       return;
     }
 
+    if (isBillingStateApiPath(url.pathname)) {
+      const session = requireApiSession(req, res);
+      if (!session) return;
+
+      const restrictSites = shouldRestrictSitesBySession(session);
+      const allowedSiteIdSet = restrictSites ? getAllowedSiteIdSetFromSession(session) : null;
+
+      if (method === "GET") {
+        const siteIdentity = resolveBillingStateIdentity(url);
+        if (!hasBillingStateIdentity(siteIdentity)) {
+          sendApiError(res, 400, "กรุณาระบุ site_id หรือ site_code");
+          return;
+        }
+        const siteId = toPositiveInt(siteIdentity.siteId);
+        if (restrictSites) {
+          if (!siteId) {
+            sendApiError(res, 400, "ต้องระบุ site_id เพื่อโหลดข้อมูลบิล");
+            return;
+          }
+          if (!isAllowedSiteIdForSet(siteId, allowedSiteIdSet)) {
+            sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+            return;
+          }
+        }
+        const data = readBillingState(siteIdentity);
+        sendJson(res, 200, { data }, corsHeaders);
+        return;
+      }
+
+      if (method === "PUT") {
+        let payload = {};
+        try {
+          payload = await readJsonBody(req);
+        } catch (error) {
+          if (error.code === "INVALID_JSON") {
+            sendApiError(res, 400, "รูปแบบ JSON ไม่ถูกต้อง");
+            return;
+          }
+          throw error;
+        }
+
+        const siteIdentity = resolveBillingStateIdentity(url, payload);
+        if (!hasBillingStateIdentity(siteIdentity)) {
+          sendApiError(res, 400, "กรุณาระบุ site_id หรือ site_code");
+          return;
+        }
+        const siteId = toPositiveInt(siteIdentity.siteId);
+        if (restrictSites) {
+          if (!siteId) {
+            sendApiError(res, 400, "ต้องระบุ site_id เพื่อบันทึกข้อมูลบิล");
+            return;
+          }
+          if (!isAllowedSiteIdForSet(siteId, allowedSiteIdSet)) {
+            sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+            return;
+          }
+        }
+
+        const currentState = readBillingState(siteIdentity);
+        const payloadObject =
+          payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+        const hasScheduleField = Object.prototype.hasOwnProperty.call(payloadObject, "schedule");
+        const hasHistoryField = Object.prototype.hasOwnProperty.call(payloadObject, "history");
+        const hasSequenceField =
+          Object.prototype.hasOwnProperty.call(payloadObject, "billSequence") ||
+          Object.prototype.hasOwnProperty.call(payloadObject, "sequence");
+
+        const canManageAutoBilling = isSuperadminSession(session);
+        const nextSchedule = (() => {
+          if (!hasScheduleField) return currentState.schedule;
+          if (!canManageAutoBilling) return currentState.schedule;
+          if (!payloadObject.schedule || typeof payloadObject.schedule !== "object") return {};
+          return cloneJsonValue(payloadObject.schedule, {});
+        })();
+        const nextHistory = (() => {
+          if (!hasHistoryField) return currentState.history;
+          if (!Array.isArray(payloadObject.history)) return [];
+          return cloneJsonValue(payloadObject.history.slice(0, 2000), []);
+        })();
+        const nextBillSequence = hasSequenceField
+          ? Math.max(
+              0,
+              Math.trunc(Number(payloadObject.billSequence ?? payloadObject.sequence) || 0)
+            )
+          : currentState.billSequence;
+
+        const data = writeBillingState(siteIdentity, {
+          schedule: nextSchedule,
+          history: nextHistory,
+          billSequence: nextBillSequence
+        });
+        sendJson(res, 200, { data }, corsHeaders);
+        return;
+      }
+
+      sendApiError(res, 405, "Method Not Allowed");
+      return;
+    }
+
     if (isProxyApiPath(url.pathname)) {
       const session = requireApiSession(req, res);
       if (!session) return;
@@ -1475,6 +1631,27 @@ export const handleRequest = async (req, res) => {
           return;
         }
         const upstreamUrl = `${upstreamDeviceEnergyApi}${url.search}`;
+        await proxyRequest(req, res, upstreamUrl, {
+          Authorization: authHeader,
+          Cookie: upstreamCookie
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) {
+        const suffix = url.pathname.slice("/api/billing".length);
+        const requestedSiteIds = collectSiteIdsFromSearchParams(url.searchParams, [
+          "site_id",
+          "siteId"
+        ]);
+        if (
+          restrictSites &&
+          requestedSiteIds.some((siteId) => !isAllowedSiteIdForSet(siteId, allowedSiteIdSet))
+        ) {
+          sendApiError(res, 403, "ไม่มีสิทธิ์เข้าถึง Plant นี้");
+          return;
+        }
+        const upstreamUrl = `${upstreamBillingApi}${suffix}${url.search}`;
         await proxyRequest(req, res, upstreamUrl, {
           Authorization: authHeader,
           Cookie: upstreamCookie
