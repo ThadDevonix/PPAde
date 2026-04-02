@@ -6,17 +6,7 @@ const billQueueTitle = document.getElementById("bill-queue-title");
 const billQueueRows = document.getElementById("bill-queue-rows");
 const billHistoryPanel = document.getElementById("bill-history-panel");
 const billHistoryRows = document.getElementById("bill-history-rows");
-const receiptHistory = document.getElementById("receipt-history");
-const receiptTitle = document.getElementById("receipt-title");
-const receiptRows = document.getElementById("receipt-rows");
-const receiptClose = document.getElementById("receipt-close");
-const autoRoundModal = document.getElementById("auto-round-modal");
-const autoRoundModalTitle = document.getElementById("auto-round-modal-title");
-const autoRoundModalRows = document.getElementById("auto-round-modal-rows");
-const autoRoundModalClose = document.getElementById("auto-round-modal-close");
-const autoRoundModalCloseFooter = document.getElementById(
-  "auto-round-modal-close-footer"
-);
+const billUpcomingPanel = document.getElementById("bill-upcoming-panel");
 const receiptPreviewModal = document.getElementById("receipt-preview-modal");
 const receiptPreviewContent = document.getElementById("receipt-preview-content");
 const receiptPreviewClose = document.getElementById("receipt-preview-close");
@@ -851,7 +841,8 @@ const isSuperAdminRole = (role) =>
   normalizeRole(role)
     .replace(/[^a-z]/g, "") === "superadmin";
 const canDeleteMeters = () => currentUserRole !== "admin";
-const canManageAutoBilling = () => isSuperAdminRole(currentUserRole);
+const canManageAutoBilling = () =>
+  isSuperAdminRole(currentUserRole) || normalizeRole(currentUserRole).replace(/[^a-z]/g, "") === "admin";
 const canDeleteAutoSchedules = () => canManageAutoBilling();
 const ensureAutoBillingPermission = (showAlert = true) => {
   if (canManageAutoBilling()) return true;
@@ -1727,9 +1718,6 @@ const closeModal = () => {
   updateAutoDeleteButtonState(schedule?.cutoffDay);
   resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
-};
-const hideReceiptHistory = () => {
-  receiptHistory?.classList.add("hidden");
 };
 const buildReceiptHtml = ({
   bill,
@@ -3810,73 +3798,45 @@ const getAutoPreviewRange = (cutoffDayValue) => {
     endStr: formatDate(end)
   };
 };
-const closeAutoRoundModal = () => {
-  autoRoundModal?.classList.add("hidden");
-};
-const openAutoRoundHistoryModal = (cutoffDay) => {
-  if (!autoRoundModal || !autoRoundModalRows) return;
-  const day = Number(cutoffDay) || defaultSchedule.cutoffDay;
-  const records = history
-    .filter(
-      (bill) => Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(day)
-    )
-    .slice()
-    .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
-  if (autoRoundModalTitle) {
-    autoRoundModalTitle.textContent = `ประวัติการออกบิลอัตโนมัติ. • รอบวันที่ ${day} (${records.length} ใบ)`;
-  }
-  if (!records.length) {
-    autoRoundModalRows.innerHTML =
-      '<tr><td class="empty" colspan="6">ยังไม่มีประวัติการออกบิลรอบนี้</td></tr>';
-  } else {
-    autoRoundModalRows.innerHTML = records
-      .map((bill) => {
-        const displayTotals = getBillDisplayTotals(bill);
-        const creatorLabel = getBillCreatorLabel(bill);
-        const createdAtValue = Number(bill?.createdAt);
-        const createdAtDate = Number.isFinite(createdAtValue)
-          ? new Date(createdAtValue)
-          : null;
-        const createdLabel =
-          createdAtDate && !Number.isNaN(createdAtDate.getTime())
-            ? formatDate(createdAtDate)
-            : "-";
-        return `
-          <tr>
-            <td>ใบที่ ${bill.billNo}</td>
-            <td>${bill.periodStart} - ${bill.periodEnd}</td>
-            <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
-            <td>${formatCurrency(displayTotals.amount)}</td>
-            <td><div>${createdLabel}</div><div class="auto-created-by">${escapeHtml(creatorLabel)}</div></td>
-            <td>
-              <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" type="button">ดูตัวอย่าง</button>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
-    autoRoundModalRows
-      .querySelectorAll("button[data-action='sample']")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const id = btn.getAttribute("data-id");
-          if (!id) return;
-          const bill = history.find((item) => item.id === id);
-          if (!bill) return;
-          const issueDate = parseDateInput(bill.periodEnd || "");
-          if (!issueDate) return;
-          closeAutoRoundModal();
-          hideReceiptHistory();
-          openReceiptPreview({ bill, issueDate });
-        });
-      });
-  }
-  autoRoundModal.classList.remove("hidden");
-};
 const closeAutoQueueActionMenus = () => {
   billQueueRows?.querySelectorAll(".auto-queue-menu").forEach((menu) => {
     menu.classList.add("hidden");
   });
+};
+const getScheduleRoundInfo = (cutoffDay) => {
+  const today = new Date();
+  const todayStr = formatDate(today);
+  let currentPeriod = null;
+  let pendingBill = null;
+  for (let offset = -2; offset <= 0; offset++) {
+    const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    const d = clampDay(target.getFullYear(), target.getMonth(), cutoffDay);
+    const runDate = new Date(target.getFullYear(), target.getMonth(), d);
+    const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
+    const startStr = formatDate(start);
+    const endStr = formatDate(end);
+    const hasBill = history.some(
+      (b) => Boolean(b?.auto) && Number(b?.cutoffDay) === cutoffDay &&
+        b.periodStart === startStr && b.periodEnd === endStr
+    );
+    const isReady = endStr <= todayStr;
+    const periodStarted = todayStr >= startStr;
+    if (!hasBill && isReady && !pendingBill) {
+      pendingBill = { startStr, endStr };
+    }
+    if (!isReady && periodStarted) {
+      currentPeriod = { startStr, endStr };
+    }
+  }
+  if (!currentPeriod) {
+    const target = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const d = clampDay(target.getFullYear(), target.getMonth(), cutoffDay);
+    const runDate = new Date(target.getFullYear(), target.getMonth(), d);
+    const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
+    currentPeriod = { startStr: formatDate(start), endStr: formatDate(end) };
+  }
+  const currentStarted = todayStr >= currentPeriod.startStr;
+  return { currentPeriod, currentStarted, pendingBill };
 };
 const renderAutoQueue = () => {
   if (!billQueueRows) return;
@@ -3885,16 +3845,14 @@ const renderAutoQueue = () => {
     .sort((a, b) => Number(a.cutoffDay) - Number(b.cutoffDay));
   if (!autoSchedules.length) {
     billQueueRows.innerHTML =
-      '<tr><td class="empty" colspan="5">ยังไม่มีรอบอัตโนมัติ</td></tr>';
+      '<tr><td class="empty" colspan="4">ยังไม่มีรอบอัตโนมัติ</td></tr>';
     if (billQueueTitle) {
       billQueueTitle.textContent = "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้";
     }
+    if (billUpcomingPanel) billUpcomingPanel.innerHTML = "";
     return;
   }
-  const rateTypeLabels = {
-    flat: "Flat rate",
-    tou: "TOU"
-  };
+  const rateTypeLabels = { flat: "Flat rate", tou: "TOU" };
   billQueueRows.innerHTML = autoSchedules
     .map((autoConfig) => {
       const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
@@ -3905,14 +3863,19 @@ const renderAutoQueue = () => {
         autoConfig?.updatedByEmail,
         autoConfig?.updatedById
       );
-      const updatedAtLabel =
-        Number.isFinite(Number(autoConfig?.updatedAt)) && Number(autoConfig.updatedAt) > 0
-          ? formatDateTime(autoConfig.updatedAt)
-          : "-";
-      const billCount = history.filter(
-        (bill) =>
-          Boolean(bill?.auto) && Number(bill?.cutoffDay) === Number(cutoffDay)
-      ).length;
+      const roundInfo = getScheduleRoundInfo(cutoffDay);
+      const { currentPeriod, currentStarted, pendingBill } = roundInfo;
+      let statusHtml = "";
+      let actionBtns = "";
+      if (pendingBill) {
+        statusHtml = `<span class="badge ready">พร้อมออกบิล</span><div class="muted" style="font-size:11px;margin-top:3px;">${pendingBill.startStr} - ${pendingBill.endStr}</div>`;
+        actionBtns = `<button class="small-btn" data-action="upcoming-generate" data-start="${pendingBill.startStr}" data-end="${pendingBill.endStr}" data-cutoff="${cutoffDay}" type="button">สร้างบิล</button>`;
+      } else {
+        statusHtml = `<span class="badge pending">รอบถัดไป</span><div class="muted" style="font-size:11px;margin-top:3px;">${currentPeriod.startStr} - ${currentPeriod.endStr}</div>`;
+      }
+      if (currentStarted) {
+        actionBtns += `<button class="ghost small-btn" data-action="upcoming-partial-preview" data-start="${currentPeriod.startStr}" data-end="${currentPeriod.endStr}" data-cutoff="${cutoffDay}" type="button">ดูตัวอย่างปัจจุบัน</button>`;
+      }
       const menuItems = [];
       if (canManageAutoBilling()) {
         menuItems.push(
@@ -3924,48 +3887,28 @@ const renderAutoQueue = () => {
           `<button class="meter-row-menu-item danger" data-action="delete-schedule" data-cutoff="${cutoffDay}" type="button">ลบรอบนี้</button>`
         );
       }
+      const menuHtml = menuItems.length
+        ? `<button class="small-btn meter-row-edit auto-queue-menu-toggle" data-action="toggle-schedule-menu" data-cutoff="${cutoffDay}" type="button" aria-label="จัดการรอบนี้" title="จัดการรอบนี้">⋯</button>
+           <div class="meter-row-menu auto-queue-menu hidden">${menuItems.join("")}</div>`
+        : "";
       return `
         <tr>
           <td>${cutoffDay}</td>
-          <td>${escapeHtml(updatedAtLabel)}</td>
-          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(
-        autoConfig.defaultRate,
-        rateDecimalPlaces
-      )}/kWh • ${escapeHtml(rateTypeLabel)}${
+          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(autoConfig.defaultRate, rateDecimalPlaces)}/kWh • ${escapeHtml(rateTypeLabel)}${
         updatedByLabel ? ` • ผู้ตั้งค่า: ${escapeHtml(updatedByLabel)}` : ""
       }</td>
-          <td><span class="queue-status ready">${billCount} ใบ</span></td>
+          <td>${statusHtml}</td>
           <td>
             <div class="history-actions auto-queue-actions">
-              <button class="small-btn" data-action="view-history" data-cutoff="${cutoffDay}" type="button">ดูประวัติรอบนี้</button>
-              ${
-  menuItems.length
-    ? `<button class="small-btn meter-row-edit auto-queue-menu-toggle" data-action="toggle-schedule-menu" data-cutoff="${cutoffDay}" type="button" aria-label="จัดการรอบนี้" title="จัดการรอบนี้">⋯</button>
-              <div class="meter-row-menu auto-queue-menu hidden">
-                ${menuItems.join("")}
-              </div>`
-    : ""
-}
+              ${actionBtns}
+              ${menuHtml}
             </div>
           </td>
-        </tr>
-      `;
+        </tr>`;
     })
     .join("");
-  billQueueRows
-    .querySelectorAll("button[data-action='view-history']")
-    .forEach((btn) => {
-      btn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        closeAutoQueueActionMenus();
-        const cutoffDay = Number(btn.getAttribute("data-cutoff"));
-        if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return;
-        openAutoRoundHistoryModal(cutoffDay);
-      });
-    });
-  billQueueRows
-    .querySelectorAll("button[data-action='toggle-schedule-menu']")
-    .forEach((btn) => {
+  const attachQueueActions = () => {
+    billQueueRows.querySelectorAll("button[data-action='toggle-schedule-menu']").forEach((btn) => {
       btn.addEventListener("click", (event) => {
         event.stopPropagation();
         const container = btn.closest(".auto-queue-actions");
@@ -3976,9 +3919,7 @@ const renderAutoQueue = () => {
         targetMenu.classList.toggle("hidden", !shouldOpen);
       });
     });
-  billQueueRows
-    .querySelectorAll("button[data-action='edit-schedule']")
-    .forEach((btn) => {
+    billQueueRows.querySelectorAll("button[data-action='edit-schedule']").forEach((btn) => {
       btn.addEventListener("click", (event) => {
         event.stopPropagation();
         closeAutoQueueActionMenus();
@@ -3987,9 +3928,7 @@ const renderAutoQueue = () => {
         openAutoScheduleEditor(cutoffDay);
       });
     });
-  billQueueRows
-    .querySelectorAll("button[data-action='delete-schedule']")
-    .forEach((btn) => {
+    billQueueRows.querySelectorAll("button[data-action='delete-schedule']").forEach((btn) => {
       btn.addEventListener("click", (event) => {
         event.stopPropagation();
         closeAutoQueueActionMenus();
@@ -3998,9 +3937,111 @@ const renderAutoQueue = () => {
         deleteAutoSchedule(cutoffDay);
       });
     });
+    billQueueRows.querySelectorAll("button[data-action='upcoming-preview']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const billId = btn.getAttribute("data-bill-id");
+        if (!billId) return;
+        const bill = history.find((b) => b.id === billId);
+        if (!bill) return;
+        const issueDate = parseDateInput(bill.periodEnd || "");
+        if (issueDate) openReceiptPreview({ bill, issueDate });
+      });
+    });
+    billQueueRows.querySelectorAll("button[data-action='upcoming-download']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const billId = btn.getAttribute("data-bill-id");
+        if (!billId) return;
+        const bill = history.find((b) => b.id === billId);
+        if (!bill) return;
+        const issueDate = parseDateInput(bill.periodEnd || "");
+        if (!issueDate) return;
+        openReceiptPreview({ bill, issueDate });
+        openReceiptPrint();
+      });
+    });
+    billQueueRows.querySelectorAll("button[data-action='upcoming-generate']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const startStr = btn.getAttribute("data-start");
+        const endStr = btn.getAttribute("data-end");
+        const cutoff = Number(btn.getAttribute("data-cutoff"));
+        if (!startStr || !endStr) return;
+        const autoConfig = getAutoScheduleByCutoff(cutoff);
+        if (!autoConfig) return;
+        btn.disabled = true;
+        btn.textContent = "กำลังสร้าง...";
+        try {
+          const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
+          if (!rows.length) { alert("ไม่พบข้อมูลพลังงานในช่วงนี้"); return; }
+          const calcFormula = getFormulaForContext(autoConfig.calcFormula, autoConfig.calcMethod, meterProfiles);
+          const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
+          const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
+          const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
+          createBill({
+            periodStart: startStr, periodEnd: endStr, meters: selectedMeters,
+            rate: autoConfig.defaultRate, rateType: autoConfig.rateType,
+            calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
+            calcFormula, calcLabel: autoConfig.calcLabel || defaultCalcLabel,
+            formulaColumns: autoConfig.formulaColumns || [],
+            cutoffDay: cutoff, detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+            auto: true, source, dailyRows: rows
+          });
+          renderAutoQueue();
+          updateSummary();
+        } catch (err) { alert("ไม่สามารถสร้างบิลได้"); }
+        finally { btn.disabled = false; btn.textContent = "สร้างบิล"; }
+      });
+    });
+    billQueueRows.querySelectorAll("button[data-action='upcoming-fetch-preview']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const startStr = btn.getAttribute("data-start");
+        const endStr = btn.getAttribute("data-end");
+        const cutoff = Number(btn.getAttribute("data-cutoff"));
+        if (!startStr || !endStr) return;
+        btn.disabled = true; btn.textContent = "กำลังโหลด...";
+        try {
+          const autoConfig = getAutoScheduleByCutoff(cutoff);
+          const { rows } = await getDailyEnergyForRange(startStr, endStr);
+          const meterPool = Array.isArray(autoConfig?.meters) ? autoConfig.meters : meterProfiles;
+          const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
+          const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
+          const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff };
+          const issueDate = parseDateInput(endStr);
+          if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
+        } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
+        finally { btn.disabled = false; btn.textContent = "ดูตัวอย่าง"; }
+      });
+    });
+    billQueueRows.querySelectorAll("button[data-action='upcoming-partial-preview']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const startStr = btn.getAttribute("data-start");
+        const endStr = btn.getAttribute("data-end");
+        const cutoff = Number(btn.getAttribute("data-cutoff"));
+        if (!startStr || !endStr) return;
+        const todayStr = formatDate(new Date());
+        const effectiveEnd = todayStr < endStr ? todayStr : endStr;
+        if (effectiveEnd < startStr) { alert("ยังไม่มีข้อมูลในรอบนี้"); return; }
+        btn.disabled = true; btn.textContent = "กำลังโหลด...";
+        try {
+          const autoConfig = getAutoScheduleByCutoff(cutoff);
+          const { rows } = await getDailyEnergyForRange(startStr, effectiveEnd);
+          const meterPool = Array.isArray(autoConfig?.meters) ? autoConfig.meters : meterProfiles;
+          const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
+          const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
+          const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff };
+          const issueDate = parseDateInput(effectiveEnd);
+          if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
+        } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
+        finally { btn.disabled = false; btn.textContent = "ดูตัวอย่างปัจจุบัน"; }
+      });
+    });
+  };
+  attachQueueActions();
   if (billQueueTitle) {
     billQueueTitle.textContent = `รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ (${autoSchedules.length} รอบ)`;
   }
+  if (billUpcomingPanel) billUpcomingPanel.innerHTML = "";
 };
 const updateBillHistoryTitle = () => {
   if (!billHistoryTitle) return;
@@ -4107,7 +4148,7 @@ const setBillMode = (mode) => {
   billAutoPreviewField?.classList.toggle("hidden", !isAuto);
   billCutoffField?.classList.toggle("hidden", !isAuto);
   billQueuePanel?.classList.toggle("hidden", !isAuto);
-  billHistoryPanel?.classList.remove("hidden");
+  billHistoryPanel?.classList.toggle("hidden", isAuto);
   if (billConfirm) {
     billConfirm.textContent = isAuto ? "บันทึกอัตโนมัติ" : "สร้างบิล";
   }
@@ -4122,9 +4163,7 @@ const setBillMode = (mode) => {
   updateAutoDeleteButtonState(
     Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay
   );
-  hideReceiptHistory();
   closeReceiptPreview();
-  closeAutoRoundModal();
   renderAutoQueue();
   renderHistory();
   updateSummary();
@@ -4312,21 +4351,6 @@ const getBillUnits = (row, method, formula) => {
   return roundTo(Math.max(0, value), 1);
 };
 
-const buildReceiptDates = (startStr, cutoffDay) => {
-  const start = parseDateInput(startStr);
-  if (!start) return [];
-  const today = new Date();
-  const months = listMonthsBetween(start, today);
-  const cutoff = Number(cutoffDay) || defaultSchedule.cutoffDay;
-  return months
-    .map((monthStr) => {
-      const [year, month] = monthStr.split("-").map(Number);
-      if (!year || !month) return null;
-      const day = clampDay(year, month - 1, cutoff);
-      return new Date(year, month - 1, day);
-    })
-    .filter((date) => date && date >= start && date <= today);
-};
 const countBillPeriodDays = (bill) => {
   if (Array.isArray(bill?.daily) && bill.daily.length) return bill.daily.length;
   const start = parseDateInput(bill?.periodStart || "");
@@ -4491,11 +4515,9 @@ const renderHistory = () => {
       const manualIssueDateStr = manualIssueDate
         ? formatDate(manualIssueDate)
         : bill.periodEnd || bill.periodStart || "";
-      const actionButtons = bill.auto
-        ? `<button class="ghost small-btn" data-action="receipt" data-id="${bill.id}" type="button">ประวัติรายงาน</button>
-           <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`
-        : `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดาวน์โหลด</button>
-           <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${manualIssueDateStr}" type="button">ดูตัวอย่าง</button>
+      const issueDateStr = manualIssueDateStr;
+      const actionButtons = `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดาวน์โหลด</button>
+           <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดูตัวอย่าง</button>
            <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`;
       return `
         <tr data-id="${bill.id}">
@@ -4519,14 +4541,6 @@ const renderHistory = () => {
     })
     .join("");
 
-  billHistoryRows.querySelectorAll("button[data-action='receipt']").forEach(
-    (btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        if (id) showReceiptHistory(id);
-      });
-    }
-  );
   billHistoryRows.querySelectorAll("button[data-action='sample']").forEach(
     (btn) => {
       btn.addEventListener("click", () => {
@@ -4536,7 +4550,6 @@ const renderHistory = () => {
         if (!bill) return;
         const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
         if (!issueDate) return;
-        hideReceiptHistory();
         openReceiptPreview({ bill, issueDate });
       });
     }
@@ -4550,7 +4563,6 @@ const renderHistory = () => {
         if (!bill) return;
         const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
         if (!issueDate) return;
-        hideReceiptHistory();
         openReceiptPreview({ bill, issueDate });
         openReceiptPrint();
       });
@@ -4564,81 +4576,6 @@ const renderHistory = () => {
       });
     }
   );
-};
-
-const showReceiptHistory = (id) => {
-  if (!receiptHistory || !receiptRows) return;
-  const bill = history.find((b) => b.id === id);
-  if (!bill) return;
-  const cutoffDay =
-    bill.cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay;
-  const isAutoBill = Boolean(bill.auto);
-  const dates = (isAutoBill
-    ? buildReceiptDates(bill.periodStart, cutoffDay)
-    : (() => {
-      const issueDate = getManualIssueDate(bill);
-      return issueDate ? [issueDate] : [];
-    })()
-  ).sort(
-    (a, b) => b - a
-  );
-  if (receiptTitle) {
-    receiptTitle.textContent = isAutoBill
-      ? `ประวัติรายงานบิล • ใบที่ ${bill.billNo} • ออกทุกวันที่ ${cutoffDay}`
-      : `ประวัติรายงานบิล • ใบที่ ${bill.billNo} • ออกครั้งเดียว (กำหนดวัน)`;
-  }
-  if (!dates.length) {
-    receiptRows.innerHTML =
-      '<tr><td class="empty" colspan="5">ยังไม่มีประวัติรายงานบิล</td></tr>';
-  } else {
-    receiptRows.innerHTML = dates
-      .map((date, idx) => {
-        const year = date.getFullYear();
-        const monthIndex = date.getMonth();
-        const dayCount = isAutoBill
-          ? new Date(year, monthIndex + 1, 0).getDate()
-          : Math.max(1, countBillPeriodDays(bill));
-        const periodLabel = isAutoBill
-          ? `งวด ${dates.length - idx} • ${formatMonth(date)}`
-          : `${bill.periodStart} - ${bill.periodEnd}`;
-        return `
-        <tr>
-          <td>${periodLabel}</td>
-          <td>${dayCount} วัน</td>
-          <td>${formatDate(date)}</td>
-          <td>
-            <button class="small-btn" data-action="download" data-date="${formatDate(
-              date
-            )}">ดาวน์โหลด</button>
-          </td>
-          <td>
-            <button class="ghost small-btn" data-action="sample" data-date="${formatDate(
-              date
-            )}">ดูตัวอย่าง</button>
-          </td>
-        </tr>
-      `;
-      })
-      .join("");
-    receiptRows
-      .querySelectorAll("button[data-action='download']")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const date = btn.getAttribute("data-date");
-          alert(`ดาวน์โหลดรายงานบิล เดือน ${date || ""}`);
-        });
-      });
-    receiptRows
-      .querySelectorAll("button[data-action='sample']")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
-          if (!issueDate) return;
-          openReceiptPreview({ bill, issueDate });
-        });
-      });
-  }
-  receiptHistory.classList.remove("hidden");
 };
 
 const updateSummary = () => {
@@ -5006,10 +4943,6 @@ document.addEventListener("keydown", (e) => {
     closeReceiptPreview();
     return;
   }
-  if (autoRoundModal && !autoRoundModal.classList.contains("hidden")) {
-    closeAutoRoundModal();
-    return;
-  }
   if (isModalOpen) closeModal();
 });
 document.addEventListener("click", (event) => {
@@ -5045,11 +4978,6 @@ billCutoff?.addEventListener("change", () => {
   }
   updateAutoPreviewText();
   if (isModalOpen) updateFormulaResultPreview();
-});
-autoRoundModalClose?.addEventListener("click", closeAutoRoundModal);
-autoRoundModalCloseFooter?.addEventListener("click", closeAutoRoundModal);
-autoRoundModal?.addEventListener("click", (e) => {
-  if (e.target === autoRoundModal) closeAutoRoundModal();
 });
 billFlowManualBtn?.addEventListener("click", () => {
   setBillMode("manual");
@@ -5106,7 +5034,6 @@ columnsClearBtn?.addEventListener("click", () => {
   updateColumnSelectedCount();
 });
 
-receiptClose?.addEventListener("click", hideReceiptHistory);
 receiptPreviewClose?.addEventListener("click", closeReceiptPreview);
 receiptPreviewModal?.addEventListener("click", (e) => {
   if (e.target === receiptPreviewModal) closeReceiptPreview();

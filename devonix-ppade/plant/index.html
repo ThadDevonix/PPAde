@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../style.css?v=20260401c">
 </head>
 <body class="plant-page">
   <div class="shell">
@@ -75,18 +75,18 @@
           <table class="history-table">
             <thead>
               <tr>
-                <th style="width: 110px;">รอบวันที่</th>
-                <th style="width: 190px;">ตั้งค่าเมื่อ</th>
+                <th style="width: 90px;">รอบวันที่</th>
                 <th>รายละเอียด</th>
-                <th style="width: 130px;">สถานะ</th>
-                <th style="width: 180px;">การทำงาน</th>
+                <th style="width: 200px;">สถานะ</th>
+                <th style="width: 300px;">การทำงาน</th>
               </tr>
             </thead>
             <tbody id="bill-queue-rows">
-              <tr><td class="empty" colspan="5">ยังไม่มีรอบอัตโนมัติ</td></tr>
+              <tr><td class="empty" colspan="4">ยังไม่มีรอบอัตโนมัติ</td></tr>
             </tbody>
           </table>
         </div>
+        <div id="bill-upcoming-panel" class="upcoming-panel"></div>
       </div>
       <div class="panel-sub" id="bill-history-panel">
         <div class="summary-header">
@@ -109,63 +109,6 @@
               <tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>
             </tbody>
           </table>
-        </div>
-      </div>
-      <div class="panel-sub hidden" id="receipt-history">
-        <div class="summary-header">
-          <h4 id="receipt-title">ประวัติรายงานบิล</h4>
-          <button class="ghost small-btn" id="receipt-close" type="button">ปิด</button>
-        </div>
-        <div class="history-wrap">
-          <table class="history-table">
-            <thead>
-              <tr>
-                <th style="width: 160px;">เดือน</th>
-                <th style="width: 110px;">จำนวนวัน</th>
-                <th style="width: 180px;">วันที่ออกรายงาน</th>
-                <th style="width: 160px;">ดาวน์โหลด</th>
-                <th style="width: 170px;">ตัวอย่าง</th>
-              </tr>
-            </thead>
-            <tbody id="receipt-rows">
-              <tr><td class="empty" colspan="5">ยังไม่มีประวัติรายงานบิล</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="modal hidden" id="auto-round-modal" role="dialog" aria-modal="true">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3 id="auto-round-modal-title">ประวัติการออกบิลอัตโนมัติ</h3>
-            <button class="ghost icon-btn" id="auto-round-modal-close" aria-label="ปิด">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-            </button>
-          </div>
-          <div class="modal-body">
-            <div class="history-wrap">
-              <table class="history-table">
-                <thead>
-                  <tr>
-                    <th style="width: 90px;">ใบที่</th>
-                    <th style="width: 210px;">ช่วงวันที่</th>
-                    <th style="width: 150px;">หน่วยรวม (kWh)</th>
-                    <th style="width: 140px;">ยอดรวม</th>
-                    <th style="width: 160px;">สร้างเมื่อ</th>
-                    <th style="width: 170px;">การทำงาน</th>
-                  </tr>
-                </thead>
-                <tbody id="auto-round-modal-rows">
-                  <tr><td class="empty" colspan="6">ยังไม่มีประวัติ</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="ghost small-btn" id="auto-round-modal-close-footer" type="button">ปิด</button>
-          </div>
         </div>
       </div>
     </section>
@@ -391,8 +334,8 @@
       </div>
     </div>
 
-  <script src="./plant.js" defer></script>
-  <script src="../billing/billing.js" defer></script>
-  <script src="../meters/meters.js" defer></script>
+  <script src="./plant.js?v=20260401c" defer></script>
+  <script src="../billing/billing.js?v=20260401c" defer></script>
+  <script src="../meters/meters.js?v=20260401c" defer></script>
 </body>
 </html>

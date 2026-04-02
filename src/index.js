@@ -1558,7 +1558,7 @@ export const handleRequest = async (req, res) => {
           Object.prototype.hasOwnProperty.call(payloadObject, "billSequence") ||
           Object.prototype.hasOwnProperty.call(payloadObject, "sequence");
 
-        const canManageAutoBilling = isSuperadminSession(session);
+        const canManageAutoBilling = isSuperadminSession(session) || isAdminSession(session);
         const nextSchedule = (() => {
           if (!hasScheduleField) return currentState.schedule;
           if (!canManageAutoBilling) return currentState.schedule;

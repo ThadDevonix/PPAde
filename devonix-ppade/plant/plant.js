@@ -209,9 +209,7 @@ const setMode = (isBilling) => {
   if (billingBtn) billingBtn.classList.toggle("active", isBilling);
   if (!isBilling) {
     closeModal();
-    hideReceiptHistory();
     closeReceiptPreview();
-    closeAutoRoundModal();
   }
 };
 
