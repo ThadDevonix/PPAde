@@ -903,7 +903,7 @@ const render = (data) => {
   rowsEl.innerHTML = data.map((item, idx) => `
     <tr data-index="${idx}" data-id="${item.id}">
       <td><span class="status-dot ${item.status === "offline" ? "offline" : "online"}" title="${item.status === "offline" ? "offline" : "online"}"></span></td>
-      <td><div class="img-ph" aria-label="ภาพโรงไฟฟ้า (placeholder)"></div></td>
+      <td><img src="./assets/logo_d_v2-01-2.svg" alt="Plant Image" class="img-ph"></td>
       <td>${escapeHtml(getPlantSiteId(item))}</td>
       <td>
         <div class="name">${escapeHtml(item.name)}</div>
