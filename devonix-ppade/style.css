@@ -2938,6 +2938,31 @@ body.plant-page .meter-row-menu {
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(15, 30, 62, 0.16);
 }
+
+/* Allow dropdown menus to escape the queue/history wrap (was clipped by overflow:auto) */
+body.plant-page #bill-queue-panel .history-wrap,
+body.plant-page #bill-history-panel .history-wrap,
+body.plant-page .device-table-wrap {
+  overflow: visible;
+}
+/* Keep horizontal scroll only when the table is genuinely too wide */
+@media (max-width: 760px) {
+  body.plant-page #bill-queue-panel .history-wrap,
+  body.plant-page #bill-history-panel .history-wrap,
+  body.plant-page .device-table-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+}
+/* Action cells must allow the popup */
+body.plant-page #bill-queue-panel .history-table td,
+body.plant-page #bill-history-panel .history-table td,
+body.plant-page .device-table td {
+  overflow: visible;
+}
+/* Lift the menu above other rows on hover */
+body.plant-page .auto-queue-actions { z-index: 5; }
+body.plant-page .auto-queue-actions:has(.meter-row-menu:not(.hidden)) { z-index: 20; }
 body.plant-page .meter-row-menu-item {
   width: 100%;
   border: 1px solid transparent;
