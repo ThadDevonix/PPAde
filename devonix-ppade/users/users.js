@@ -5,6 +5,16 @@ const openCreateBtn = document.getElementById("open-create-user");
 const authUserEl = document.getElementById("auth-user");
 const logoutBtn = document.getElementById("logout-btn");
 
+const tUsers = (key, fallback, params) => {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+};
+
 const createModal = document.getElementById("user-create-modal");
 const createForm = document.getElementById("user-create-form");
 const createSubmitBtn = document.getElementById("user-create-submit");
@@ -114,7 +124,7 @@ const setMessage = (message, type = "") => {
 
 const setAuthUser = (user) => {
   if (!authUserEl) return;
-  const name = readString(user?.name, user?.email) || "ผู้ใช้งาน";
+  const name = readString(user?.name, user?.email) || tUsers("users.default_name", "ผู้ใช้งาน");
   const role = readString(user?.role);
   authUserEl.textContent = role ? `${name} (${role})` : name;
 };
@@ -174,10 +184,14 @@ const setUserFormMode = (mode, user = null) => {
   editingEmail = userFormMode === "edit" ? normalizeEmail(user?.email) : "";
 
   if (userModalTitle) {
-    userModalTitle.textContent = userFormMode === "edit" ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้";
+    userModalTitle.textContent = userFormMode === "edit"
+      ? tUsers("users.modal.title.edit", "แก้ไขผู้ใช้")
+      : tUsers("users.modal.title.add", "เพิ่มผู้ใช้");
   }
   if (createSubmitBtn) {
-    createSubmitBtn.textContent = userFormMode === "edit" ? "บันทึกการแก้ไข" : "บันทึก";
+    createSubmitBtn.textContent = userFormMode === "edit"
+      ? tUsers("users.modal.submit.edit", "บันทึกการแก้ไข")
+      : tUsers("users.modal.submit.add", "บันทึก");
   }
   syncRoleFieldPermission();
   syncPasswordFieldState();
@@ -503,7 +517,7 @@ const setLoadingState = (loading) => {
 const renderUsers = () => {
   if (!userRowsEl) return;
   if (isLoading) {
-    userRowsEl.innerHTML = '<tr><td class="empty" colspan="7">กำลังโหลดผู้ใช้...</td></tr>';
+    userRowsEl.innerHTML = `<tr><td class="empty" colspan="7">${tUsers("users.row.loading", "กำลังโหลดผู้ใช้...")}</td></tr>`;
     return;
   }
   if (loadError) {
@@ -511,7 +525,7 @@ const renderUsers = () => {
     return;
   }
   if (!users.length) {
-    userRowsEl.innerHTML = '<tr><td class="empty" colspan="7">ยังไม่มีข้อมูลผู้ใช้</td></tr>';
+    userRowsEl.innerHTML = `<tr><td class="empty" colspan="7">${tUsers("users.row.empty", "ยังไม่มีข้อมูลผู้ใช้")}</td></tr>`;
     return;
   }
 
@@ -526,7 +540,7 @@ const renderUsers = () => {
         <td><span class="role-chip">${escapeHtml(user.role)}</span></td>
         <td>
           <span class="status-badge ${user.isActive ? "active" : "inactive"}">
-            ${user.isActive ? "active" : "inactive"}
+            ${user.isActive ? tUsers("users.status.active", "active") : tUsers("users.status.inactive", "inactive")}
           </span>
         </td>
         <td>${escapeHtml(formatDateTime(user.lastLoginAt))}</td>
@@ -538,16 +552,16 @@ const renderUsers = () => {
               data-action="edit"
               data-id="${escapeHtml(String(user.id))}"
             >
-              แก้ไข
+              ${tUsers("users.row.edit", "แก้ไข")}
             </button>
             <button
               class="small-btn users-delete-btn"
               type="button"
               data-action="delete"
               data-id="${escapeHtml(String(user.id))}"
-              ${isCurrentUser ? "disabled aria-disabled=\"true\" title=\"ไม่สามารถลบบัญชีที่กำลังใช้งาน\"" : ""}
+              ${isCurrentUser ? `disabled aria-disabled="true" title="${tUsers("users.row.delete_self_disabled", "ไม่สามารถลบบัญชีที่กำลังใช้งาน")}"` : ""}
             >
-              ลบ
+              ${tUsers("users.row.delete", "ลบ")}
             </button>
           </div>
         </td>
@@ -710,7 +724,7 @@ const setSitesListDisabled = (disabled) => {
 const renderCreateSiteOptions = () => {
   if (!newUserSitesList) return;
   if (!availableSites.length) {
-    newUserSitesList.innerHTML = '<p class="muted users-sites-empty">ไม่พบ Plant ให้เลือก</p>';
+    newUserSitesList.innerHTML = `<p class="muted users-sites-empty">${tUsers("users.plant.empty", "ไม่พบ Plant ให้เลือก")}</p>`;
     setSitesListDisabled(true);
     return;
   }
@@ -720,7 +734,7 @@ const renderCreateSiteOptions = () => {
     return searchSpace.includes(siteSearchQuery);
   });
   if (!filteredSites.length) {
-    newUserSitesList.innerHTML = '<p class="muted users-sites-empty">ไม่พบ Plant จากคำค้นหา</p>';
+    newUserSitesList.innerHTML = `<p class="muted users-sites-empty">${tUsers("users.plant.search_empty", "ไม่พบ Plant จากคำค้นหา")}</p>`;
     return;
   }
   const selectedIds = new Set(getSelectedCreateSiteIds());
@@ -767,7 +781,7 @@ const syncCreateSiteFieldState = () => {
 
 const loadAssignableSites = async () => {
   if (!newUserSitesList) return;
-  newUserSitesList.innerHTML = '<p class="muted users-sites-empty">กำลังโหลด Plant...</p>';
+  newUserSitesList.innerHTML = `<p class="muted users-sites-empty">${tUsers("users.plant.loading", "กำลังโหลด Plant...")}</p>`;
   setSitesListDisabled(true);
 
   try {
@@ -956,31 +970,31 @@ const submitUserForm = async () => {
   const email = wasEditMode ? typedEmail || normalizeEmail(editingEmail) : typedEmail;
 
   if (!email || !name) {
-    setMessage("กรุณากรอกข้อมูล Email และ Name ให้ครบ", "error");
+    setMessage(tUsers("users.message.fill_required", "กรุณากรอกข้อมูล Email และ Name ให้ครบ"), "error");
     return;
   }
   if (!email.includes("@")) {
-    setMessage("กรุณากรอก Email ให้ถูกต้อง", "error");
+    setMessage(tUsers("users.message.invalid_email", "กรุณากรอก Email ให้ถูกต้อง"), "error");
     return;
   }
   if (password && password.length < 8) {
-    setMessage("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", "error");
+    setMessage(tUsers("users.message.password_too_short", "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร"), "error");
     return;
   }
   if (!wasEditMode && !password) {
-    setMessage("กรุณากรอกรหัสผ่านสำหรับผู้ใช้ใหม่", "error");
+    setMessage(tUsers("users.message.password_required", "กรุณากรอกรหัสผ่านสำหรับผู้ใช้ใหม่"), "error");
     return;
   }
   if (!role) {
-    setMessage("Role ต้องเป็น admin หรือ superadmin เท่านั้น", "error");
+    setMessage(tUsers("users.message.role_invalid", "Role ต้องเป็น admin หรือ superadmin เท่านั้น"), "error");
     return;
   }
   if (!wasEditMode && role === "superadmin" && normalizeRole(currentUser?.role) !== "superadmin") {
-    setMessage("admin ไม่สามารถสร้างบัญชี superadmin ได้", "error");
+    setMessage(tUsers("users.message.admin_cannot_create_super", "admin ไม่สามารถสร้างบัญชี superadmin ได้"), "error");
     return;
   }
   createSubmitBtn.disabled = true;
-  createSubmitBtn.textContent = "กำลังบันทึก...";
+  createSubmitBtn.textContent = tUsers("users.modal.submit.saving", "กำลังบันทึก...");
   setMessage("");
 
   const payload = {
@@ -1040,16 +1054,28 @@ const submitUserForm = async () => {
       }
     }
     closeCreateModal();
-    setMessage(wasEditMode ? "แก้ไขผู้ใช้สำเร็จ" : "เพิ่มผู้ใช้สำเร็จ", "success");
+    setMessage(
+      wasEditMode
+        ? tUsers("users.message.edit_success", "แก้ไขผู้ใช้สำเร็จ")
+        : tUsers("users.message.add_success", "เพิ่มผู้ใช้สำเร็จ"),
+      "success"
+    );
     await fetchUsers();
   } catch (error) {
     setMessage(
-      friendlyErrorMessage(error, wasEditMode ? "แก้ไขผู้ใช้ไม่สำเร็จ" : "เพิ่มผู้ใช้ไม่สำเร็จ"),
+      friendlyErrorMessage(
+        error,
+        wasEditMode
+          ? tUsers("users.message.edit_failed", "แก้ไขผู้ใช้ไม่สำเร็จ")
+          : tUsers("users.message.add_failed", "เพิ่มผู้ใช้ไม่สำเร็จ")
+      ),
       "error"
     );
   } finally {
     createSubmitBtn.disabled = false;
-    createSubmitBtn.textContent = isEditMode() ? "บันทึกการแก้ไข" : "บันทึก";
+    createSubmitBtn.textContent = isEditMode()
+      ? tUsers("users.modal.submit.edit", "บันทึกการแก้ไข")
+      : tUsers("users.modal.submit.add", "บันทึก");
   }
 };
 
@@ -1073,10 +1099,10 @@ const requestDeleteUser = async (id) => {
 const deleteUser = async (target) => {
   if (!target) return;
   if (String(currentUser?.id) === String(target.id)) {
-    setMessage("ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่", "error");
+    setMessage(tUsers("users.message.delete_self_blocked", "ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่"), "error");
     return;
   }
-  const confirmed = window.confirm(`ต้องการลบผู้ใช้ ${target.email} ใช่หรือไม่?`);
+  const confirmed = window.confirm(tUsers("users.confirm.delete", "ต้องการลบผู้ใช้ {email} ใช่หรือไม่?", { email: target.email }));
   if (!confirmed) return;
 
   setMessage("");
@@ -1086,7 +1112,7 @@ const deleteUser = async (target) => {
     if (!response.ok) {
       throw new Error(responseMessage(payload, "ลบผู้ใช้ไม่สำเร็จ"));
     }
-    setMessage("ลบผู้ใช้สำเร็จ", "success");
+    setMessage(tUsers("users.message.delete_success", "ลบผู้ใช้สำเร็จ"), "success");
     await fetchUsers();
   } catch (error) {
     setMessage(friendlyErrorMessage(error, "ลบผู้ใช้ไม่สำเร็จ"), "error");
@@ -1161,3 +1187,10 @@ renderUsers();
 setUserFormMode("create");
 syncCreateSiteFieldState();
 startUsersPage();
+
+// Re-render dynamic content when language changes
+document.addEventListener("i18n:changed", () => {
+  try { renderUsers(); } catch { /* ignore */ }
+  try { setUserFormMode(userFormMode); } catch { /* ignore */ }
+  try { renderCreateSiteOptions(); } catch { /* ignore */ }
+});

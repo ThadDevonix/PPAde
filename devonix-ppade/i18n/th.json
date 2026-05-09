@@ -1,0 +1,470 @@
+{
+  "common.cancel": "ยกเลิก",
+  "common.save": "บันทึก",
+  "common.confirm": "ตกลง",
+  "common.close": "ปิด",
+  "common.delete": "ลบ",
+  "common.edit": "แก้ไข",
+  "common.refresh": "รีเฟรช",
+  "common.loading": "กำลังโหลด...",
+  "common.back": "กลับ",
+
+  "lang.label": "ภาษา",
+
+  "nav.home": "Home",
+  "nav.users": "Users",
+  "nav.logout": "ออกจากระบบ",
+  "nav.guide": "คู่มือการสร้างบิล",
+
+  "plant.eyebrow": "Plant",
+  "plant.mode.meters": "Meters",
+  "plant.mode.billing": "Billing",
+  "plant.mode.audit": "History Edit",
+
+  "meters.panel.title": "มิเตอร์ / Meters",
+  "meters.panel.add": "เพิ่มมิเตอร์",
+  "meters.col.status": "Status",
+  "meters.col.meter": "Meter",
+  "meters.col.address": "Address",
+  "meters.col.action": "จัดการ",
+  "meters.empty": "กำลังโหลด...",
+
+  "billing.panel.title": "บิลค่าไฟ / Billing",
+  "billing.panel.new_bill": "สร้างบิลใหม่",
+  "billing.tab.manual": "ออกบิลแบบกำหนดวัน",
+  "billing.tab.auto": "ออกบิลอัตโนมัติ",
+  "billing.queue.title": "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้",
+  "billing.queue.col.cutoff": "รอบวันที่",
+  "billing.queue.col.detail": "รายละเอียด",
+  "billing.queue.col.status": "สถานะ",
+  "billing.queue.col.action": "การทำงาน",
+  "billing.queue.empty": "ยังไม่มีรอบอัตโนมัติ",
+  "billing.history.title": "ประวัติการสร้างบิลแบบกำหนดวัน",
+  "billing.history.col.bill_no": "ใบที่",
+  "billing.history.col.period": "ช่วงวันที่",
+  "billing.history.col.rate": "อัตรา (฿/kWh)",
+  "billing.history.col.kwh": "หน่วยรวม (kWh)",
+  "billing.history.col.total": "ยอดรวม",
+  "billing.history.col.action": "การทำงาน",
+  "billing.history.empty": "ยังไม่มีบิล",
+
+  "audit.title": "History Edit",
+  "audit.subtitle": "เลือกหัวข้อด้านซ้ายเพื่ออ่านขั้นตอน",
+  "audit.filter.all": "ทั้งหมด",
+  "audit.filter.bill": "บิล",
+  "audit.filter.schedule": "รอบอัตโนมัติ",
+  "audit.date.label": "กรองตามวัน",
+  "audit.date.clear": "ล้าง",
+  "audit.refresh": "โหลดข้อมูลล่าสุด",
+  "audit.empty": "ยังไม่มีประวัติการเปลี่ยนแปลง",
+  "audit.empty_for_date": "ไม่พบประวัติของวันที่ {date}",
+  "audit.action.bill_created": "สร้างบิล",
+  "audit.action.bill_deleted": "ลบบิล",
+  "audit.action.schedule_added": "เพิ่มรอบอัตโนมัติ",
+  "audit.action.schedule_updated": "แก้ไขรอบอัตโนมัติ",
+  "audit.action.schedule_removed": "ลบรอบอัตโนมัติ",
+  "audit.target.bill": "ใบที่ {no}",
+  "audit.target.schedule": "รอบตัดวันที่ {day}",
+  "audit.kind.auto": "อัตโนมัติ",
+  "audit.kind.manual": "กำหนดวัน",
+  "audit.usage_in_period": "ใช้ในงวดนี้",
+
+  "page.title.plant": "ข้อมูลโรงไฟฟ้า",
+  "page.back.aria": "กลับหน้ารายการ",
+
+  "home.filter.label": "Plant name / Site ID",
+  "home.filter.placeholder": "ค้นหา",
+  "home.action.reset": "Reset",
+  "home.action.search": "Search",
+  "home.action.create_plant": "สร้าง Plant",
+  "home.col.status": "Status",
+  "home.col.image": "Plant Image",
+  "home.col.site_id": "Site ID",
+  "home.col.plant_name": "Plant Name",
+  "home.col.meter": "มิเตอร์",
+  "home.col.edit": "แก้ไข",
+
+  "plant_modal.title.create": "สร้าง Plant",
+  "plant_modal.title.edit": "แก้ไข Plant",
+  "plant_modal.step.name": "ตั้งชื่อ Plant",
+  "plant_modal.step.meter": "เพิ่มมิเตอร์",
+  "plant_modal.step.label": "ขั้นตอนที่ {current}/{total}",
+  "plant_modal.field.plant_name": "ตั้งชื่อ Plant",
+  "plant_modal.field.location": "Location",
+  "plant_modal.action.locate_current": "ค้นหาตำแหน่งปัจจุบัน",
+  "plant_modal.add_meter": "เพิ่มมิเตอร์",
+  "plant_modal.meter_hint": "เพิ่มข้อมูลมิเตอร์ทีละรายการ",
+  "plant_modal.action.delete": "ลบ Plant",
+  "plant_modal.action.back": "ย้อนกลับ",
+  "plant_modal.action.next": "ถัดไป",
+  "plant_modal.action.save": "บันทึก",
+
+  "meter_modal.title.add": "เพิ่มมิเตอร์",
+  "meter_modal.field.meter_name": "ตั้งชื่อมิเตอร์",
+  "meter_modal.field.address_group": "ชื่อ Address",
+  "meter_modal.address_group_hint": "เพิ่มได้หลายชุด (ชื่อ Address / Station / เลข Address)",
+  "meter_modal.action.add_group": "+ เพิ่มชุด",
+  "meter_modal.action.confirm": "ตกลง",
+  "meter_modal.field.address_name": "ชื่อ Address",
+  "meter_modal.field.station": "Station",
+  "meter_modal.field.address_number": "เลข Address",
+  "meter_modal.address_group_index": "ชุดที่ {n}",
+  "meter_modal.action.remove_group": "ลบชุดนี้",
+
+  "users.page.title": "จัดการผู้ใช้",
+  "users.action.refresh": "รีเฟรช",
+  "users.action.add": "เพิ่มผู้ใช้",
+  "users.col.id": "ID",
+  "users.col.email": "Email",
+  "users.col.name": "Name",
+  "users.col.role": "Role",
+  "users.col.status": "Status",
+  "users.col.last_login": "Last Login",
+  "users.col.action": "Action",
+  "users.modal.title.add": "เพิ่มผู้ใช้",
+  "users.modal.title.edit": "แก้ไขผู้ใช้",
+  "users.field.email": "Email",
+  "users.field.password": "Password",
+  "users.field.name": "Name",
+  "users.field.role": "Role",
+  "users.field.plant": "Plant (สำหรับ admin)",
+  "users.field.status": "สถานะ",
+  "users.search.placeholder": "ค้นหา",
+  "users.status.active": "active",
+  "users.status.inactive": "inactive",
+  "users.row.edit": "แก้ไข",
+  "users.row.delete": "ลบ",
+  "users.row.delete_self_disabled": "ไม่สามารถลบบัญชีที่กำลังใช้งาน",
+  "users.modal.submit.add": "บันทึก",
+  "users.modal.submit.edit": "บันทึกการแก้ไข",
+  "users.modal.submit.saving": "กำลังบันทึก...",
+  "users.row.loading": "กำลังโหลดผู้ใช้...",
+  "users.row.empty": "ยังไม่มีข้อมูลผู้ใช้",
+  "users.message.delete_self_blocked": "ไม่สามารถลบบัญชีที่กำลังใช้งานอยู่",
+  "users.confirm.delete": "ต้องการลบผู้ใช้ {email} ใช่หรือไม่?",
+  "users.message.delete_success": "ลบผู้ใช้สำเร็จ",
+  "users.message.delete_failed": "ลบผู้ใช้ไม่สำเร็จ",
+  "users.message.add_success": "เพิ่มผู้ใช้สำเร็จ",
+  "users.message.edit_success": "แก้ไขผู้ใช้สำเร็จ",
+  "users.message.add_failed": "เพิ่มผู้ใช้ไม่สำเร็จ",
+  "users.message.edit_failed": "แก้ไขผู้ใช้ไม่สำเร็จ",
+  "users.message.fill_required": "กรุณากรอกข้อมูล Email และ Name ให้ครบ",
+  "users.message.invalid_email": "กรุณากรอก Email ให้ถูกต้อง",
+  "users.message.password_too_short": "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+  "users.message.password_required": "กรุณากรอกรหัสผ่านสำหรับผู้ใช้ใหม่",
+  "users.message.role_invalid": "Role ต้องเป็น admin หรือ superadmin เท่านั้น",
+  "users.message.admin_cannot_create_super": "admin ไม่สามารถสร้างบัญชี superadmin ได้",
+  "users.message.load_failed": "โหลดรายการผู้ใช้ไม่สำเร็จ",
+  "users.message.load_summary": "โหลดผู้ใช้ทั้งหมด {count} รายการ",
+  "users.message.load_partial": "โหลดได้ {count}/{expected} รายการ (API อาจจำกัดสิทธิ์หรือข้อมูลเป็นแบบแบ่งหน้า)",
+  "users.plant.empty": "ไม่พบ Plant ให้เลือก",
+  "users.plant.search_empty": "ไม่พบ Plant จากคำค้นหา",
+  "users.plant.loading": "กำลังโหลด Plant...",
+  "users.plant.load_failed": "โหลดรายการ Plant ไม่สำเร็จ",
+  "users.plant.save_failed": "บันทึกสิทธิ์ Plant ไม่สำเร็จ",
+  "users.default_name": "ผู้ใช้งาน",
+
+  "common.user_label": "ผู้ใช้: {label}",
+  "common.logging_out": "กำลังออกจากระบบ...",
+  "common.session_expired": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่",
+  "common.rate_limit": "API ถูกเรียกถี่เกินไป (429)",
+  "common.rate_limit_wait": "API ถูกเรียกถี่เกินไป (429) กรุณารอสักครู่แล้วกดรีเฟรช",
+  "common.timeout": "การเชื่อมต่อใช้เวลานานเกินไป กรุณาลองใหม่",
+  "common.no_data": "ไม่พบข้อมูล",
+  "common.saving": "กำลังบันทึก...",
+
+  "home.empty.loading_plants": "กำลังโหลดข้อมูล Plant...",
+  "home.empty.no_plants": "ไม่พบข้อมูล",
+  "home.plant_count.total": "ทั้งหมด {count} Plant",
+  "home.error.api_failed": "โหลดข้อมูลจาก Sites API ไม่สำเร็จ",
+  "home.error.api_with_message": "โหลดข้อมูลจาก Sites API ไม่สำเร็จ: {message}",
+  "home.error.api_local_hint": "โหลดข้อมูลจาก Sites API ไม่สำเร็จ (แนะนำเปิดผ่าน npm start ที่ http://localhost:3000)",
+  "home.error.no_plant_id": "ไม่พบรหัส Plant จาก API จึงยังลบที่หลังบ้านไม่ได้",
+  "home.error.delete_plant_api": "ลบ Plant ผ่าน API ไม่สำเร็จ",
+  "home.error.save_plant_api": "บันทึก Plant ผ่าน API ไม่สำเร็จ",
+  "home.confirm.delete_plant": "ต้องการลบ Plant: {name} ใช่หรือไม่?",
+
+  "plant_modal.step.label_dynamic": "ขั้นตอนที่ {current}/{total}",
+  "plant_modal.alert.name_required": "กรุณาตั้งชื่อ Plant ก่อน",
+  "plant_modal.alert.name_required2": "กรุณาตั้งชื่อ Plant",
+  "plant_modal.alert.meter_required": "กรุณาเพิ่มมิเตอร์อย่างน้อย 1 รายการ",
+  "plant_modal.location.searching": "กำลังค้นหาตำแหน่ง...",
+  "plant_modal.location.unsupported": "เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง",
+  "plant_modal.location.requesting": "กำลังขอสิทธิ์ตำแหน่งจากอุปกรณ์...",
+  "plant_modal.location.success": "ได้ตำแหน่งแล้ว: {lat},{lng}",
+  "plant_modal.location.error": "ไม่สามารถดึงตำแหน่งปัจจุบันได้",
+  "plant_modal.location.denied": "ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง",
+  "plant_modal.location.no_data": "ไม่พบข้อมูลตำแหน่งจากอุปกรณ์",
+  "plant_modal.location.timeout": "ดึงตำแหน่งไม่ทันเวลา (timeout)",
+
+  "meter_modal.address_group.fallback_label": "ชุด Address นี้",
+  "meter_modal.confirm_delete_group": "ต้องการลบ {label} ใช่หรือไม่?",
+  "meter_modal.action.update": "อัปเดต",
+  "meter_modal.title.edit": "แก้ไขมิเตอร์",
+  "meter_modal.empty_meter_list": "ยังไม่มีมิเตอร์ที่เพิ่ม",
+  "meter_modal.meta.set_with_address": "ชุด {n}: {addressName} (Station {station}) | เลข Address: {address}",
+  "meter_modal.meta.no_groups": "ยังไม่ได้เพิ่มชุด Address",
+  "meter_modal.action.edit": "แก้ไข",
+  "meter_modal.action.delete": "ลบ",
+  "meter_modal.fallback_meter_label": "มิเตอร์ลำดับ {n}",
+  "meter_modal.confirm_delete_meter": "ต้องการลบมิเตอร์: {label} ใช่หรือไม่?",
+  "meter_modal.alert.fill_required": "กรุณากรอกข้อมูลมิเตอร์ให้ครบ",
+
+  "plant_detail.access.no_plant": "ไม่พบ Plant ที่เลือก หรือคุณไม่มีสิทธิ์เข้าถึง",
+  "plant_detail.access.no_site_id": "ไม่พบ Site ID ของ Plant นี้ จึงไม่สามารถยืนยันสิทธิ์ได้",
+  "plant_detail.access.denied": "คุณไม่มีสิทธิ์เข้าถึง Plant นี้",
+
+  "meters.page.no_plant": "ไม่พบข้อมูล Plant",
+  "meters.page.checking_access": "กำลังตรวจสอบสิทธิ์...",
+  "meters.list.empty": "ไม่พบมิเตอร์ของ Plant นี้",
+  "meters.list.manage_title": "จัดการมิเตอร์",
+  "meters.list.action.edit": "แก้ไข",
+  "meters.list.action.delete": "ลบ",
+  "meters.list.fallback_meter_name": "มิเตอร์นี้",
+  "meters.list.confirm_delete": "ต้องการลบมิเตอร์: {label} ใช่หรือไม่?",
+  "meters.list.delete_failed": "ลบมิเตอร์ไม่สำเร็จ",
+  "meters.modal.edit_title": "แก้ไขมิเตอร์",
+  "meters.modal.add_title": "เพิ่มมิเตอร์",
+  "meters.modal.action.save": "บันทึก",
+  "meters.modal.action.add": "เพิ่มมิเตอร์",
+  "meters.modal.action.update": "อัปเดต",
+  "meters.modal.alert.fill_required": "กรุณากรอกประเภทอุปกรณ์, ชื่ออุปกรณ์ และ Modbus Address ขาเข้าให้ครบ",
+  "meters.error.no_site_id": "ไม่พบ Site ID ของ Plant จึงบันทึกมิเตอร์เข้า API ไม่ได้",
+  "meters.error.no_permission_add": "ไม่มีสิทธิ์เพิ่มมิเตอร์",
+  "meters.error.no_permission_edit": "ไม่มีสิทธิ์แก้ไขมิเตอร์",
+  "meters.error.add_pending": "API รับคำขอแล้ว แต่ยังยืนยันมิเตอร์ที่เพิ่มไม่ได้ กรุณารีเฟรชแล้วตรวจสอบอีกครั้ง",
+  "meters.error.edit_no_change": "API ตอบสำเร็จ แต่ข้อมูลมิเตอร์ไม่เปลี่ยนที่หลังบ้าน",
+  "meters.error.edit_failed": "แก้ไขมิเตอร์ผ่าน API ไม่สำเร็จ",
+  "meters.error.save_failed": "บันทึกมิเตอร์ผ่าน API ไม่สำเร็จ",
+
+  "meter_chart.energy_summary": "สรุปพลังงาน",
+  "meter_chart.energy_in": "พลังงานที่ได้รับ",
+  "meter_chart.energy_out": "พลังงานที่จ่ายออก",
+  "meter_chart.no_daily_data": "ไม่พบข้อมูลรายวัน",
+  "meter_chart.no_month_data": "ไม่พบข้อมูลเดือนที่เลือก",
+  "meter_chart.produced_today": "ผลิตวันนี้",
+  "meter_chart.energy_total": "รวมพลังงาน",
+  "meter_chart.latest_cumulative": "ล่าสุดสะสม",
+  "meter_chart.latest_per_day": "ล่าสุดต่อวัน",
+  "meter_chart.cumulative_kwh": "พลังงานสะสมรายวัน (kWh)",
+  "meter_chart.daily_kwh": "พลังงานรายวัน (kWh)",
+  "meter_chart.daily_chart_aria": "กราฟพลังงานรายวันจาก energy_total ของเดือนที่เลือก",
+  "meter_chart.no_period_data": "ไม่พบข้อมูลในช่วงที่เลือก",
+  "meter_chart.loading": "กำลังโหลดกราฟ...",
+  "meter_chart.tooltip_time": "เวลา {time} | {value} kWh",
+  "meter_chart.solar_produced": "โซลาร์ผลิต",
+  "meter_chart.utility_used": "ใช้ไฟจากการไฟฟ้า",
+  "meter_chart.month_n": "เดือน {n}",
+  "meter_chart.live_updated": "อัปเดต {time}",
+
+  "meters.page.title": "ภาพรวมพลังงานมิเตอร์",
+  "meters.eyebrow": "Meter",
+  "meters.kicker": "Realtime Energy Intelligence",
+  "meters.label.total_kwh": "Total kWh",
+  "meters.label.live": "Total kWh : Live ล่าสุด",
+  "meters.period.day": "วัน",
+  "meters.period.month": "เดือน",
+  "meters.period.year": "ปี",
+  "meters.chart.placeholder": "Graph placeholder",
+
+  "login.title": "เข้าสู่ระบบ",
+  "login.welcome": "ยินดีต้อนรับเข้าสู่ DEVONIX",
+  "login.field.email": "อีเมล",
+  "login.field.password": "รหัสผ่าน",
+  "login.action.submit": "เข้าสู่ระบบ",
+  "login.action.show_password": "แสดงรหัสผ่าน",
+  "login.action.hide_password": "ซ่อนรหัสผ่าน",
+  "login.message.fill_required": "กรุณากรอกอีเมลและรหัสผ่าน",
+  "login.message.signing_in": "กำลังเข้าสู่ระบบ...",
+  "login.message.failed": "เข้าสู่ระบบไม่สำเร็จ",
+  "login.message.success": "เข้าสู่ระบบสำเร็จ",
+  "login.message.network_error": "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้",
+
+  "bill.modal.title.manual": "สร้างใบแจ้งค่าไฟ",
+  "bill.modal.title.auto": "ตั้งค่าออกบิลอัตโนมัติ",
+  "bill.auto_preview_text": "ระบบจะสร้างบิลตามรอบอัตโนมัติ",
+  "bill.label.start_date": "วันที่เริ่ม",
+  "bill.label.end_date": "ถึงวันที่",
+  "bill.label.rate": "อัตรา (฿/kWh)",
+  "bill.label.rate_type": "ประเภทอัตรา",
+  "bill.label.calc_mode": "รูปแบบคำนวณหน่วย",
+  "bill.calc.single": "ออกบิลค่าเดี่ยว",
+  "bill.calc.formula": "ออกบิลแบบคำนวณ",
+  "bill.calc.reset_title": "รีเซ็ตค่ารูปแบบคำนวณหน่วย",
+  "bill.calc.reset_aria": "รีเซ็ตรูปแบบคำนวณหน่วย",
+  "bill.formula.meter_name": "ชื่อมิเตอร์",
+  "bill.formula.value": "ค่าที่ใช้คำนวณ",
+  "bill.formula.operator": "เครื่องหมาย",
+  "bill.formula.result_name": "ชื่อผลคำนวณ",
+  "bill.formula.result_value": "ผลคำนวน",
+  "bill.column.add_basic": "เพิ่มคอลัมน์",
+  "bill.column.add_calc": "เพิ่มคอลัมคำนวณ",
+  "bill.column.remove": "ลบคอลัมน์",
+  "bill.column.helper": "เลือกช่องเพื่อแสดงยอดรวมในการชำระเงิน",
+  "bill.cutoff_label": "ตัดรอบวันที่",
+  "bill.delete_cutoff": "ลบรอบวันที่",
+  "bill.action.cancel": "ยกเลิก",
+  "bill.action.confirm": "สร้างบิล",
+  "bill.action.confirm_auto": "บันทึกอัตโนมัติ",
+  "bill.action.creating": "กำลังสร้างบิล...",
+  "bill.action.saving_auto": "กำลังบันทึก...",
+  "bill.history.title.manual": "ประวัติการสร้างบิลแบบกำหนดวัน",
+  "bill.history.title.auto": "ประวัติการสร้างบิลอัตโนมัติ",
+  "bill.history.empty.manual": "ยังไม่มีบิลกำหนดวัน",
+  "bill.history.empty.auto": "ยังไม่มีบิลอัตโนมัติ",
+  "bill.queue.title": "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้",
+  "bill.queue.title_with_count": "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ ({count} รอบ)",
+  "bill.auto.cutoff_summary": "บิลจะสรุปที่วันที่ {day} ของเดือนนั้นๆ แบบอัตโนมัติ",
+  "bill.button.new_bill": "สร้างบิลใหม่",
+  "bill.button.config_auto": "ตั้งค่าอัตโนมัติ",
+  "bill.button.view_auto": "ดูรายการอัตโนมัติ",
+  "bill.action.preview": "ดูตัวอย่าง",
+  "bill.action.download": "ดาวน์โหลด",
+  "bill.action.delete": "ลบ",
+  "bill.row.created_by": "ผู้สร้าง",
+
+  "receipt.preview.title": "ตัวอย่างรายงานบิล",
+  "receipt.download_pdf": "ดาวน์โหลด PDF",
+
+  "meter.create.title": "เพิ่มมิเตอร์",
+  "meter.create.type_label": "ประเภทอุปกรณ์",
+  "meter.create.name_label": "ชื่ออุปกรณ์",
+  "meter.create.name_placeholder": "เช่น Main Solar Inverter",
+  "meter.create.import_label": "Modbus Address ขาเข้า (Import)",
+  "meter.create.export_label": "Modbus Address ขาออก (Export)",
+  "meter.create.address_in_1": "Address IN 1 (High Word)",
+  "meter.create.address_in_2": "Address IN 2 (Low Word)",
+  "meter.create.address_out_1": "Address OUT 1 (High Word)",
+  "meter.create.address_out_2": "Address OUT 2 (Low Word)",
+  "meter.create.note": "* ไม่บังคับ หากไม่มีขาออกสามารถเว้นว่างได้",
+  "meter.create.confirm": "เพิ่มมิเตอร์",
+  "meter.type.solar": "โซล่าร์ (SOLAR_PANEL)",
+  "meter.type.meter": "มิเตอร์ (METER)",
+  "meter.type.mdb_in": "มิเตอร์ขาเข้า (MDB_IN)",
+  "meter.type.mdb_out": "มิเตอร์ขาออก (MDB_OUT)",
+
+  "guide.title": "คู่มือการสร้างบิล",
+  "guide.subtitle": "เลือกหัวข้อด้านซ้ายเพื่ออ่านขั้นตอน",
+  "guide.pager.prev": "‹ ก่อนหน้า",
+  "guide.pager.next": "ถัดไป ›",
+  "guide.page_progress": "หน้า {current} จาก {total}",
+
+  "guide.topics": [
+    {
+      "id": "intro",
+      "title": "เริ่มต้นใช้งาน",
+      "pages": [
+        {
+          "title": "ภาพรวมของระบบบิล",
+          "html": "<p>ระบบ Billing ของ PPAde รองรับการออกบิลค่าไฟ <strong>2 รูปแบบหลัก</strong>:</p><ul class=\"guide-list\"><li><strong>กำหนดวัน (Manual)</strong> — เลือกช่วงวันที่และอัตราเอง สร้างบิลทันที</li><li><strong>อัตโนมัติ (Auto)</strong> — ตั้ง cutoff day ระบบจะออกบิลให้ตามรอบทุกเดือน</li></ul><p>การคำนวณรองรับทั้ง <strong>ค่าเดี่ยว</strong> (มิเตอร์ × field 1 ตัว) และ <strong>สูตรคำนวณ</strong> (เช่น meter A − meter B) พร้อมเพิ่ม <em>คอลัมน์เสริม</em> ในตารางบิลได้</p><div class=\"guide-note\"><strong>เริ่มที่ไหน?</strong><p>เปิดหน้า Plant detail → กด tab <strong>Billing</strong> → จะเห็นแถบสลับ \"ออกบิลแบบกำหนดวัน\" / \"ออกบิลอัตโนมัติ\"</p></div>"
+        },
+        {
+          "title": "สิทธิ์การใช้งาน",
+          "html": "<p>เพื่อสร้าง/แก้/ลบบิล ผู้ใช้ต้องมีสิทธิ์เข้าถึง Plant นั้น และมี role ตามตาราง:</p><table class=\"guide-table\"><thead><tr><th>การกระทำ</th><th>Superadmin</th><th>Admin</th></tr></thead><tbody><tr><td>ดูบิล</td><td>✅</td><td>✅ (เฉพาะ plant ในสิทธิ์)</td></tr><tr><td>สร้าง/แก้บิล manual</td><td>✅</td><td>✅</td></tr><tr><td>ตั้ง/แก้ auto schedule</td><td>✅</td><td>✅</td></tr><tr><td>ลบบิล</td><td>✅</td><td>✅</td></tr><tr><td>ลบ auto schedule (รีเซ็ตทั้งรอบ)</td><td>✅</td><td>❌</td></tr></tbody></table><p class=\"guide-tip\">ทุก action จะถูกบันทึกใน <strong>History Edit</strong> โดยอัตโนมัติ</p>"
+        }
+      ]
+    },
+    {
+      "id": "manual",
+      "title": "ออกบิลแบบกำหนดวัน",
+      "pages": [
+        {
+          "title": "ขั้นตอนที่ 1 — เปิด modal",
+          "html": "<ol class=\"guide-steps\"><li>เลือก tab <strong>\"ออกบิลแบบกำหนดวัน\"</strong> ในแถบ Billing</li><li>กดปุ่ม <strong>\"+ สร้างบิลใหม่\"</strong> มุมขวาบน</li><li>Modal \"สร้างใบแจ้งค่าไฟ\" จะเปิดขึ้นมา</li></ol>"
+        },
+        {
+          "title": "ขั้นตอนที่ 2 — ตั้งช่วงวันที่",
+          "html": "<p>กรอกข้อมูลในส่วนแรก:</p><ul class=\"guide-list\"><li><strong>วันที่เริ่ม</strong> — วันแรกของรอบ (เช่น 1/05/2569)</li><li><strong>ถึงวันที่</strong> — วันสุดท้าย (เช่น 31/05/2569)</li></ul><div class=\"guide-warn\"><strong>ข้อจำกัด</strong><p>ช่วงวันที่ออกบิลได้สูงสุด 60 วัน หากเกินระบบจะแจ้งเตือน</p></div>"
+        },
+        {
+          "title": "ขั้นตอนที่ 3 — อัตราและประเภท",
+          "html": "<ul class=\"guide-list\"><li><strong>อัตรา (฿/kWh)</strong> — ราคาต่อหน่วย (รับทศนิยม 3 ตำแหน่ง)</li><li><strong>ประเภทอัตรา</strong> — เลือก \"Flat rate\" (อัตราเดียว) หรือ \"TOU\" (Time of Use)</li></ul>"
+        },
+        {
+          "title": "ขั้นตอนที่ 4 — รูปแบบคำนวณหน่วย",
+          "html": "<p>เลือก 1 ใน 2 รูปแบบ:</p><ul class=\"guide-list\"><li><strong>ออกบิลค่าเดี่ยว</strong> — เลือกมิเตอร์ 1 ตัว + field 1 ค่า</li><li><strong>ออกบิลแบบคำนวณ</strong> — สร้างสูตร 2 พจน์ เช่น <code>meter-A.energy_in − meter-B.energy_out</code></li></ul><p>กดปุ่ม reset (วงกลมลูกศร) ถ้าอยากล้างค่าเริ่มใหม่</p>"
+        },
+        {
+          "title": "ขั้นตอนที่ 5 — ยืนยัน",
+          "html": "<ol class=\"guide-steps\"><li>ตรวจสอบข้อมูลทั้งหมด</li><li>กดปุ่ม <strong>\"สร้างบิล\"</strong></li><li>ระบบจะแสดง <strong>spinner กำลังสร้างบิล...</strong> ขณะดึงข้อมูลรายวันจาก API</li><li>เมื่อเสร็จ alert จะแจ้งหมายเลขใบบิล + ยอดรวม</li><li>บิลปรากฏในตารางประวัติด้านล่าง</li></ol><div class=\"guide-tip\">หากเกิด error ระหว่างสร้าง ระบบจะแจ้งเตือน — ตรวจสอบเครือข่าย/สิทธิ์ผู้ใช้แล้วลองอีกครั้ง</div>"
+        }
+      ]
+    },
+    {
+      "id": "auto",
+      "title": "ออกบิลอัตโนมัติ",
+      "pages": [
+        {
+          "title": "Auto Schedule คืออะไร",
+          "html": "<p>Auto Schedule = รอบบิลที่ตั้งไว้ล่วงหน้า ระบบจะออกบิลให้อัตโนมัติเมื่อถึงวันที่ตัดรอบของแต่ละเดือน</p><ul class=\"guide-list\"><li>กำหนด <strong>cutoff day</strong> 1–31 (เช่น 5 = ตัดรอบทุกวันที่ 5)</li><li>1 plant ตั้งได้หลายรอบ (เช่น วันที่ 5 + วันที่ 25)</li><li>เมื่อถึงวัน → ระบบดึงข้อมูล + capture เลขมิเตอร์ live + สร้างบิล + บันทึกใน history</li></ul>"
+        },
+        {
+          "title": "ขั้นตอนตั้งรอบใหม่",
+          "html": "<ol class=\"guide-steps\"><li>เลือก tab <strong>\"ออกบิลอัตโนมัติ\"</strong></li><li>กด <strong>\"ตั้งค่าอัตโนมัติ\"</strong></li><li>เลือก cutoff day, อัตรา, รูปแบบคำนวณ, มิเตอร์</li><li>กด <strong>\"บันทึกอัตโนมัติ\"</strong></li><li>รอบจะปรากฏในตาราง \"รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้\"</li></ol>"
+        },
+        {
+          "title": "ดูตัวอย่าง / ออกบิลทันที",
+          "html": "<p>ในตารางรอบอัตโนมัติแต่ละรายการ มี action:</p><ul class=\"guide-list\"><li><strong>\"ดูตัวอย่าง\"</strong> — preview บิลของรอบล่าสุดเต็มเดือน (ยังไม่ commit)</li><li><strong>\"ดูตัวอย่างปัจจุบัน\"</strong> — preview ตั้งแต่ต้นรอบ ถึงวันนี้ (partial)</li><li><strong>\"สร้างบิล\"</strong> — ออกบิลทันทีด้วยข้อมูลที่ครบถึงปัจจุบัน บันทึกใน history</li></ul>"
+        },
+        {
+          "title": "ลบ / แก้รอบ",
+          "html": "<ul class=\"guide-list\"><li><strong>แก้</strong> — กด edit ที่รอบใน modal — เปลี่ยนค่าได้ทุกอย่าง</li><li><strong>ลบ</strong> — Superadmin เท่านั้น (Admin ลบไม่ได้)</li><li>ทุกการเปลี่ยนแปลงบันทึกใน <strong>History Edit</strong></li></ul>"
+        },
+        {
+          "title": "เลขมิเตอร์ก่อน / หลัง",
+          "html": "<p>บิล <strong>auto</strong> เท่านั้นที่บันทึกเลขมิเตอร์สะสม (Live API totalizer):</p><ul class=\"guide-list\"><li><strong>\"หลัง\"</strong> = ค่า kWh ปัจจุบันจาก API ตอนสร้างบิล</li><li><strong>\"ก่อน\"</strong> = ค่า \"หลัง\" ของบิล auto ใบก่อนหน้า (plant + meter เดียวกัน)</li><li>บิลแรกของ meter จะแสดง \"—\" ในช่อง \"ก่อน\" (ไม่มีอ้างอิง)</li></ul><p>แสดงเป็นการ์ดเล็กต่อมิเตอร์บนหัวบิล (preview + PDF)</p>"
+        }
+      ]
+    },
+    {
+      "id": "formula",
+      "title": "สูตร / คอลัมน์เสริม",
+      "pages": [
+        {
+          "title": "สูตรพื้นฐาน 2 พจน์",
+          "html": "<p>โหมด \"ออกบิลแบบคำนวณ\" สร้างสูตรจากมิเตอร์ 2 ตัว ตัวคั่นด้วย operator <code>+ − × ÷</code></p><p class=\"guide-example\">ตัวอย่าง: <code>Solar.energy_in − MDB.energy_out</code> = energy net ที่เหลือใช้</p><ul class=\"guide-list\"><li>เลือก <strong>มิเตอร์ A</strong> + field A</li><li>เลือก <strong>operator</strong> (+, −, ×, ÷)</li><li>เลือก <strong>มิเตอร์ B</strong> + field B</li><li>ตั้ง <strong>\"ชื่อผลคำนวณ\"</strong> ที่จะใช้แสดงในใบบิล</li></ul>"
+        },
+        {
+          "title": "Formula Columns — เพิ่มคอลัมน์",
+          "html": "<p>ตารางบิลปกติมี 1 คอลัมน์ผลรวม (จากสูตรหลัก) แต่คุณเพิ่มได้อีกหลายคอลัมน์:</p><ol class=\"guide-steps\"><li>กด <strong>\"+ เพิ่มคอลัมน์\"</strong> — เพิ่มคอลัมน์แบบ basic (มิเตอร์ × field)</li><li>กด <strong>\"+ เพิ่มคอลัมคำนวณ\"</strong> — เพิ่มคอลัมน์ที่มีสูตร (เหมือนพื้นฐาน 2 พจน์)</li><li>กด <strong>\"ลบคอลัมน์\"</strong> — ลบคอลัมน์ล่าสุด</li></ol><p>แต่ละคอลัมน์มี <strong>checkbox include</strong> — ติ๊ก = นับรวมในยอด, ไม่ติ๊ก = แสดงค่าแต่ไม่นับ</p>"
+        },
+        {
+          "title": "ตัวอย่าง use case",
+          "html": "<ul class=\"guide-list\"><li><strong>โซลาร์ + กริด</strong>: คอลัมน์ Solar / MDB In / MDB Out / Net (excluded)</li><li><strong>หลายมิเตอร์ tenant</strong>: คอลัมน์ tenant 1 / tenant 2 / tenant 3 รวมยอด</li><li><strong>หักลดหย่อน</strong>: คอลัมน์ raw + คอลัมน์ส่วนลด (excluded)</li></ul>"
+        }
+      ]
+    },
+    {
+      "id": "preview",
+      "title": "Preview & PDF",
+      "pages": [
+        {
+          "title": "ดูตัวอย่างบิล",
+          "html": "<p>คลิก <strong>\"ดูตัวอย่าง\"</strong> ที่แถวบิลในประวัติ</p><ul class=\"guide-list\"><li>เปิด modal ขนาด A4 — pagination ตามจำนวนแถวรายวัน</li><li>หัวบิลมี ข้อมูลบริษัท + รายละเอียดงวด</li><li>ใบ auto: มีตารางสรุปเลขมิเตอร์ก่อน/หลังต่อมิเตอร์</li><li>ตารางรายวัน + ผลรวม</li><li>ผลสรุปยอดรวม + ราคา</li></ul>"
+        },
+        {
+          "title": "ดาวน์โหลด PDF",
+          "html": "<ol class=\"guide-steps\"><li>เปิด preview ของบิล</li><li>กด <strong>\"ดาวน์โหลด PDF\"</strong></li><li>ระบบใช้ <code>window.print()</code> ของ browser → เลือก \"Save as PDF\"</li><li>ตั้ง paper size: A4, margins: None</li></ol><p class=\"guide-tip\">PDF จะคงสีตารางและการ์ดเลขมิเตอร์เหมือนใน preview</p>"
+        }
+      ]
+    },
+    {
+      "id": "history",
+      "title": "History Edit",
+      "pages": [
+        {
+          "title": "ทุก action ถูกบันทึก",
+          "html": "<p>tab <strong>\"History Edit\"</strong> ใน Plant detail แสดง audit log ของทุกการเปลี่ยนแปลง:</p><ul class=\"guide-list\"><li><strong>สร้างบิล</strong> (manual + auto) — เขียวเข้ม</li><li><strong>ลบบิล</strong> — แดง</li><li><strong>เพิ่ม/ลบ/แก้ auto schedule</strong> — เหลือง / เขียว / แดง</li></ul><p>แต่ละ entry: avatar + ชื่อ + role + รายละเอียด + เวลา (relative + absolute)</p>"
+        },
+        {
+          "title": "Filter",
+          "html": "<ul class=\"guide-list\"><li><strong>ประเภท</strong>: ทั้งหมด / บิล / รอบอัตโนมัติ</li><li><strong>วันที่</strong>: เลือกวันใน date picker → แสดงเฉพาะวันนั้น</li><li>กดปุ่ม <strong>🔄</strong> เพื่อโหลดข้อมูลล่าสุดจาก server</li></ul>"
+        },
+        {
+          "title": "ใครเห็น log ใครได้บ้าง",
+          "html": "<p>Audit log <strong>shared per plant</strong> — ใครก็ตามที่เข้า Plant ได้ จะเห็น log ทั้งหมดของ Plant นั้น (ไม่ filter ตาม actor)</p><p>ข้อมูล <code>actor</code> มาจาก server session — ปลอมไม่ได้ฝั่ง client</p><p>เก็บล่าสุด 500 entries ต่อ plant — เก่ากว่านั้นจะถูกตัดออก</p>"
+        }
+      ]
+    }
+  ]
+}

@@ -15,15 +15,16 @@
       <div class="nav-links">
         <a class="nav-link active" href="./index.html">
           <span class="home-icon" aria-hidden="true"></span>
-          Home
+          <span data-i18n="nav.home">Home</span>
         </a>
         <a class="nav-link" href="./users/index.html">
-          Users
+          <span data-i18n="nav.users">Users</span>
         </a>
       </div>
+      <button class="lang-toggle" data-lang-toggle="th" type="button" aria-label="Change language"></button>
       <div class="nav-auth">
         <span id="auth-user" class="pill auth-user"></span>
-        <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+        <button id="logout-btn" class="small-btn nav-logout" type="button" data-i18n="nav.logout">ออกจากระบบ</button>
       </div>
     </nav>
 
@@ -31,20 +32,20 @@
       <div class="filters-main">
         <div class="filters-row">
           <div>
-            <label for="plant">Plant name / Site ID</label>
-            <input id="plant" type="text" placeholder="ค้นหา" />
+            <label for="plant" data-i18n="home.filter.label">Plant name / Site ID</label>
+            <input id="plant" type="text" data-i18n-placeholder="home.filter.placeholder" placeholder="ค้นหา" />
           </div>
         </div>
         <div class="actions-right">
-          <button id="reset">Reset</button>
-          <button id="search" class="primary">Search</button>
+          <button id="reset" data-i18n="home.action.reset">Reset</button>
+          <button id="search" class="primary" data-i18n="home.action.search">Search</button>
         </div>
       </div>
       <div class="actions-center">
         <img src="./images/logo_d_v2-01-2.svg" alt="" class="plant-count-logo" aria-hidden="true">
         <span class="pill count" id="plant-count">0 Plant</span>
         <span class="pill cache-status hidden" id="sites-cache-badge" aria-live="polite"></span>
-        <button id="create-plant" class="primary">สร้าง Plant</button>
+        <button id="create-plant" class="primary" data-i18n="home.action.create_plant">สร้าง Plant</button>
       </div>
     </div>
 
@@ -52,16 +53,16 @@
       <table>
         <thead>
           <tr>
-            <th style="width: 80px;">Status</th>
-            <th style="width: 110px;">Plant Image</th>
-            <th style="width: 120px;">Site ID</th>
-            <th>Plant Name</th>
-            <th style="width: 140px;">มิเตอร์</th>
-            <th style="width: 140px;">แก้ไข</th>
+            <th style="width: 80px;" data-i18n="home.col.status">Status</th>
+            <th style="width: 110px;" data-i18n="home.col.image">Plant Image</th>
+            <th style="width: 120px;" data-i18n="home.col.site_id">Site ID</th>
+            <th data-i18n="home.col.plant_name">Plant Name</th>
+            <th style="width: 140px;" data-i18n="home.col.meter">มิเตอร์</th>
+            <th style="width: 140px;" data-i18n="home.col.edit">แก้ไข</th>
           </tr>
         </thead>
         <tbody id="rows">
-          <tr><td class="empty" colspan="6">กำลังโหลด...</td></tr>
+          <tr><td class="empty" colspan="6" data-i18n="common.loading">กำลังโหลด...</td></tr>
         </tbody>
       </table>
     </div>
@@ -71,7 +72,7 @@
       <div class="modal-content">
         <div class="modal-header">
         <div class="modal-title-wrap">
-          <h3 id="plant-modal-title">สร้าง Plant</h3>
+          <h3 id="plant-modal-title" data-i18n="plant_modal.title.create">สร้าง Plant</h3>
           <div class="modal-stepper" id="plant-stepper" aria-live="polite">
             <div class="modal-step-track" aria-hidden="true">
               <span class="modal-step-fill" id="plant-step-fill"></span>
@@ -79,17 +80,17 @@
             <div class="modal-step-items" aria-hidden="true">
               <span class="modal-step-item active" data-step="1">
                 <span class="step-dot">1</span>
-                <span class="step-text">ตั้งชื่อ Plant</span>
+                <span class="step-text" data-i18n="plant_modal.step.name">ตั้งชื่อ Plant</span>
               </span>
               <span class="modal-step-item" data-step="2">
                 <span class="step-dot">2</span>
-                <span class="step-text">เพิ่มมิเตอร์</span>
+                <span class="step-text" data-i18n="plant_modal.step.meter">เพิ่มมิเตอร์</span>
               </span>
             </div>
             <span class="modal-step" id="plant-step-label">ขั้นตอนที่ 1/2</span>
           </div>
         </div>
-        <button class="ghost icon-btn" id="plant-modal-close" aria-label="ปิด">
+        <button class="ghost icon-btn" id="plant-modal-close" data-i18n-aria-label="common.close" aria-label="ปิด">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
@@ -98,17 +99,17 @@
       <div class="modal-body">
         <div class="plant-step" data-step="1">
           <div class="field">
-            <label for="plant-name-input">ตั้งชื่อ Plant</label>
+            <label for="plant-name-input" data-i18n="plant_modal.field.plant_name">ตั้งชื่อ Plant</label>
             <input type="text" id="plant-name-input">
           </div>
           <div class="field">
-            <label for="plant-location-input">Location</label>
+            <label for="plant-location-input" data-i18n="plant_modal.field.location">Location</label>
             <input
               type="text"
               id="plant-location-input"
             >
             <div class="field-actions plant-location-actions">
-              <button class="chip-btn" id="plant-location-current" type="button">
+              <button class="chip-btn" id="plant-location-current" type="button" data-i18n="plant_modal.action.locate_current">
                 ค้นหาตำแหน่งปัจจุบัน
               </button>
             </div>
@@ -119,11 +120,11 @@
           <div class="field">
             <div class="field-head">
               <div>
-                <label>เพิ่มมิเตอร์</label>
-                <p class="muted small">เพิ่มข้อมูลมิเตอร์ทีละรายการ</p>
+                <label data-i18n="plant_modal.add_meter">เพิ่มมิเตอร์</label>
+                <p class="muted small" data-i18n="plant_modal.meter_hint">เพิ่มข้อมูลมิเตอร์ทีละรายการ</p>
               </div>
               <div class="field-actions">
-                <button class="chip-btn" id="meter-add-btn" type="button">เพิ่มมิเตอร์</button>
+                <button class="chip-btn" id="meter-add-btn" type="button" data-i18n="plant_modal.add_meter">เพิ่มมิเตอร์</button>
               </div>
             </div>
             <div class="meter-list" id="meter-list"></div>
@@ -132,11 +133,11 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="small-btn btn-danger hidden" id="plant-delete" type="button">ลบ Plant</button>
-        <button class="ghost small-btn hidden" id="plant-step-back" type="button">ย้อนกลับ</button>
-        <button class="ghost small-btn" id="plant-cancel" type="button">ยกเลิก</button>
-        <button class="primary" id="plant-step-next" type="button">ถัดไป</button>
-        <button class="primary hidden" id="plant-save" type="button">บันทึก</button>
+        <button class="small-btn btn-danger hidden" id="plant-delete" type="button" data-i18n="plant_modal.action.delete">ลบ Plant</button>
+        <button class="ghost small-btn hidden" id="plant-step-back" type="button" data-i18n="plant_modal.action.back">ย้อนกลับ</button>
+        <button class="ghost small-btn" id="plant-cancel" type="button" data-i18n="bill.action.cancel">ยกเลิก</button>
+        <button class="primary" id="plant-step-next" type="button" data-i18n="plant_modal.action.next">ถัดไป</button>
+        <button class="primary hidden" id="plant-save" type="button" data-i18n="plant_modal.action.save">บันทึก</button>
       </div>
     </div>
   </div>
@@ -144,8 +145,8 @@
   <div class="modal hidden" id="meter-modal" role="dialog" aria-modal="true">
     <div class="modal-content small">
       <div class="modal-header">
-        <h3 id="meter-modal-title">เพิ่มมิเตอร์</h3>
-        <button class="ghost icon-btn" id="meter-modal-close" aria-label="ปิด">
+        <h3 id="meter-modal-title" data-i18n="meter_modal.title.add">เพิ่มมิเตอร์</h3>
+        <button class="ghost icon-btn" id="meter-modal-close" data-i18n-aria-label="common.close" aria-label="ปิด">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
@@ -153,25 +154,25 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label for="meter-name-input">ตั้งชื่อมิเตอร์ <span class="req-star">*</span></label>
+          <label for="meter-name-input"><span data-i18n="meter_modal.field.meter_name">ตั้งชื่อมิเตอร์</span> <span class="req-star">*</span></label>
           <input type="text" id="meter-name-input">
         </div>
         <div class="field">
           <div class="field-head">
             <div>
-              <label>ชื่อ Address</label>
-              <p class="muted small">เพิ่มได้หลายชุด (ชื่อ Address / Station / เลข Address)</p>
+              <label data-i18n="meter_modal.field.address_group">ชื่อ Address</label>
+              <p class="muted small" data-i18n="meter_modal.address_group_hint">เพิ่มได้หลายชุด (ชื่อ Address / Station / เลข Address)</p>
             </div>
             <div class="field-actions">
-              <button class="chip-btn" id="address-group-add-btn" type="button">+ เพิ่มชุด</button>
+              <button class="chip-btn" id="address-group-add-btn" type="button" data-i18n="meter_modal.action.add_group">+ เพิ่มชุด</button>
             </div>
           </div>
           <div id="address-group-list" class="address-group-list"></div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="ghost small-btn" id="meter-add-cancel" type="button">ยกเลิก</button>
-        <button class="primary" id="meter-add-confirm" type="button">ตกลง</button>
+        <button class="ghost small-btn" id="meter-add-cancel" type="button" data-i18n="bill.action.cancel">ยกเลิก</button>
+        <button class="primary" id="meter-add-confirm" type="button" data-i18n="meter_modal.action.confirm">ตกลง</button>
       </div>
     </div>
   </div>
@@ -180,25 +181,26 @@
     <div class="address-group-item">
       <div class="address-group-head">
         <span class="pill count address-group-index">ชุดที่ 1</span>
-        <button class="ghost small-btn address-group-remove" type="button">ลบชุดนี้</button>
+        <button class="ghost small-btn address-group-remove" type="button" data-i18n="meter_modal.action.remove_group">ลบชุดนี้</button>
       </div>
       <div class="address-group-grid">
         <div class="field">
-          <label>ชื่อ Address <span class="req-star">*</span></label>
+          <label><span data-i18n="meter_modal.field.address_name">ชื่อ Address</span> <span class="req-star">*</span></label>
           <input type="text" data-field="addressName">
         </div>
         <div class="field">
-          <label>Station <span class="req-star">*</span></label>
+          <label><span data-i18n="meter_modal.field.station">Station</span> <span class="req-star">*</span></label>
           <input type="text" data-field="station" inputmode="numeric" pattern="[0-9]*">
         </div>
         <div class="field">
-          <label>เลข Address <span class="req-star">*</span></label>
+          <label><span data-i18n="meter_modal.field.address_number">เลข Address</span> <span class="req-star">*</span></label>
           <input type="text" data-field="address" inputmode="numeric" pattern="[0-9]*">
         </div>
       </div>
     </div>
   </template>
 
+  <script src="./assets/i18n.js" defer></script>
   <script src="./app.js?v=20260216-4" defer></script>
 </body>
 </html>

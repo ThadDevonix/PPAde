@@ -1,0 +1,470 @@
+{
+  "common.cancel": "Cancel",
+  "common.save": "Save",
+  "common.confirm": "OK",
+  "common.close": "Close",
+  "common.delete": "Delete",
+  "common.edit": "Edit",
+  "common.refresh": "Refresh",
+  "common.loading": "Loading...",
+  "common.back": "Back",
+
+  "lang.label": "Language",
+
+  "nav.home": "Home",
+  "nav.users": "Users",
+  "nav.logout": "Logout",
+  "nav.guide": "Bill Creation Guide",
+
+  "plant.eyebrow": "Plant",
+  "plant.mode.meters": "Meters",
+  "plant.mode.billing": "Billing",
+  "plant.mode.audit": "History Edit",
+
+  "meters.panel.title": "Meters",
+  "meters.panel.add": "Add meter",
+  "meters.col.status": "Status",
+  "meters.col.meter": "Meter",
+  "meters.col.address": "Address",
+  "meters.col.action": "Manage",
+  "meters.empty": "Loading...",
+
+  "billing.panel.title": "Electricity Bills / Billing",
+  "billing.panel.new_bill": "New Bill",
+  "billing.tab.manual": "Manual (date range)",
+  "billing.tab.auto": "Auto Schedule",
+  "billing.queue.title": "Configured Auto Bill Schedules",
+  "billing.queue.col.cutoff": "Cutoff Day",
+  "billing.queue.col.detail": "Details",
+  "billing.queue.col.status": "Status",
+  "billing.queue.col.action": "Actions",
+  "billing.queue.empty": "No auto schedules yet",
+  "billing.history.title": "Manual Bill History",
+  "billing.history.col.bill_no": "Bill No.",
+  "billing.history.col.period": "Period",
+  "billing.history.col.rate": "Rate (฿/kWh)",
+  "billing.history.col.kwh": "Total kWh",
+  "billing.history.col.total": "Total",
+  "billing.history.col.action": "Actions",
+  "billing.history.empty": "No bills yet",
+
+  "audit.title": "History Edit",
+  "audit.subtitle": "Pick a topic on the left to read the steps",
+  "audit.filter.all": "All",
+  "audit.filter.bill": "Bills",
+  "audit.filter.schedule": "Schedules",
+  "audit.date.label": "Filter by date",
+  "audit.date.clear": "Clear",
+  "audit.refresh": "Reload latest",
+  "audit.empty": "No history yet",
+  "audit.empty_for_date": "No entries on {date}",
+  "audit.action.bill_created": "Created bill",
+  "audit.action.bill_deleted": "Deleted bill",
+  "audit.action.schedule_added": "Added auto schedule",
+  "audit.action.schedule_updated": "Updated auto schedule",
+  "audit.action.schedule_removed": "Removed auto schedule",
+  "audit.target.bill": "Bill #{no}",
+  "audit.target.schedule": "Cutoff day {day}",
+  "audit.kind.auto": "auto",
+  "audit.kind.manual": "manual",
+  "audit.usage_in_period": "Used this period",
+
+  "page.title.plant": "Plant Detail",
+  "page.back.aria": "Back to list",
+
+  "home.filter.label": "Plant name / Site ID",
+  "home.filter.placeholder": "Search",
+  "home.action.reset": "Reset",
+  "home.action.search": "Search",
+  "home.action.create_plant": "Create Plant",
+  "home.col.status": "Status",
+  "home.col.image": "Plant Image",
+  "home.col.site_id": "Site ID",
+  "home.col.plant_name": "Plant Name",
+  "home.col.meter": "Meters",
+  "home.col.edit": "Edit",
+
+  "plant_modal.title.create": "Create Plant",
+  "plant_modal.title.edit": "Edit Plant",
+  "plant_modal.step.name": "Name the Plant",
+  "plant_modal.step.meter": "Add Meters",
+  "plant_modal.step.label": "Step {current}/{total}",
+  "plant_modal.field.plant_name": "Plant name",
+  "plant_modal.field.location": "Location",
+  "plant_modal.action.locate_current": "Use current location",
+  "plant_modal.add_meter": "Add meter",
+  "plant_modal.meter_hint": "Add meters one by one",
+  "plant_modal.action.delete": "Delete Plant",
+  "plant_modal.action.back": "Back",
+  "plant_modal.action.next": "Next",
+  "plant_modal.action.save": "Save",
+
+  "meter_modal.title.add": "Add Meter",
+  "meter_modal.field.meter_name": "Meter name",
+  "meter_modal.field.address_group": "Address group",
+  "meter_modal.address_group_hint": "Add multiple groups (Name / Station / Address number)",
+  "meter_modal.action.add_group": "+ Add group",
+  "meter_modal.action.confirm": "OK",
+  "meter_modal.field.address_name": "Address name",
+  "meter_modal.field.station": "Station",
+  "meter_modal.field.address_number": "Address number",
+  "meter_modal.address_group_index": "Group {n}",
+  "meter_modal.action.remove_group": "Remove group",
+
+  "users.page.title": "User Management",
+  "users.action.refresh": "Refresh",
+  "users.action.add": "Add User",
+  "users.col.id": "ID",
+  "users.col.email": "Email",
+  "users.col.name": "Name",
+  "users.col.role": "Role",
+  "users.col.status": "Status",
+  "users.col.last_login": "Last Login",
+  "users.col.action": "Action",
+  "users.modal.title.add": "Add User",
+  "users.modal.title.edit": "Edit User",
+  "users.field.email": "Email",
+  "users.field.password": "Password",
+  "users.field.name": "Name",
+  "users.field.role": "Role",
+  "users.field.plant": "Plant (for admin)",
+  "users.field.status": "Status",
+  "users.search.placeholder": "Search",
+  "users.status.active": "active",
+  "users.status.inactive": "inactive",
+  "users.row.edit": "Edit",
+  "users.row.delete": "Delete",
+  "users.row.delete_self_disabled": "Can't delete the currently signed-in account",
+  "users.modal.submit.add": "Save",
+  "users.modal.submit.edit": "Save changes",
+  "users.modal.submit.saving": "Saving...",
+  "users.row.loading": "Loading users...",
+  "users.row.empty": "No users yet",
+  "users.message.delete_self_blocked": "Cannot delete the account you are signed in with",
+  "users.confirm.delete": "Delete user {email}?",
+  "users.message.delete_success": "User deleted",
+  "users.message.delete_failed": "Failed to delete user",
+  "users.message.add_success": "User added",
+  "users.message.edit_success": "User updated",
+  "users.message.add_failed": "Failed to add user",
+  "users.message.edit_failed": "Failed to update user",
+  "users.message.fill_required": "Please fill in Email and Name",
+  "users.message.invalid_email": "Please enter a valid email",
+  "users.message.password_too_short": "Password must be at least 8 characters",
+  "users.message.password_required": "Password is required for a new user",
+  "users.message.role_invalid": "Role must be admin or superadmin",
+  "users.message.admin_cannot_create_super": "Admin cannot create a superadmin account",
+  "users.message.load_failed": "Failed to load users",
+  "users.message.load_summary": "Loaded {count} users",
+  "users.message.load_partial": "Loaded {count}/{expected} (API may have rate-limited or paginated)",
+  "users.plant.empty": "No plants to choose",
+  "users.plant.search_empty": "No plants match the search",
+  "users.plant.loading": "Loading plants...",
+  "users.plant.load_failed": "Failed to load plants",
+  "users.plant.save_failed": "Failed to save plant permissions",
+  "users.default_name": "User",
+
+  "common.user_label": "User: {label}",
+  "common.logging_out": "Logging out...",
+  "common.session_expired": "Session expired. Please sign in again.",
+  "common.rate_limit": "API rate limit (429)",
+  "common.rate_limit_wait": "API rate limit (429). Please wait a moment then refresh.",
+  "common.timeout": "Connection timed out. Please try again.",
+  "common.no_data": "No data found",
+  "common.saving": "Saving...",
+
+  "home.empty.loading_plants": "Loading plants...",
+  "home.empty.no_plants": "No plants found",
+  "home.plant_count.total": "{count} Plants",
+  "home.error.api_failed": "Failed to load Sites API",
+  "home.error.api_with_message": "Failed to load Sites API: {message}",
+  "home.error.api_local_hint": "Failed to load Sites API (try opening via npm start at http://localhost:3000)",
+  "home.error.no_plant_id": "Could not find Plant ID from API — cannot delete on backend",
+  "home.error.delete_plant_api": "Failed to delete Plant via API",
+  "home.error.save_plant_api": "Failed to save Plant via API",
+  "home.confirm.delete_plant": "Delete Plant: {name}?",
+
+  "plant_modal.step.label_dynamic": "Step {current}/{total}",
+  "plant_modal.alert.name_required": "Please name the Plant first",
+  "plant_modal.alert.name_required2": "Please name the Plant",
+  "plant_modal.alert.meter_required": "Please add at least 1 meter",
+  "plant_modal.location.searching": "Locating...",
+  "plant_modal.location.unsupported": "This browser does not support geolocation",
+  "plant_modal.location.requesting": "Requesting location permission...",
+  "plant_modal.location.success": "Got location: {lat},{lng}",
+  "plant_modal.location.error": "Could not get current location",
+  "plant_modal.location.denied": "Location permission denied",
+  "plant_modal.location.no_data": "No location data from device",
+  "plant_modal.location.timeout": "Location request timed out",
+
+  "meter_modal.address_group.fallback_label": "this address group",
+  "meter_modal.confirm_delete_group": "Delete {label}?",
+  "meter_modal.action.update": "Update",
+  "meter_modal.title.edit": "Edit Meter",
+  "meter_modal.empty_meter_list": "No meters added yet",
+  "meter_modal.meta.set_with_address": "Group {n}: {addressName} (Station {station}) | Address: {address}",
+  "meter_modal.meta.no_groups": "No address groups added",
+  "meter_modal.action.edit": "Edit",
+  "meter_modal.action.delete": "Delete",
+  "meter_modal.fallback_meter_label": "Meter #{n}",
+  "meter_modal.confirm_delete_meter": "Delete meter: {label}?",
+  "meter_modal.alert.fill_required": "Please fill in all meter fields",
+
+  "plant_detail.access.no_plant": "Plant not found or you don't have permission",
+  "plant_detail.access.no_site_id": "Plant has no Site ID — cannot verify permission",
+  "plant_detail.access.denied": "You don't have permission to access this Plant",
+
+  "meters.page.no_plant": "Plant not found",
+  "meters.page.checking_access": "Checking permission...",
+  "meters.list.empty": "No meters for this Plant",
+  "meters.list.manage_title": "Manage meters",
+  "meters.list.action.edit": "Edit",
+  "meters.list.action.delete": "Delete",
+  "meters.list.fallback_meter_name": "this meter",
+  "meters.list.confirm_delete": "Delete meter: {label}?",
+  "meters.list.delete_failed": "Failed to delete meter",
+  "meters.modal.edit_title": "Edit Meter",
+  "meters.modal.add_title": "Add Meter",
+  "meters.modal.action.save": "Save",
+  "meters.modal.action.add": "Add Meter",
+  "meters.modal.action.update": "Update",
+  "meters.modal.alert.fill_required": "Please fill in device type, name, and Modbus Address In",
+  "meters.error.no_site_id": "Plant has no Site ID — cannot save meter to API",
+  "meters.error.no_permission_add": "No permission to add meter",
+  "meters.error.no_permission_edit": "No permission to edit meter",
+  "meters.error.add_pending": "API accepted the request but cannot confirm yet. Please refresh and check.",
+  "meters.error.edit_no_change": "API responded but the meter did not change on the backend",
+  "meters.error.edit_failed": "Failed to edit meter via API",
+  "meters.error.save_failed": "Failed to save meter via API",
+
+  "meter_chart.energy_summary": "Energy Summary",
+  "meter_chart.energy_in": "Energy In",
+  "meter_chart.energy_out": "Energy Out",
+  "meter_chart.no_daily_data": "No daily data",
+  "meter_chart.no_month_data": "No data for the selected month",
+  "meter_chart.produced_today": "Produced today",
+  "meter_chart.energy_total": "Total energy",
+  "meter_chart.latest_cumulative": "Latest cumulative",
+  "meter_chart.latest_per_day": "Latest per day",
+  "meter_chart.cumulative_kwh": "Cumulative daily energy (kWh)",
+  "meter_chart.daily_kwh": "Daily energy (kWh)",
+  "meter_chart.daily_chart_aria": "Daily energy chart from energy_total of the selected month",
+  "meter_chart.no_period_data": "No data for the selected period",
+  "meter_chart.loading": "Loading chart...",
+  "meter_chart.tooltip_time": "Time {time} | {value} kWh",
+  "meter_chart.solar_produced": "Solar produced",
+  "meter_chart.utility_used": "Utility used",
+  "meter_chart.month_n": "Month {n}",
+  "meter_chart.live_updated": "Updated {time}",
+
+  "meters.page.title": "Meter Energy Overview",
+  "meters.eyebrow": "Meter",
+  "meters.kicker": "Realtime Energy Intelligence",
+  "meters.label.total_kwh": "Total kWh",
+  "meters.label.live": "Total kWh : Live latest",
+  "meters.period.day": "Day",
+  "meters.period.month": "Month",
+  "meters.period.year": "Year",
+  "meters.chart.placeholder": "Graph placeholder",
+
+  "login.title": "Sign in",
+  "login.welcome": "Welcome to DEVONIX",
+  "login.field.email": "Email",
+  "login.field.password": "Password",
+  "login.action.submit": "Sign in",
+  "login.action.show_password": "Show password",
+  "login.action.hide_password": "Hide password",
+  "login.message.fill_required": "Please enter email and password",
+  "login.message.signing_in": "Signing in...",
+  "login.message.failed": "Sign in failed",
+  "login.message.success": "Signed in successfully",
+  "login.message.network_error": "Cannot connect to server",
+
+  "bill.modal.title.manual": "Create Electricity Bill",
+  "bill.modal.title.auto": "Configure Auto Billing",
+  "bill.auto_preview_text": "The system will generate bills according to the schedule",
+  "bill.label.start_date": "Start date",
+  "bill.label.end_date": "End date",
+  "bill.label.rate": "Rate (฿/kWh)",
+  "bill.label.rate_type": "Rate type",
+  "bill.label.calc_mode": "Calculation mode",
+  "bill.calc.single": "Single value",
+  "bill.calc.formula": "Formula",
+  "bill.calc.reset_title": "Reset calculation mode",
+  "bill.calc.reset_aria": "Reset calculation mode",
+  "bill.formula.meter_name": "Meter",
+  "bill.formula.value": "Value",
+  "bill.formula.operator": "Operator",
+  "bill.formula.result_name": "Result name",
+  "bill.formula.result_value": "Result",
+  "bill.column.add_basic": "Add column",
+  "bill.column.add_calc": "Add calc column",
+  "bill.column.remove": "Remove column",
+  "bill.column.helper": "Tick a column to include it in the total",
+  "bill.cutoff_label": "Cutoff day",
+  "bill.delete_cutoff": "Delete schedule",
+  "bill.action.cancel": "Cancel",
+  "bill.action.confirm": "Create Bill",
+  "bill.action.confirm_auto": "Save Auto",
+  "bill.action.creating": "Creating bill...",
+  "bill.action.saving_auto": "Saving...",
+  "bill.history.title.manual": "Manual Bill History",
+  "bill.history.title.auto": "Auto Bill History",
+  "bill.history.empty.manual": "No manual bills yet",
+  "bill.history.empty.auto": "No auto bills yet",
+  "bill.queue.title": "Configured Auto Bill Schedules",
+  "bill.queue.title_with_count": "Configured Auto Bill Schedules ({count})",
+  "bill.auto.cutoff_summary": "Bills will close on day {day} of each month automatically",
+  "bill.button.new_bill": "+ New Bill",
+  "bill.button.config_auto": "Configure Auto",
+  "bill.button.view_auto": "View Auto Schedules",
+  "bill.action.preview": "Preview",
+  "bill.action.download": "Download",
+  "bill.action.delete": "Delete",
+  "bill.row.created_by": "By",
+
+  "receipt.preview.title": "Bill Preview",
+  "receipt.download_pdf": "Download PDF",
+
+  "meter.create.title": "Add Meter",
+  "meter.create.type_label": "Device type",
+  "meter.create.name_label": "Device name",
+  "meter.create.name_placeholder": "e.g. Main Solar Inverter",
+  "meter.create.import_label": "Modbus Address In (Import)",
+  "meter.create.export_label": "Modbus Address Out (Export)",
+  "meter.create.address_in_1": "Address IN 1 (High Word)",
+  "meter.create.address_in_2": "Address IN 2 (Low Word)",
+  "meter.create.address_out_1": "Address OUT 1 (High Word)",
+  "meter.create.address_out_2": "Address OUT 2 (Low Word)",
+  "meter.create.note": "* Optional — leave blank if there is no export side",
+  "meter.create.confirm": "Add Meter",
+  "meter.type.solar": "Solar (SOLAR_PANEL)",
+  "meter.type.meter": "Meter (METER)",
+  "meter.type.mdb_in": "MDB In (MDB_IN)",
+  "meter.type.mdb_out": "MDB Out (MDB_OUT)",
+
+  "guide.title": "Bill Creation Guide",
+  "guide.subtitle": "Pick a topic on the left to read the steps",
+  "guide.pager.prev": "‹ Previous",
+  "guide.pager.next": "Next ›",
+  "guide.page_progress": "Page {current} of {total}",
+
+  "guide.topics": [
+    {
+      "id": "intro",
+      "title": "Getting Started",
+      "pages": [
+        {
+          "title": "Billing system overview",
+          "html": "<p>The PPAde billing system supports <strong>two main bill types</strong>:</p><ul class=\"guide-list\"><li><strong>Manual</strong> — pick a date range + rate yourself, generate immediately</li><li><strong>Auto</strong> — set a cutoff day, the system bills automatically every month</li></ul><p>Calculations support both <strong>single value</strong> (1 meter × 1 field) and <strong>formulas</strong> (e.g. meter A − meter B), with optional <em>extra columns</em> in the bill table.</p><div class=\"guide-note\"><strong>Where to start?</strong><p>Open Plant detail → click the <strong>Billing</strong> tab → you'll see the toggle \"Manual\" / \"Auto Schedule\".</p></div>"
+        },
+        {
+          "title": "Permissions",
+          "html": "<p>To create/edit/delete bills, the user must have access to the Plant and the right role:</p><table class=\"guide-table\"><thead><tr><th>Action</th><th>Superadmin</th><th>Admin</th></tr></thead><tbody><tr><td>View bills</td><td>✅</td><td>✅ (only assigned plants)</td></tr><tr><td>Create/edit manual bill</td><td>✅</td><td>✅</td></tr><tr><td>Create/edit auto schedule</td><td>✅</td><td>✅</td></tr><tr><td>Delete bill</td><td>✅</td><td>✅</td></tr><tr><td>Delete auto schedule (reset)</td><td>✅</td><td>❌</td></tr></tbody></table><p class=\"guide-tip\">Every action is logged in <strong>History Edit</strong> automatically.</p>"
+        }
+      ]
+    },
+    {
+      "id": "manual",
+      "title": "Manual bill",
+      "pages": [
+        {
+          "title": "Step 1 — Open the modal",
+          "html": "<ol class=\"guide-steps\"><li>Click the <strong>\"Manual\"</strong> tab in the Billing strip</li><li>Hit the <strong>\"+ New Bill\"</strong> button at the top right</li><li>The \"Create electricity bill\" modal will open</li></ol>"
+        },
+        {
+          "title": "Step 2 — Set the period",
+          "html": "<p>Fill in the first section:</p><ul class=\"guide-list\"><li><strong>Start date</strong> — first day of the period (e.g. 1 May 2026)</li><li><strong>End date</strong> — last day (e.g. 31 May 2026)</li></ul><div class=\"guide-warn\"><strong>Limit</strong><p>Bills can span at most 60 days. Longer ranges are rejected with a warning.</p></div>"
+        },
+        {
+          "title": "Step 3 — Rate and type",
+          "html": "<ul class=\"guide-list\"><li><strong>Rate (฿/kWh)</strong> — price per unit (3 decimal places)</li><li><strong>Rate type</strong> — \"Flat rate\" (single rate) or \"TOU\" (Time of Use)</li></ul>"
+        },
+        {
+          "title": "Step 4 — Calculation mode",
+          "html": "<p>Pick one of two modes:</p><ul class=\"guide-list\"><li><strong>Single value</strong> — pick 1 meter + 1 field</li><li><strong>Formula</strong> — build a 2-term formula like <code>meter-A.energy_in − meter-B.energy_out</code></li></ul><p>Click the reset (circular arrow) icon to clear and start over.</p>"
+        },
+        {
+          "title": "Step 5 — Confirm",
+          "html": "<ol class=\"guide-steps\"><li>Review all the inputs</li><li>Click <strong>\"Create Bill\"</strong></li><li>The button shows a <strong>\"Creating bill...\"</strong> spinner while it pulls daily data from the API</li><li>An alert reports the bill number + total amount</li><li>The bill appears in the history table below</li></ol><div class=\"guide-tip\">If an error occurs the system will alert — check network/permissions and retry.</div>"
+        }
+      ]
+    },
+    {
+      "id": "auto",
+      "title": "Auto schedule",
+      "pages": [
+        {
+          "title": "What is an Auto Schedule?",
+          "html": "<p>An Auto Schedule is a predefined billing cycle. The system creates the bill automatically when each month's cutoff day arrives.</p><ul class=\"guide-list\"><li>Set a <strong>cutoff day</strong> 1–31 (e.g. 5 = bill on the 5th of every month)</li><li>One plant can have multiple cycles (e.g. day 5 + day 25)</li><li>On the cutoff day → the system fetches data + captures live meter totalizers + creates the bill + saves to history</li></ul>"
+        },
+        {
+          "title": "Adding a schedule",
+          "html": "<ol class=\"guide-steps\"><li>Pick the <strong>\"Auto Schedule\"</strong> tab</li><li>Click <strong>\"Configure auto\"</strong></li><li>Set cutoff day, rate, calculation mode, meters</li><li>Hit <strong>\"Save auto\"</strong></li><li>The cycle appears in \"Configured Auto Bill Schedules\"</li></ol>"
+        },
+        {
+          "title": "Preview / generate now",
+          "html": "<p>Each schedule row exposes these actions:</p><ul class=\"guide-list\"><li><strong>\"Preview\"</strong> — preview the most recent full month (not committed)</li><li><strong>\"Preview current\"</strong> — partial preview from cycle start to today</li><li><strong>\"Create bill\"</strong> — bill immediately with what's available so far, persists to history</li></ul>"
+        },
+        {
+          "title": "Edit / delete",
+          "html": "<ul class=\"guide-list\"><li><strong>Edit</strong> — open the modal and change anything</li><li><strong>Delete</strong> — Superadmin only (Admin can't)</li><li>Every change is recorded in <strong>History Edit</strong></li></ul>"
+        },
+        {
+          "title": "Before / after meter readings",
+          "html": "<p>Only <strong>auto</strong> bills capture cumulative meter readings (Live API totalizer):</p><ul class=\"guide-list\"><li><strong>\"After\"</strong> = current kWh from the API at bill creation</li><li><strong>\"Before\"</strong> = the previous auto bill's \"After\" (same plant + meter)</li><li>The first bill of a meter shows \"—\" for \"Before\" (no prior reading)</li></ul><p>Rendered as a small per-meter card on the bill header (preview + PDF).</p>"
+        }
+      ]
+    },
+    {
+      "id": "formula",
+      "title": "Formula / extra columns",
+      "pages": [
+        {
+          "title": "Two-term formulas",
+          "html": "<p>The \"Formula\" mode builds an expression from two meters joined by an operator <code>+ − × ÷</code>.</p><p class=\"guide-example\">Example: <code>Solar.energy_in − MDB.energy_out</code> = remaining net energy</p><ul class=\"guide-list\"><li>Pick <strong>meter A</strong> + field A</li><li>Pick <strong>operator</strong> (+, −, ×, ÷)</li><li>Pick <strong>meter B</strong> + field B</li><li>Set the <strong>\"result name\"</strong> shown on the bill</li></ul>"
+        },
+        {
+          "title": "Formula Columns — extra columns",
+          "html": "<p>The bill table normally shows one total column (from the main formula), but you can add more:</p><ol class=\"guide-steps\"><li>Click <strong>\"+ Add column\"</strong> — add a basic column (meter × field)</li><li>Click <strong>\"+ Add calc column\"</strong> — add a column with a formula (like the basic 2-term)</li><li>Click <strong>\"Remove column\"</strong> — drop the most recent column</li></ol><p>Each column has an <strong>include</strong> checkbox — checked = counted toward the total, unchecked = shown but not counted.</p>"
+        },
+        {
+          "title": "Use cases",
+          "html": "<ul class=\"guide-list\"><li><strong>Solar + grid</strong>: columns Solar / MDB In / MDB Out / Net (excluded)</li><li><strong>Multi-tenant meters</strong>: columns tenant 1 / tenant 2 / tenant 3 — sum total</li><li><strong>Discounts</strong>: raw column + discount column (excluded)</li></ul>"
+        }
+      ]
+    },
+    {
+      "id": "preview",
+      "title": "Preview & PDF",
+      "pages": [
+        {
+          "title": "Preview a bill",
+          "html": "<p>Click <strong>\"Preview\"</strong> on a bill row in history.</p><ul class=\"guide-list\"><li>Opens an A4-sized modal — paginated by daily rows</li><li>Header shows company info + period details</li><li>Auto bills include the per-meter before/after reading cards</li><li>Daily table + totals</li><li>Final summary + amount</li></ul>"
+        },
+        {
+          "title": "Download PDF",
+          "html": "<ol class=\"guide-steps\"><li>Open the bill preview</li><li>Click <strong>\"Download PDF\"</strong></li><li>The system uses the browser's <code>window.print()</code> → choose \"Save as PDF\"</li><li>Set paper size: A4, margins: None</li></ol><p class=\"guide-tip\">The PDF preserves table colors and the meter reading cards as they appear in preview.</p>"
+        }
+      ]
+    },
+    {
+      "id": "history",
+      "title": "History Edit",
+      "pages": [
+        {
+          "title": "Every action is logged",
+          "html": "<p>The <strong>\"History Edit\"</strong> tab on the Plant detail page shows an audit log of every change:</p><ul class=\"guide-list\"><li><strong>Bill created</strong> (manual + auto) — green</li><li><strong>Bill deleted</strong> — red</li><li><strong>Schedule added/updated/removed</strong> — green / amber / red</li></ul><p>Each entry: avatar + name + role + details + timestamp (relative + absolute).</p>"
+        },
+        {
+          "title": "Filters",
+          "html": "<ul class=\"guide-list\"><li><strong>Type</strong>: All / Bills / Schedules</li><li><strong>Date</strong>: pick a date in the picker → only entries from that day</li><li>Click the <strong>🔄</strong> button to reload the latest from the server</li></ul>"
+        },
+        {
+          "title": "Who sees the log",
+          "html": "<p>The audit log is <strong>shared per plant</strong> — anyone who can access the Plant sees the full log of that Plant (no actor-based filter).</p><p>The <code>actor</code> info comes from the server session — it cannot be spoofed from the client.</p><p>Up to 500 entries are kept per plant — older ones are trimmed.</p>"
+        }
+      ]
+    }
+  ]
+}

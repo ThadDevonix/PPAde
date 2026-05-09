@@ -29,6 +29,16 @@ const meterCreateIn2Input = document.getElementById("meter-create-in-2");
 const meterCreateOut1Input = document.getElementById("meter-create-out-1");
 const meterCreateOut2Input = document.getElementById("meter-create-out-2");
 
+function tPlant(key, fallback, params) {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+}
+
 const plantReadText = (...values) => {
   for (const value of values) {
     if (typeof value !== "string") continue;
@@ -158,7 +168,7 @@ const ensurePlantAccess = async () => {
   if (plantAccessPromise) return plantAccessPromise;
   plantAccessPromise = (async () => {
     if (!plant || typeof plant !== "object") {
-      denyPlantAccess("ไม่พบ Plant ที่เลือก หรือคุณไม่มีสิทธิ์เข้าถึง");
+      denyPlantAccess(tPlant("plant_detail.access.no_plant", "ไม่พบ Plant ที่เลือก หรือคุณไม่มีสิทธิ์เข้าถึง"));
       return false;
     }
     try {
@@ -180,12 +190,12 @@ const ensurePlantAccess = async () => {
       if (role === "superadmin") return true;
       const plantSiteId = getSelectedPlantSiteId(plant);
       if (!plantSiteId) {
-        denyPlantAccess("ไม่พบ Site ID ของ Plant นี้ จึงไม่สามารถยืนยันสิทธิ์ได้");
+        denyPlantAccess(tPlant("plant_detail.access.no_site_id", "ไม่พบ Site ID ของ Plant นี้ จึงไม่สามารถยืนยันสิทธิ์ได้"));
         return false;
       }
       const allowedSiteIds = await resolvePlantUserSiteIds(user);
       if (!allowedSiteIds.includes(plantSiteId)) {
-        denyPlantAccess("คุณไม่มีสิทธิ์เข้าถึง Plant นี้");
+        denyPlantAccess(tPlant("plant_detail.access.denied", "คุณไม่มีสิทธิ์เข้าถึง Plant นี้"));
         return false;
       }
       return true;
@@ -199,19 +209,39 @@ const ensurePlantAccess = async () => {
 window.ensurePlantAccess = ensurePlantAccess;
 
 
-// toggle meters/billing
-const setMode = (isBilling) => {
-  if (metersPanel && billingPanel) {
-    metersPanel.classList.toggle("hidden", isBilling);
-    billingPanel.classList.toggle("hidden", !isBilling);
-  }
-  if (metersBtn) metersBtn.classList.toggle("active", !isBilling);
+// toggle meters/billing/audit
+const auditBtn = document.getElementById("mode-audit");
+const auditPanel = document.getElementById("audit-panel");
+
+const setMode = (mode) => {
+  // Backward compat: setMode(true) === billing, setMode(false) === meters
+  let activeMode;
+  if (mode === true) activeMode = "billing";
+  else if (mode === false || mode === undefined) activeMode = "meters";
+  else activeMode = String(mode);
+
+  const isMeters = activeMode === "meters";
+  const isBilling = activeMode === "billing";
+  const isAudit = activeMode === "audit";
+
+  if (metersPanel) metersPanel.classList.toggle("hidden", !isMeters);
+  if (billingPanel) billingPanel.classList.toggle("hidden", !isBilling);
+  if (auditPanel) auditPanel.classList.toggle("hidden", !isAudit);
+
+  if (metersBtn) metersBtn.classList.toggle("active", isMeters);
   if (billingBtn) billingBtn.classList.toggle("active", isBilling);
+  if (auditBtn) auditBtn.classList.toggle("active", isAudit);
+
   if (!isBilling) {
     closeModal();
     closeReceiptPreview();
   }
+  if (isAudit) {
+    if (typeof window.renderAuditFeed === "function") window.renderAuditFeed();
+    if (typeof window.refreshAuditFeed === "function") window.refreshAuditFeed();
+  }
 };
 
-document.getElementById("mode-meters")?.addEventListener("click", () => setMode(false));
-document.getElementById("mode-billing")?.addEventListener("click", () => setMode(true));
+document.getElementById("mode-meters")?.addEventListener("click", () => setMode("meters"));
+document.getElementById("mode-billing")?.addEventListener("click", () => setMode("billing"));
+document.getElementById("mode-audit")?.addEventListener("click", () => setMode("audit"));

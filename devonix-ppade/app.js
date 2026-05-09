@@ -1,5 +1,15 @@
 const defaultPlants = [];
 
+function tApp(key, fallback, params) {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+}
+
 const plantsStorageKey = "plantsDataV2";
 const legacyPlantsStorageKey = "plantsDataV1";
 const legacySeedPlantNames = new Set([
@@ -840,8 +850,8 @@ const redirectToLogin = () => {
 };
 const setAuthUser = (user) => {
   if (!authUserEl) return;
-  const label = readString(user?.name, user?.email) || "ผู้ใช้งาน";
-  authUserEl.textContent = `ผู้ใช้: ${label}`;
+  const label = readString(user?.name, user?.email) || tApp("users.default_name", "ผู้ใช้งาน");
+  authUserEl.textContent = tApp("common.user_label", "ผู้ใช้: {label}", { label });
 };
 const ensureAuthenticated = async () => {
   currentUserRole = "";
@@ -872,7 +882,7 @@ const ensureAuthenticated = async () => {
 const logout = async () => {
   if (logoutBtn) {
     logoutBtn.disabled = true;
-    logoutBtn.textContent = "กำลังออกจากระบบ...";
+    logoutBtn.textContent = tApp("common.logging_out", "กำลังออกจากระบบ...");
   }
   try {
     await fetch("/api/auth/logout", {
@@ -886,17 +896,17 @@ const logout = async () => {
 };
 
 const render = (data) => {
-  if (plantCountEl) plantCountEl.textContent = `ทั้งหมด ${data.length} Plant`;
+  if (plantCountEl) plantCountEl.textContent = tApp("home.plant_count.total", "ทั้งหมด {count} Plant", { count: data.length });
   if (!data.length) {
     if (isHydratingPlants) {
-      rowsEl.innerHTML = '<tr><td class="empty" colspan="6">กำลังโหลดข้อมูล Plant...</td></tr>';
+      rowsEl.innerHTML = `<tr><td class="empty" colspan="6">${tApp("home.empty.loading_plants", "กำลังโหลดข้อมูล Plant...")}</td></tr>`;
       return;
     }
     if (plantsLoadError) {
       rowsEl.innerHTML = `<tr><td class="empty" colspan="6">${plantsLoadError}</td></tr>`;
       return;
     }
-    rowsEl.innerHTML = '<tr><td class="empty" colspan="6">ไม่พบข้อมูล</td></tr>';
+    rowsEl.innerHTML = `<tr><td class="empty" colspan="6">${tApp("home.empty.no_plants", "ไม่พบข้อมูล")}</td></tr>`;
     return;
   }
 
@@ -972,7 +982,7 @@ const updateAddressGroupIndices = () => {
   const items = getAddressGroupItems();
   items.forEach((item, idx) => {
     const indexEl = item.querySelector(".address-group-index");
-    if (indexEl) indexEl.textContent = `ชุดที่ ${idx + 1}`;
+    if (indexEl) indexEl.textContent = tApp("meter_modal.address_group_index", "ชุดที่ {n}", { n: idx + 1 });
     const removeBtn = item.querySelector(".address-group-remove");
     if (removeBtn) removeBtn.classList.toggle("hidden", items.length <= 1);
   });
@@ -988,8 +998,8 @@ const bindAddressGroupItem = (item) => {
     });
   });
   item.querySelector(".address-group-remove")?.addEventListener("click", () => {
-    const groupLabel = readString(item.querySelector(".address-group-index")?.textContent) || "ชุด Address นี้";
-    const ok = confirm(`ต้องการลบ ${groupLabel} ใช่หรือไม่?`);
+    const groupLabel = readString(item.querySelector(".address-group-index")?.textContent) || tApp("meter_modal.address_group.fallback_label", "ชุด Address นี้");
+    const ok = confirm(tApp("meter_modal.confirm_delete_group", "ต้องการลบ {label} ใช่หรือไม่?", { label: groupLabel }));
     if (!ok) return;
     item.remove();
     if (!getAddressGroupItems().length) {
@@ -1030,8 +1040,8 @@ const resetMeterForm = () => {
   if (meterNameInput) meterNameInput.value = "";
   setAddressGroupsToForm();
   editingMeterIndex = null;
-  if (meterAddConfirm) meterAddConfirm.textContent = "ตกลง";
-  if (meterModalTitle) meterModalTitle.textContent = "เพิ่มมิเตอร์";
+  if (meterAddConfirm) meterAddConfirm.textContent = tApp("meter_modal.action.confirm", "ตกลง");
+  if (meterModalTitle) meterModalTitle.textContent = tApp("meter_modal.title.add", "เพิ่มมิเตอร์");
   updateMeterRequiredStates();
 };
 const updateMeterRequiredStates = () => {
@@ -1090,7 +1100,7 @@ const renderMeterList = () => {
   if (meterPage < 1) meterPage = 1;
   meterList.classList.toggle("scroll", pendingMeters.length > metersPerPage);
   if (!pendingMeters.length) {
-    meterList.innerHTML = '<p class="muted small">ยังไม่มีมิเตอร์ที่เพิ่ม</p>';
+    meterList.innerHTML = `<p class="muted small">${tApp("meter_modal.empty_meter_list", "ยังไม่มีมิเตอร์ที่เพิ่ม")}</p>`;
     renderMeterPager();
     return;
   }
@@ -1103,10 +1113,15 @@ const renderMeterList = () => {
         ? addressGroups
             .map(
               (group, groupIdx) =>
-                `<div class="meta">ชุด ${groupIdx + 1}: ${group.addressName || "-"} | Station: ${group.station || "-"} | เลข Address: ${group.address || "-"}</div>`
+                `<div class="meta">${tApp("meter_modal.meta.set_with_address", "ชุด {n}: {addressName} (Station {station}) | เลข Address: {address}", {
+                  n: groupIdx + 1,
+                  addressName: group.addressName || "-",
+                  station: group.station || "-",
+                  address: group.address || "-"
+                })}</div>`
             )
             .join("")
-        : '<div class="meta">ยังไม่ได้เพิ่มชุด Address</div>';
+        : `<div class="meta">${tApp("meter_modal.meta.no_groups", "ยังไม่ได้เพิ่มชุด Address")}</div>`;
       return `
       <div class="meter-item">
         <div>
@@ -1114,10 +1129,10 @@ const renderMeterList = () => {
           ${groupSummary}
         </div>
         <div class="meter-item-actions">
-          <button class="meter-edit" type="button" data-action="edit" data-index="${start + idx}">แก้ไข</button>
+          <button class="meter-edit" type="button" data-action="edit" data-index="${start + idx}">${tApp("meter_modal.action.edit", "แก้ไข")}</button>
           ${
             allowDelete
-              ? `<button class="meter-remove" type="button" data-action="delete" data-index="${start + idx}">ลบ</button>`
+              ? `<button class="meter-remove" type="button" data-action="delete" data-index="${start + idx}">${tApp("meter_modal.action.delete", "ลบ")}</button>`
               : ""
           }
         </div>
@@ -1132,8 +1147,8 @@ const renderMeterList = () => {
         if (Number.isNaN(index)) return;
         const target = pendingMeters[index];
         if (!target) return;
-        const meterLabel = readString(target.name) || `มิเตอร์ลำดับ ${index + 1}`;
-        const ok = confirm(`ต้องการลบมิเตอร์: ${meterLabel} ใช่หรือไม่?`);
+        const meterLabel = readString(target.name) || tApp("meter_modal.fallback_meter_label", "มิเตอร์ลำดับ {n}", { n: index + 1 });
+        const ok = confirm(tApp("meter_modal.confirm_delete_meter", "ต้องการลบมิเตอร์: {label} ใช่หรือไม่?", { label: meterLabel }));
         if (!ok) return;
         pendingMeters = pendingMeters.filter((_, i) => i !== index);
         renderMeterList();
@@ -1148,8 +1163,8 @@ const renderMeterList = () => {
       editingMeterIndex = index;
       if (meterNameInput) meterNameInput.value = meter.name || "";
       setAddressGroupsToForm(getAddressGroupsFromMeter(meter));
-      if (meterAddConfirm) meterAddConfirm.textContent = "อัปเดต";
-      if (meterModalTitle) meterModalTitle.textContent = "แก้ไขมิเตอร์";
+      if (meterAddConfirm) meterAddConfirm.textContent = tApp("meter_modal.action.update", "อัปเดต");
+      if (meterModalTitle) meterModalTitle.textContent = tApp("meter_modal.title.edit", "แก้ไขมิเตอร์");
       updateMeterRequiredStates();
       openMeterModal();
     });
@@ -1167,30 +1182,30 @@ const setPlantLocationLoading = (loading) => {
   if (!plantLocationCurrentBtn) return;
   plantLocationCurrentBtn.disabled = loading;
   plantLocationCurrentBtn.textContent = loading
-    ? "กำลังค้นหาตำแหน่ง..."
-    : "ค้นหาตำแหน่งปัจจุบัน";
+    ? tApp("plant_modal.location.searching", "กำลังค้นหาตำแหน่ง...")
+    : tApp("plant_modal.action.locate_current", "ค้นหาตำแหน่งปัจจุบัน");
 };
 const locateCurrentPosition = () => {
   if (isLocatingPlantLocation) return;
   if (!navigator.geolocation) {
-    setPlantLocationHint("เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง", true);
+    setPlantLocationHint(tApp("plant_modal.location.unsupported", "เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง"), true);
     return;
   }
   setPlantLocationLoading(true);
-  setPlantLocationHint("กำลังขอสิทธิ์ตำแหน่งจากอุปกรณ์...");
+  setPlantLocationHint(tApp("plant_modal.location.requesting", "กำลังขอสิทธิ์ตำแหน่งจากอุปกรณ์..."));
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const lat = Number(position.coords.latitude).toFixed(6);
       const lng = Number(position.coords.longitude).toFixed(6);
       if (plantLocationInput) plantLocationInput.value = `${lat},${lng}`;
-      setPlantLocationHint(`ได้ตำแหน่งแล้ว: ${lat},${lng}`);
+      setPlantLocationHint(tApp("plant_modal.location.success", "ได้ตำแหน่งแล้ว: {lat},{lng}", { lat, lng }));
       setPlantLocationLoading(false);
     },
     (error) => {
-      let message = "ไม่สามารถดึงตำแหน่งปัจจุบันได้";
-      if (error?.code === 1) message = "ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง";
-      if (error?.code === 2) message = "ไม่พบข้อมูลตำแหน่งจากอุปกรณ์";
-      if (error?.code === 3) message = "ดึงตำแหน่งไม่ทันเวลา (timeout)";
+      let message = tApp("plant_modal.location.error", "ไม่สามารถดึงตำแหน่งปัจจุบันได้");
+      if (error?.code === 1) message = tApp("plant_modal.location.denied", "ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง");
+      if (error?.code === 2) message = tApp("plant_modal.location.no_data", "ไม่พบข้อมูลตำแหน่งจากอุปกรณ์");
+      if (error?.code === 3) message = tApp("plant_modal.location.timeout", "ดึงตำแหน่งไม่ทันเวลา (timeout)");
       setPlantLocationHint(message, true);
       setPlantLocationLoading(false);
     },
@@ -1219,7 +1234,7 @@ const setPlantStep = (step, { force = false } = {}) => {
   const isSingleStep = totalSteps === 1;
   const target = Math.min(Math.max(step, 1), totalSteps);
   if (target === 2 && !canProceedToMeters() && !force) {
-    alert("กรุณาตั้งชื่อ Plant ก่อน");
+    alert(tApp("plant_modal.alert.name_required", "กรุณาตั้งชื่อ Plant ก่อน"));
     return;
   }
   plantStep = target;
@@ -1235,7 +1250,7 @@ const setPlantStep = (step, { force = false } = {}) => {
       plantStepLabel.textContent = "";
       plantStepLabel.classList.add("hidden");
     } else {
-      plantStepLabel.textContent = `ขั้นตอนที่ ${plantStep}/${totalSteps}`;
+      plantStepLabel.textContent = tApp("plant_modal.step.label_dynamic", "ขั้นตอนที่ {current}/{total}", { current: plantStep, total: totalSteps });
       plantStepLabel.classList.remove("hidden");
     }
   }
@@ -1264,7 +1279,7 @@ const openPlantModal = (mode = "create", plant = null) => {
   meterPage = 1;
   if (mode === "edit" && plant) {
     editingPlantId = plant.id;
-    if (plantModalTitle) plantModalTitle.textContent = "แก้ไข Plant";
+    if (plantModalTitle) plantModalTitle.textContent = tApp("plant_modal.title.edit", "แก้ไข Plant");
     plantDelete?.classList.toggle("hidden", !canDeletePlants());
     if (plantNameInput) plantNameInput.value = plant.name || "";
     if (plantLocationInput) plantLocationInput.value = plant.location || "";
@@ -1283,7 +1298,7 @@ const openPlantModal = (mode = "create", plant = null) => {
     });
   } else {
     editingPlantId = null;
-    if (plantModalTitle) plantModalTitle.textContent = "สร้าง Plant";
+    if (plantModalTitle) plantModalTitle.textContent = tApp("plant_modal.title.create", "สร้าง Plant");
     plantDelete?.classList.add("hidden");
     if (plantNameInput) plantNameInput.value = "";
     if (plantLocationInput) plantLocationInput.value = "";
@@ -1333,7 +1348,7 @@ const deletePlant = async (id) => {
   }
   const target = plants.find((p) => p.id === id);
   if (!target) return;
-  const ok = confirm(`ต้องการลบ Plant: ${target.name} ใช่หรือไม่?`);
+  const ok = confirm(tApp("home.confirm.delete_plant", "ต้องการลบ Plant: {name} ใช่หรือไม่?", { name: target.name }));
   if (!ok) return;
   try {
     const deleteMode = await deletePlantInApi(target);
@@ -1345,7 +1360,7 @@ const deletePlant = async (id) => {
       alert("ระบบปิดใช้งาน Plant ที่หลังบ้านแล้ว (is_active = 0) เนื่องจาก API ลบจริงยังไม่พร้อม");
     }
   } catch (error) {
-    alert(error?.message || "ลบ Plant ผ่าน API ไม่สำเร็จ");
+    alert(error?.message || tApp("home.error.delete_plant_api", "ลบ Plant ผ่าน API ไม่สำเร็จ"));
   }
 };
 
@@ -1398,7 +1413,7 @@ meterAddConfirm?.addEventListener("click", () => {
   const hasError = !name || hasAddressError;
   updateMeterRequiredStates();
   if (hasError) {
-    alert("กรุณากรอกข้อมูลมิเตอร์ให้ครบ");
+    alert(tApp("meter_modal.alert.fill_required", "กรุณากรอกข้อมูลมิเตอร์ให้ครบ"));
     return;
   }
   const firstGroup = addressGroups[0] || { addressName: "", station: "", address: "" };
@@ -1426,11 +1441,11 @@ plantSave?.addEventListener("click", async () => {
   const plantName = plantNameInput?.value.trim();
   const plantLocation = normalizeLocationValue(plantLocationInput?.value);
   if (!plantName) {
-    alert("กรุณาตั้งชื่อ Plant");
+    alert(tApp("plant_modal.alert.name_required2", "กรุณาตั้งชื่อ Plant"));
     return;
   }
   if (!isEdit && !pendingMeters.length) {
-    alert("กรุณาเพิ่มมิเตอร์อย่างน้อย 1 รายการ");
+    alert(tApp("plant_modal.alert.meter_required", "กรุณาเพิ่มมิเตอร์อย่างน้อย 1 รายการ"));
     return;
   }
   const devices = pendingMeters.map((m, idx) => {
@@ -1446,10 +1461,10 @@ plantSave?.addEventListener("click", async () => {
       addressGroups
     };
   });
-  const originalSaveText = plantSave?.textContent || "บันทึก";
+  const originalSaveText = plantSave?.textContent || tApp("plant_modal.action.save", "บันทึก");
   if (plantSave) {
     plantSave.disabled = true;
-    plantSave.textContent = "กำลังบันทึก...";
+    plantSave.textContent = tApp("common.saving", "กำลังบันทึก...");
   }
   try {
     if (isEdit) {
@@ -1489,7 +1504,7 @@ plantSave?.addEventListener("click", async () => {
     applyFilters();
     closePlantModal();
   } catch (error) {
-    alert(error?.message || "บันทึก Plant ผ่าน API ไม่สำเร็จ");
+    alert(error?.message || tApp("home.error.save_plant_api", "บันทึก Plant ผ่าน API ไม่สำเร็จ"));
   } finally {
     if (plantSave) {
       plantSave.disabled = false;
@@ -1526,3 +1541,8 @@ const startApp = async () => {
 };
 
 startApp();
+
+document.addEventListener("i18n:changed", () => {
+  try { applyFilters(); } catch { /* ignore */ }
+  try { renderMeterList(); } catch { /* ignore */ }
+});

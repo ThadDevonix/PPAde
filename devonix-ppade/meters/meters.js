@@ -1,12 +1,22 @@
+function tMeters(key, fallback, params) {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+}
+
 if (!plant || typeof plant !== "object") {
   plant = {
-    name: "ไม่พบข้อมูล Plant",
+    name: tMeters("meters.page.no_plant", "ไม่พบข้อมูล Plant"),
     devices: []
   };
 }
 
 if (nameEl) {
-  nameEl.textContent = "กำลังตรวจสอบสิทธิ์...";
+  nameEl.textContent = tMeters("meters.page.checking_access", "กำลังตรวจสอบสิทธิ์...");
 }
 
 const normalizeLocalMeters = (meters) =>
@@ -462,8 +472,8 @@ const openMeterEditModalByIndex = (idx) => {
   if (meterCreateIn2Input) meterCreateIn2Input.value = formValue.modbusIn2 || "";
   if (meterCreateOut1Input) meterCreateOut1Input.value = formValue.modbusOut1 || "";
   if (meterCreateOut2Input) meterCreateOut2Input.value = formValue.modbusOut2 || "";
-  if (meterCreateModalTitle) meterCreateModalTitle.textContent = "แก้ไขมิเตอร์";
-  if (meterCreateConfirm) meterCreateConfirm.textContent = "บันทึก";
+  if (meterCreateModalTitle) meterCreateModalTitle.textContent = tMeters("meters.modal.edit_title", "แก้ไขมิเตอร์");
+  if (meterCreateConfirm) meterCreateConfirm.textContent = tMeters("meters.modal.action.save", "บันทึก");
   meterCreateModal?.classList.remove("hidden");
   isMeterCreateModalOpen = true;
   meterCreateNameInput?.focus();
@@ -476,8 +486,8 @@ const handleDeleteMeterByIndex = async (idx) => {
     alert("สิทธิ์ admin ไม่สามารถลบมิเตอร์ได้");
     return;
   }
-  const label = meter.name || meter.sn || "มิเตอร์นี้";
-  const ok = confirm(`ต้องการลบมิเตอร์: ${label} ใช่หรือไม่?`);
+  const label = meter.name || meter.sn || tMeters("meters.list.fallback_meter_name", "มิเตอร์นี้");
+  const ok = confirm(tMeters("meters.list.confirm_delete", "ต้องการลบมิเตอร์: {label} ใช่หรือไม่?", { label }));
   if (!ok) return;
   try {
     const deleteMode = await deleteMeterInApi(meter, plant);
@@ -488,7 +498,7 @@ const handleDeleteMeterByIndex = async (idx) => {
     const nextMeters = plantMeters.filter((_, meterIdx) => meterIdx !== idx);
     applyPlantMeters(nextMeters, { persistPlant: true, persistHomePlants: true });
   } catch (error) {
-    alert(error?.message || "ลบมิเตอร์ไม่สำเร็จ");
+    alert(error?.message || tMeters("meters.list.delete_failed", "ลบมิเตอร์ไม่สำเร็จ"));
   }
 };
 
@@ -496,7 +506,7 @@ const renderPlantMeters = () => {
   if (!deviceRowsEl) return;
   const allowDelete = canDeleteMeters();
   if (!plantMeters.length) {
-    deviceRowsEl.innerHTML = '<tr><td class="empty" colspan="4">ไม่พบมิเตอร์ของ Plant นี้</td></tr>';
+    deviceRowsEl.innerHTML = `<tr><td class="empty" colspan="4">${tMeters("meters.list.empty", "ไม่พบมิเตอร์ของ Plant นี้")}</td></tr>`;
     return;
   }
   deviceRowsEl.innerHTML = plantMeters
@@ -516,8 +526,8 @@ const renderPlantMeters = () => {
               type="button"
               data-action="toggle-meter-menu"
               data-idx="${idx}"
-              aria-label="จัดการมิเตอร์"
-              title="จัดการมิเตอร์"
+              aria-label="${tMeters("meters.list.manage_title", "จัดการมิเตอร์")}"
+              title="${tMeters("meters.list.manage_title", "จัดการมิเตอร์")}"
             >
               ⋯
             </button>
@@ -528,7 +538,7 @@ const renderPlantMeters = () => {
                 data-action="edit-meter"
                 data-idx="${idx}"
               >
-                แก้ไข
+                ${tMeters("meters.list.action.edit", "แก้ไข")}
               </button>
               ${
                 allowDelete
@@ -538,7 +548,7 @@ const renderPlantMeters = () => {
                 data-action="delete-meter"
                 data-idx="${idx}"
               >
-                ลบ
+                ${tMeters("meters.list.action.delete", "ลบ")}
               </button>`
                   : ""
               }
@@ -611,8 +621,8 @@ const resetMeterCreateForm = () => {
   if (meterCreateIn2Input) meterCreateIn2Input.value = "";
   if (meterCreateOut1Input) meterCreateOut1Input.value = "";
   if (meterCreateOut2Input) meterCreateOut2Input.value = "";
-  if (meterCreateModalTitle) meterCreateModalTitle.textContent = "เพิ่มมิเตอร์";
-  if (meterCreateConfirm) meterCreateConfirm.textContent = "เพิ่มมิเตอร์";
+  if (meterCreateModalTitle) meterCreateModalTitle.textContent = tMeters("meters.modal.add_title", "เพิ่มมิเตอร์");
+  if (meterCreateConfirm) meterCreateConfirm.textContent = tMeters("meters.modal.action.add", "เพิ่มมิเตอร์");
 };
 const closeMeterCreateModal = () => {
   meterCreateModal?.classList.add("hidden");
@@ -888,14 +898,14 @@ const handleCreateMeter = async () => {
   const modbusOut1 = readText(meterCreateOut1Input?.value);
   const modbusOut2 = readText(meterCreateOut2Input?.value);
   if (!meterName || !modbusIn1 || !modbusIn2) {
-    alert("กรุณากรอกประเภทอุปกรณ์, ชื่ออุปกรณ์ และ Modbus Address ขาเข้าให้ครบ");
+    alert(tMeters("meters.modal.alert.fill_required", "กรุณากรอกประเภทอุปกรณ์, ชื่ออุปกรณ์ และ Modbus Address ขาเข้าให้ครบ"));
     return;
   }
   if (isSavingMeterCreate) return;
   isSavingMeterCreate = true;
   if (meterCreateConfirm) {
     meterCreateConfirm.disabled = true;
-    meterCreateConfirm.textContent = "กำลังบันทึก...";
+    meterCreateConfirm.textContent = tMeters("common.saving", "กำลังบันทึก...");
   }
   const serialLabel = `IN ${modbusIn1} / ${modbusIn2}`;
   const newMeter = {
@@ -949,14 +959,16 @@ const handleCreateMeter = async () => {
     }
     closeMeterCreateModal();
   } catch (error) {
-    alert(error?.message || "บันทึกมิเตอร์ผ่าน API ไม่สำเร็จ");
+    alert(error?.message || tMeters("meters.error.save_failed", "บันทึกมิเตอร์ผ่าน API ไม่สำเร็จ"));
   } finally {
     isSavingMeterCreate = false;
     if (meterCreateConfirm) {
       meterCreateConfirm.disabled = false;
       if (isMeterCreateModalOpen) {
         meterCreateConfirm.textContent =
-          editingPlantMeterIndex !== null ? "บันทึก" : "เพิ่มมิเตอร์";
+          editingPlantMeterIndex !== null
+            ? tMeters("meters.modal.action.save", "บันทึก")
+            : tMeters("meters.modal.action.add", "เพิ่มมิเตอร์");
       }
     }
   }
@@ -1031,3 +1043,7 @@ const bootstrapPlantPage = async () => {
   document.body.classList.remove("access-checking");
 };
 bootstrapPlantPage();
+
+document.addEventListener("i18n:changed", () => {
+  try { renderPlantMeters(); } catch { /* ignore */ }
+});

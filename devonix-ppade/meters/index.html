@@ -14,20 +14,21 @@
     <div class="nav-links">
       <a class="nav-link active" href="../index.html">
         <span class="home-icon" aria-hidden="true"></span>
-        Home
+        <span data-i18n="nav.home">Home</span>
       </a>
       <a class="nav-link" href="../users/index.html">
-        Users
+        <span data-i18n="nav.users">Users</span>
       </a>
     </div>
+    <button class="lang-toggle" data-lang-toggle="th" type="button" aria-label="Change language"></button>
     <div class="nav-auth">
       <span id="auth-user" class="pill auth-user"></span>
-      <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+      <button id="logout-btn" class="small-btn nav-logout" type="button" data-i18n="nav.logout">ออกจากระบบ</button>
     </div>
   </nav>
 
   <div class="shell">
-    <button class="ghost back-btn icon-btn" id="back-meter" type="button" aria-label="กลับหน้า plant" title="กลับหน้า plant">
+    <button class="ghost back-btn icon-btn" id="back-meter" type="button" data-i18n-aria-label="page.back.aria" data-i18n-title="page.back.aria" aria-label="กลับหน้า plant" title="กลับหน้า plant">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -35,49 +36,50 @@
 
     <section class="plant-hero">
       <div>
-        <p class="eyebrow">Meter</p>
-        <p class="meter-kicker">Realtime Energy Intelligence</p>
+        <p class="eyebrow" data-i18n="meters.eyebrow">Meter</p>
+        <p class="meter-kicker" data-i18n="meters.kicker">Realtime Energy Intelligence</p>
         <h1 id="meter-name">ชื่อมิเตอร์</h1>
       </div>
     </section>
 
     <section class="panel">
       <div class="meter-chart-head">
-        <h3>ภาพรวมพลังงานมิเตอร์</h3>
+        <h3 data-i18n="meters.page.title">ภาพรวมพลังงานมิเตอร์</h3>
         <div class="meter-head-summary">
           <div class="meter-total-box" aria-live="polite">
-            <span class="label" id="total-kwh-label">Total kWh</span>
+            <span class="label" id="total-kwh-label" data-i18n="meters.label.total_kwh">Total kWh</span>
             <strong id="total-kwh-value">-</strong>
           </div>
           <div class="meter-live-box" aria-live="polite">
-            <span class="k">Total kWh : Live ล่าสุด</span>
+            <span class="k" data-i18n="meters.label.live">Total kWh : Live ล่าสุด</span>
             <strong id="meter-live-value">-</strong>
           </div>
         </div>
       </div>
       <div class="meter-chart-controls">
         <div class="period-switch" id="chart-period-switch">
-          <button class="period-btn active" data-period="day" type="button">วัน</button>
-          <button class="period-btn" data-period="month" type="button">เดือน</button>
-          <button class="period-btn" data-period="year" type="button">ปี</button>
+          <button class="period-btn active" data-period="day" type="button" data-i18n="meters.period.day">วัน</button>
+          <button class="period-btn" data-period="month" type="button" data-i18n="meters.period.month">เดือน</button>
+          <button class="period-btn" data-period="year" type="button" data-i18n="meters.period.year">ปี</button>
         </div>
         <div class="field compact" id="chart-day-wrap">
-          <label for="chart-day">วัน</label>
+          <label for="chart-day" data-i18n="meters.period.day">วัน</label>
           <select id="chart-day"></select>
         </div>
         <div class="field compact" id="chart-month-wrap">
-          <label for="chart-month">เดือน</label>
+          <label for="chart-month" data-i18n="meters.period.month">เดือน</label>
           <select id="chart-month"></select>
         </div>
         <div class="field compact" id="chart-year-wrap">
-          <label for="chart-year">ปี</label>
+          <label for="chart-year" data-i18n="meters.period.year">ปี</label>
           <select id="chart-year"></select>
         </div>
       </div>
-      <div class="chart-box" id="chart-box">Graph placeholder</div>
+      <div class="chart-box" id="chart-box" data-i18n="meters.chart.placeholder">Graph placeholder</div>
     </section>
   </div>
 
+  <script src="../assets/i18n.js" defer></script>
   <script src="../assets/nav-auth.js" defer></script>
   <script src="./meter.js" defer></script>
 </body>

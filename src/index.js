@@ -504,6 +504,140 @@ const hasBillingStateIdentity = (identity) =>
       normalizeSiteToken(identity?.siteName)
   );
 
+const buildAuditActorFromSession = (session = {}) => ({
+  id: session?.userId || session?.id || null,
+  name: String(session?.name || session?.email || "ผู้ใช้").trim(),
+  email: String(session?.email || "").trim(),
+  role: String(session?.role || "").trim()
+});
+
+const newAuditId = () =>
+  `log_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+const summarizeBillForAudit = (bill = {}) => ({
+  id: bill?.id || null,
+  billNo: bill?.billNo ?? null,
+  periodStart: bill?.periodStart || "",
+  periodEnd: bill?.periodEnd || "",
+  auto: Boolean(bill?.auto),
+  totalKwh: Number(bill?.totalKwh) || 0,
+  amount: Number(bill?.amount) || 0,
+  rate: Number(bill?.rate) || 0,
+  rateType: bill?.rateType || "",
+  cutoffDay: Number(bill?.cutoffDay) || null
+});
+
+const summarizeAutoScheduleForAudit = (sched = {}) => ({
+  cutoffDay: Number(sched?.cutoffDay) || null,
+  defaultRate: Number(sched?.defaultRate) || 0,
+  rateType: sched?.rateType || "",
+  calcMethod: sched?.calcMethod || "",
+  calcLabel: sched?.calcLabel || ""
+});
+
+const buildBillingAuditEntries = ({ current = {}, next = {}, session = {}, siteIdentity = {} }) => {
+  const entries = [];
+  const at = new Date().toISOString();
+  const actor = buildAuditActorFromSession(session);
+  const plant = {
+    siteId: toPositiveInt(siteIdentity?.siteId) ?? null,
+    siteCode: String(siteIdentity?.siteCode || "").trim(),
+    siteName: String(siteIdentity?.siteName || "").trim()
+  };
+
+  // ----- Bills (history) -----
+  const currentBills = new Map(
+    (Array.isArray(current?.history) ? current.history : [])
+      .filter((b) => b?.id != null)
+      .map((b) => [String(b.id), b])
+  );
+  const nextBills = new Map(
+    (Array.isArray(next?.history) ? next.history : [])
+      .filter((b) => b?.id != null)
+      .map((b) => [String(b.id), b])
+  );
+  for (const [id, bill] of nextBills) {
+    if (!currentBills.has(id)) {
+      entries.push({
+        id: newAuditId(),
+        at,
+        actor,
+        plant,
+        action: "bill_created",
+        target: { type: "bill", ...summarizeBillForAudit(bill) }
+      });
+    }
+  }
+  for (const [id, bill] of currentBills) {
+    if (!nextBills.has(id)) {
+      entries.push({
+        id: newAuditId(),
+        at,
+        actor,
+        plant,
+        action: "bill_deleted",
+        target: { type: "bill", ...summarizeBillForAudit(bill) }
+      });
+    }
+  }
+
+  // ----- Auto schedules -----
+  const currentSchedules = Array.isArray(current?.schedule?.autoSchedules)
+    ? current.schedule.autoSchedules
+    : [];
+  const nextSchedules = Array.isArray(next?.schedule?.autoSchedules)
+    ? next.schedule.autoSchedules
+    : [];
+  const currentByDay = new Map(
+    currentSchedules
+      .filter((s) => Number.isFinite(Number(s?.cutoffDay)))
+      .map((s) => [Number(s.cutoffDay), s])
+  );
+  const nextByDay = new Map(
+    nextSchedules
+      .filter((s) => Number.isFinite(Number(s?.cutoffDay)))
+      .map((s) => [Number(s.cutoffDay), s])
+  );
+  for (const [day, sched] of nextByDay) {
+    if (!currentByDay.has(day)) {
+      entries.push({
+        id: newAuditId(),
+        at,
+        actor,
+        plant,
+        action: "schedule_added",
+        target: { type: "schedule", ...summarizeAutoScheduleForAudit(sched) }
+      });
+    } else {
+      const before = currentByDay.get(day);
+      if (JSON.stringify(before) !== JSON.stringify(sched)) {
+        entries.push({
+          id: newAuditId(),
+          at,
+          actor,
+          plant,
+          action: "schedule_updated",
+          target: { type: "schedule", ...summarizeAutoScheduleForAudit(sched) }
+        });
+      }
+    }
+  }
+  for (const [day, sched] of currentByDay) {
+    if (!nextByDay.has(day)) {
+      entries.push({
+        id: newAuditId(),
+        at,
+        actor,
+        plant,
+        action: "schedule_removed",
+        target: { type: "schedule", ...summarizeAutoScheduleForAudit(sched) }
+      });
+    }
+  }
+
+  return entries;
+};
+
 const parsePositiveIdsFromParamValues = (values) => {
   const rawParts = [];
   (Array.isArray(values) ? values : []).forEach((value) => {
@@ -1577,10 +1711,22 @@ export const handleRequest = async (req, res) => {
             )
           : currentState.billSequence;
 
+        const auditEntries = buildBillingAuditEntries({
+          current: currentState,
+          next: { schedule: nextSchedule, history: nextHistory },
+          session,
+          siteIdentity
+        });
+        const nextAuditLog = [
+          ...auditEntries,
+          ...(Array.isArray(currentState.auditLog) ? currentState.auditLog : [])
+        ].slice(0, 500);
+
         const data = await writeBillingState(siteIdentity, {
           schedule: nextSchedule,
           history: nextHistory,
-          billSequence: nextBillSequence
+          billSequence: nextBillSequence,
+          auditLog: nextAuditLog
         });
         sendJson(res, 200, { data }, corsHeaders);
         return;

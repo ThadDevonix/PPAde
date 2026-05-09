@@ -16,21 +16,24 @@
       <img class="login-meaw" src="../assets/Meaw.png" alt="">
     </div>
 
+    <div class="login-lang-switch">
+      <button class="lang-toggle" data-lang-toggle="th" type="button" aria-label="Change language"></button>
+    </div>
     <section class="auth-card">
       <div class="auth-head">
         <p class="brand-chip"><span class="brand-dot" aria-hidden="true"></span>DEVONIX</p>
-        <h1>เข้าสู่ระบบ</h1>
-        <p class="subtitle">ยินดีต้อนรับเข้าสู่ DEVONIX</p>
+        <h1 data-i18n="login.title">เข้าสู่ระบบ</h1>
+        <p class="subtitle" data-i18n="login.welcome">ยินดีต้อนรับเข้าสู่ DEVONIX</p>
       </div>
 
       <form id="login-form" class="auth-form" novalidate>
         <div class="field-block">
-          <label for="email">อีเมล</label>
+          <label for="email" data-i18n="login.field.email">อีเมล</label>
           <input id="email" name="email" type="email" autocomplete="email" required>
         </div>
 
         <div class="field-block">
-          <label for="password">รหัสผ่าน</label>
+          <label for="password" data-i18n="login.field.password">รหัสผ่าน</label>
           <div class="password-field">
             <input id="password" name="password" type="password" autocomplete="current-password" required>
             <button
@@ -39,10 +42,12 @@
               type="button"
               aria-controls="password"
               aria-pressed="false"
+              data-i18n-aria-label="login.action.show_password"
+              data-i18n-title="login.action.show_password"
               aria-label="แสดงรหัสผ่าน"
               title="แสดงรหัสผ่าน"
             >
-              <span class="sr-only password-toggle-text">แสดงรหัสผ่าน</span>
+              <span class="sr-only password-toggle-text" data-i18n="login.action.show_password">แสดงรหัสผ่าน</span>
               <svg class="icon icon-eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path
                   d="M1.5 12s3.9-6.5 10.5-6.5S22.5 12 22.5 12s-3.9 6.5-10.5 6.5S1.5 12 1.5 12Z"
@@ -90,13 +95,14 @@
           </div>
         </div>
 
-        <button id="login-submit" class="primary" type="submit">เข้าสู่ระบบ</button>
+        <button id="login-submit" class="primary" type="submit" data-i18n="login.action.submit">เข้าสู่ระบบ</button>
       </form>
 
       <p id="login-message" class="message" role="status" aria-live="polite"></p>
     </section>
   </main>
 
+  <script src="../assets/i18n.js" defer></script>
   <script src="./login.js" defer></script>
 </body>
 </html>

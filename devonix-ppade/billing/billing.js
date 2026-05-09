@@ -568,6 +568,26 @@ const formatThaiDateShort = (value) => {
   if (!date) return value || "-";
   return `${date.getDate()} ${thaiMonthShort[date.getMonth()]} ${date.getFullYear()}`;
 };
+const formatThaiPeriodRange = (startValue, endValue) => {
+  const start = startValue instanceof Date ? startValue : parseDateInput(startValue);
+  const end = endValue instanceof Date ? endValue : parseDateInput(endValue);
+  if (!start && !end) return "—";
+  if (!start) return formatThaiDateShort(end);
+  if (!end) return formatThaiDateShort(start);
+  const sY = start.getFullYear();
+  const eY = end.getFullYear();
+  const sM = start.getMonth();
+  const eM = end.getMonth();
+  const sD = start.getDate();
+  const eD = end.getDate();
+  if (sY === eY && sM === eM) {
+    return `${sD}–${eD} ${thaiMonthShort[sM]} ${sY}`;
+  }
+  if (sY === eY) {
+    return `${sD} ${thaiMonthShort[sM]} – ${eD} ${thaiMonthShort[eM]} ${sY}`;
+  }
+  return `${sD} ${thaiMonthShort[sM]} ${sY} – ${eD} ${thaiMonthShort[eM]} ${eY}`;
+};
 const formatThaiMonthYear = (value) => {
   const date = value instanceof Date ? value : parseDateInput(value);
   if (!date) return "-";
@@ -2445,6 +2465,9 @@ const defaultSchedule = {
 };
 let schedule = { ...defaultSchedule };
 let history = [];
+let auditLog = [];
+let auditFilter = "all";
+let auditDateFilter = ""; // "" or "YYYY-MM-DD" (user-local date)
 let billSequence = 0;
 let meterProfiles = [];
 const billingHistoryStoragePrefix = "billingHistoryV2";
@@ -2722,6 +2745,20 @@ const persistBillingStateToApi = async () => {
   if (!response.ok) {
     throw new Error(`PUT ${billingStateApiPath} failed (${response.status})`);
   }
+  // Pick up server-generated audit entries from the response
+  try {
+    const payload = await response.json().catch(() => null);
+    const data = payload && typeof payload === "object" ? (payload.data || payload) : null;
+    if (data && Array.isArray(data.auditLog)) {
+      auditLog = data.auditLog;
+      const auditPanelEl = document.getElementById("audit-panel");
+      if (auditPanelEl && !auditPanelEl.classList.contains("hidden")) {
+        renderAuditFeed();
+      }
+    }
+  } catch {
+    // ignore — best effort
+  }
 };
 const queueBillingStateSave = () => {
   if (!billingStateReady) return;
@@ -2782,6 +2819,9 @@ const hydrateBillingStateFromApi = async () => {
   const hasStateHistory = historyFromState.length > 0;
   const sequenceValue = Number(data?.billSequence ?? data?.sequence);
   const hasStateSequence = Number.isFinite(sequenceValue) && sequenceValue > 0;
+  if (Array.isArray(data?.auditLog)) {
+    auditLog = data.auditLog;
+  }
   try {
     if (!hasScheduleState && hasStateSchedule) {
       localStorage.setItem(scheduleKey, JSON.stringify(scheduleFromState));
@@ -4016,7 +4056,7 @@ const renderAutoQueue = () => {
     billQueueRows.innerHTML =
       '<tr><td class="empty" colspan="4">ยังไม่มีรอบอัตโนมัติ</td></tr>';
     if (billQueueTitle) {
-      billQueueTitle.textContent = "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้";
+      billQueueTitle.textContent = tAudit("bill.queue.title", "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้");
     }
     if (billUpcomingPanel) billUpcomingPanel.innerHTML = "";
     return;
@@ -4212,7 +4252,7 @@ const renderAutoQueue = () => {
   };
   attachQueueActions();
   if (billQueueTitle) {
-    billQueueTitle.textContent = `รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ (${autoSchedules.length} รอบ)`;
+    billQueueTitle.textContent = tAudit("bill.queue.title_with_count", "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ ({count} รอบ)", { count: autoSchedules.length });
   }
   if (billUpcomingPanel) billUpcomingPanel.innerHTML = "";
 };
@@ -4220,15 +4260,19 @@ const updateBillHistoryTitle = () => {
   if (!billHistoryTitle) return;
   billHistoryTitle.textContent =
     billMode === "auto"
-      ? "ประวัติการสร้างบิลอัตโนมัติ"
-      : "ประวัติการสร้างบิลแบบกำหนดวัน";
+      ? tAudit("bill.history.title.auto", "ประวัติการสร้างบิลอัตโนมัติ")
+      : tAudit("bill.history.title.manual", "ประวัติการสร้างบิลแบบกำหนดวัน");
 };
 
 const updateAutoPreviewText = () => {
   if (!billAutoPreview) return;
   const selectedCutoffDay =
     Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay;
-  billAutoPreview.textContent = `บิลจะสรุปที่วันที่ ${selectedCutoffDay} ของเดือนนั้นๆ แบบอัตโนมัติ`;
+  billAutoPreview.textContent = tAudit(
+    "bill.auto.cutoff_summary",
+    "บิลจะสรุปที่วันที่ {day} ของเดือนนั้นๆ แบบอัตโนมัติ",
+    { day: selectedCutoffDay }
+  );
 };
 const getAutoModalDraft = (cutoffDay) =>
   normalizeAutoScheduleEntry(
@@ -4302,19 +4346,23 @@ const setBillMode = (mode) => {
   billFlowAutoBtn?.classList.toggle("active", isAuto);
   if (billNewBtn) {
     if (isAuto) {
-      billNewBtn.textContent = allowManageAuto ? "ตั้งค่าอัตโนมัติ" : "ดูรายการอัตโนมัติ";
+      billNewBtn.textContent = allowManageAuto
+        ? tAudit("bill.button.config_auto", "ตั้งค่าอัตโนมัติ")
+        : tAudit("bill.button.view_auto", "ดูรายการอัตโนมัติ");
       billNewBtn.disabled = !allowManageAuto;
       billNewBtn.title = allowManageAuto
         ? ""
         : "เฉพาะ Super Admin เท่านั้นที่ตั้งค่าออกบิลอัตโนมัติได้";
     } else {
-      billNewBtn.textContent = "สร้างบิลใหม่";
+      billNewBtn.textContent = tAudit("bill.button.new_bill", "สร้างบิลใหม่");
       billNewBtn.disabled = false;
       billNewBtn.title = "";
     }
   }
   if (billModalTitle) {
-    billModalTitle.textContent = isAuto ? "ตั้งค่าออกบิลอัตโนมัติ" : "สร้างใบแจ้งค่าไฟ";
+    billModalTitle.textContent = isAuto
+      ? tAudit("bill.modal.title.auto", "ตั้งค่าออกบิลอัตโนมัติ")
+      : tAudit("bill.modal.title.manual", "สร้างใบแจ้งค่าไฟ");
   }
   updateBillHistoryTitle();
   billDateRangeField?.classList.toggle("hidden", isAuto);
@@ -4323,7 +4371,9 @@ const setBillMode = (mode) => {
   billQueuePanel?.classList.toggle("hidden", !isAuto);
   billHistoryPanel?.classList.toggle("hidden", isAuto);
   if (billConfirm) {
-    billConfirm.textContent = isAuto ? "บันทึกอัตโนมัติ" : "สร้างบิล";
+    billConfirm.textContent = isAuto
+      ? tAudit("bill.action.confirm_auto", "บันทึกอัตโนมัติ")
+      : tAudit("bill.action.confirm", "สร้างบิล");
   }
   if (isAuto && isModalOpen) {
     const selectedCutoffDay =
@@ -4660,8 +4710,9 @@ const renderHistory = () => {
   if (!billHistoryRows) return;
   const visibleHistory = getHistoryByCurrentMode();
   if (!visibleHistory.length) {
-    const emptyLabel =
-      billMode === "auto" ? "ยังไม่มีบิลอัตโนมัติ" : "ยังไม่มีบิลกำหนดวัน";
+    const emptyLabel = billMode === "auto"
+      ? tAudit("bill.history.empty.auto", "ยังไม่มีบิลอัตโนมัติ")
+      : tAudit("bill.history.empty.manual", "ยังไม่มีบิลกำหนดวัน");
     billHistoryRows.innerHTML =
       `<tr><td class="empty" colspan="7">${emptyLabel}</td></tr>`;
     return;
@@ -4692,17 +4743,17 @@ const renderHistory = () => {
         ? formatDate(manualIssueDate)
         : bill.periodEnd || bill.periodStart || "";
       const issueDateStr = manualIssueDateStr;
-      const actionButtons = `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดาวน์โหลด</button>
-           <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดูตัวอย่าง</button>
-           <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">ลบ</button>`;
+      const actionButtons = `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.download", "ดาวน์โหลด")}</button>
+           <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.preview", "ดูตัวอย่าง")}</button>
+           <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">${tAudit("bill.action.delete", "ลบ")}</button>`;
+      const periodRangeText = formatThaiPeriodRange(bill.periodStart, bill.periodEnd);
+      const periodIsoTitle = `${bill.periodStart || "?"} – ${bill.periodEnd || "?"}`;
       return `
         <tr data-id="${bill.id}">
           <td>ใบที่ ${bill.billNo}</td>
-          <td>${meterText || "-"}</td>
           <td class="period-cell">
-            <span class="badge ${badgeClass}">${badgeLabel}</span>
-            <div class="period-range">${bill.periodStart} - ${bill.periodEnd}</div>
-            <div class="period-meta">ผู้สร้าง: ${escapeHtml(creatorLabel)}</div>
+            <span class="period-range" title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span>
+            <div class="period-meta" title="${escapeHtml(creatorLabel)}">โดย ${escapeHtml(creatorLabel)}</div>
           </td>
           <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
           <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
@@ -5245,8 +5296,30 @@ const initBilling = async () => {
 };
 
 billNewBtn?.addEventListener("click", () => openModal(billMode));
-billConfirm?.addEventListener("click", () => {
-  handleConfirm();
+billConfirm?.addEventListener("click", async () => {
+  if (!billConfirm || billConfirm.dataset.busy === "1") return;
+  const originalText = billConfirm.textContent;
+  billConfirm.dataset.busy = "1";
+  billConfirm.disabled = true;
+  billConfirm.classList.add("is-loading");
+  billConfirm.textContent = billMode === "auto"
+    ? tAudit("bill.action.saving_auto", "กำลังบันทึก...")
+    : tAudit("bill.action.creating", "กำลังสร้างบิล...");
+  try {
+    await handleConfirm();
+    // Wait for the queued PUT (state + audit log) to actually land
+    if (billingStateSyncTask) {
+      try { await billingStateSyncTask; } catch { /* ignore */ }
+    }
+  } catch (err) {
+    console.error("[billing] handleConfirm failed:", err);
+    alert("เกิดข้อผิดพลาดระหว่างสร้างบิล");
+  } finally {
+    billConfirm.dataset.busy = "";
+    billConfirm.disabled = false;
+    billConfirm.classList.remove("is-loading");
+    billConfirm.textContent = originalText;
+  }
 });
 billDeleteCutoff?.addEventListener("click", () => {
   if (!(isModalOpen && billMode === "auto")) return;
@@ -5284,3 +5357,270 @@ billModal?.classList.add("hidden");
 populateCutoffOptions();
 setDefaultRange(schedule.cutoffDay);
 setBillMode("manual");
+
+// ============================================================
+// Audit feed — renders the auditLog list as a vertical timeline
+// ============================================================
+function tAudit(key, fallback, params) {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+}
+const AUDIT_ACTION_LABELS = {
+  bill_created: () => tAudit("audit.action.bill_created", "สร้างบิล"),
+  bill_deleted: () => tAudit("audit.action.bill_deleted", "ลบบิล"),
+  schedule_added: () => tAudit("audit.action.schedule_added", "เพิ่มรอบอัตโนมัติ"),
+  schedule_updated: () => tAudit("audit.action.schedule_updated", "แก้ไขรอบอัตโนมัติ"),
+  schedule_removed: () => tAudit("audit.action.schedule_removed", "ลบรอบอัตโนมัติ")
+};
+const AUDIT_ACTION_TONES = {
+  bill_created: "create",
+  bill_deleted: "delete",
+  schedule_added: "create",
+  schedule_updated: "update",
+  schedule_removed: "delete"
+};
+const AUDIT_ACTION_ICONS = {
+  bill_created: "+",
+  bill_deleted: "−",
+  schedule_added: "+",
+  schedule_updated: "✎",
+  schedule_removed: "−"
+};
+
+const escapeAuditHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[ch]);
+
+const formatAuditRelative = (iso) => {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 0) return "ตอนนี้";
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "เมื่อสักครู่";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} นาทีที่แล้ว`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} ชั่วโมงที่แล้ว`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} วันที่แล้ว`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk} สัปดาห์ที่แล้ว`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo} เดือนที่แล้ว`;
+  const yr = Math.floor(day / 365);
+  return `${yr} ปีที่แล้ว`;
+};
+
+const formatAuditFullStamp = (iso) => {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso || "—";
+  const pad = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear() + 543;
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mn = pad(d.getMinutes());
+  return `${dd}/${mm}/${yyyy} ${hh}:${mn} น.`;
+};
+
+const formatAuditAmount = (val) => {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return "0";
+  return num.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const formatAuditKwh = (val) => {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return "0";
+  return num.toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+};
+
+const buildAuditTargetText = (entry) => {
+  const target = entry?.target || {};
+  if (target.type === "bill") {
+    const period = target.periodStart && target.periodEnd
+      ? ` · ${target.periodStart} – ${target.periodEnd}`
+      : "";
+    const kind = target.auto
+      ? tAudit("audit.kind.auto", "อัตโนมัติ")
+      : tAudit("audit.kind.manual", "กำหนดวัน");
+    const kwh = Number.isFinite(Number(target.totalKwh)) ? `${formatAuditKwh(target.totalKwh)} kWh` : "";
+    const amt = Number.isFinite(Number(target.amount)) && target.amount > 0
+      ? `${formatAuditAmount(target.amount)} ฿`
+      : "";
+    const tags = [kwh, amt].filter(Boolean).join(" · ");
+    const billLabel = tAudit("audit.target.bill", "ใบที่ {no}", { no: target.billNo ?? "?" });
+    return `${billLabel} (${kind})${period}${tags ? ` · ${tags}` : ""}`;
+  }
+  if (target.type === "schedule") {
+    const day = target.cutoffDay ?? "?";
+    const rate = Number(target.defaultRate) > 0 ? ` · ${formatAuditAmount(target.defaultRate)} ฿/kWh` : "";
+    const calc = target.calcLabel ? ` · ${target.calcLabel}` : "";
+    return `${tAudit("audit.target.schedule", "รอบตัดวันที่ {day}", { day })}${rate}${calc}`;
+  }
+  return "—";
+};
+
+const auditAvatarLetter = (name) => {
+  const text = String(name || "").trim();
+  if (!text) return "?";
+  return text.charAt(0).toUpperCase();
+};
+
+const auditEntryLocalDate = (iso) => {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+};
+const filterAuditEntries = () => {
+  let list = Array.isArray(auditLog) ? auditLog : [];
+  if (auditFilter === "bill") list = list.filter((e) => e?.target?.type === "bill");
+  if (auditFilter === "schedule") list = list.filter((e) => e?.target?.type === "schedule");
+  if (auditDateFilter) {
+    list = list.filter((e) => auditEntryLocalDate(e?.at) === auditDateFilter);
+  }
+  return list;
+};
+
+const formatAuditDateForEmpty = (iso) => {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  if (!Number.isFinite(d.getTime())) return iso;
+  return formatThaiDateShort(d);
+};
+const renderAuditFeed = () => {
+  const feed = document.getElementById("audit-feed");
+  if (!feed) return;
+  const entries = filterAuditEntries();
+  if (!entries.length) {
+    const dateLabel = auditDateFilter ? formatAuditDateForEmpty(auditDateFilter) : "";
+    const msg = auditDateFilter
+      ? tAudit("audit.empty_for_date", "ไม่พบประวัติของวันที่ {date}", { date: dateLabel })
+      : tAudit("audit.empty", "ยังไม่มีประวัติการเปลี่ยนแปลง");
+    feed.innerHTML = `<p class="empty audit-empty">${escapeAuditHtml(msg)}</p>`;
+    return;
+  }
+  feed.innerHTML = entries
+    .map((entry) => {
+      const action = String(entry?.action || "");
+      const tone = AUDIT_ACTION_TONES[action] || "update";
+      const labelGetter = AUDIT_ACTION_LABELS[action];
+      const label = typeof labelGetter === "function" ? labelGetter() : action || "—";
+      const icon = AUDIT_ACTION_ICONS[action] || "•";
+      const actorName = entry?.actor?.name || entry?.actor?.email || "ผู้ใช้";
+      const actorRole = entry?.actor?.role || "";
+      const detail = buildAuditTargetText(entry);
+      const rel = formatAuditRelative(entry?.at);
+      const full = formatAuditFullStamp(entry?.at);
+      return `
+        <div class="audit-entry tone-${tone}">
+          <div class="audit-entry-marker"><span class="audit-entry-icon">${escapeAuditHtml(icon)}</span></div>
+          <div class="audit-entry-card">
+            <div class="audit-entry-head">
+              <div class="audit-actor">
+                <span class="audit-avatar">${escapeAuditHtml(auditAvatarLetter(actorName))}</span>
+                <div class="audit-actor-text">
+                  <span class="audit-actor-name">${escapeAuditHtml(actorName)}</span>
+                  ${actorRole ? `<span class="audit-actor-role">${escapeAuditHtml(actorRole)}</span>` : ""}
+                </div>
+              </div>
+              <span class="audit-action audit-action-${tone}">${escapeAuditHtml(label)}</span>
+            </div>
+            <div class="audit-detail">${escapeAuditHtml(detail)}</div>
+            <div class="audit-time" title="${escapeAuditHtml(full)}">
+              <span class="audit-time-rel">${escapeAuditHtml(rel)}</span>
+              <span class="audit-time-full">${escapeAuditHtml(full)}</span>
+            </div>
+          </div>
+        </div>`;
+    })
+    .join("");
+};
+
+const fetchAuditLogFromApi = async () => {
+  const query = buildBillingStateQueryString();
+  if (!query) return;
+  try {
+    const response = await fetch(`${billingStateApiPath}?${query}`, {
+      method: "GET",
+      credentials: "same-origin"
+    });
+    if (!response.ok) return;
+    const payload = await response.json().catch(() => null);
+    const data = payload && typeof payload === "object" ? payload.data || payload : null;
+    if (data && Array.isArray(data.auditLog)) {
+      auditLog = data.auditLog;
+    }
+  } catch {
+    // ignore
+  }
+};
+
+const refreshAndRenderAuditFeed = async () => {
+  // Wait for any pending PUT to land so the just-emitted entries are persisted
+  if (billingStateSyncTask) {
+    try { await billingStateSyncTask; } catch { /* ignore */ }
+  }
+  await fetchAuditLogFromApi();
+  renderAuditFeed();
+};
+
+document.querySelectorAll("#audit-filter .audit-filter-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const value = btn.getAttribute("data-filter") || "all";
+    auditFilter = value;
+    document.querySelectorAll("#audit-filter .audit-filter-btn").forEach((b) =>
+      b.classList.toggle("active", b === btn)
+    );
+    renderAuditFeed();
+  });
+});
+
+document.getElementById("audit-refresh")?.addEventListener("click", async () => {
+  const feed = document.getElementById("audit-feed");
+  if (feed) feed.innerHTML = `<p class="empty audit-empty">กำลังโหลด...</p>`;
+  await refreshAndRenderAuditFeed();
+});
+
+const auditDateInput = document.getElementById("audit-date");
+const auditDateClear = document.getElementById("audit-date-clear");
+const updateAuditDateClearVisibility = () => {
+  if (!auditDateClear) return;
+  auditDateClear.classList.toggle("hidden", !auditDateFilter);
+};
+auditDateInput?.addEventListener("change", (ev) => {
+  auditDateFilter = ev.target.value || "";
+  updateAuditDateClearVisibility();
+  renderAuditFeed();
+});
+auditDateClear?.addEventListener("click", () => {
+  auditDateFilter = "";
+  if (auditDateInput) auditDateInput.value = "";
+  updateAuditDateClearVisibility();
+  renderAuditFeed();
+});
+
+window.renderAuditFeed = renderAuditFeed;
+window.refreshAuditFeed = refreshAndRenderAuditFeed;
+
+// Re-render dynamic strings when language changes
+document.addEventListener("i18n:changed", () => {
+  try { setBillMode(billMode); } catch { /* ignore */ }
+  try { updateBillHistoryTitle(); } catch { /* ignore */ }
+  try { updateAutoPreviewText(); } catch { /* ignore */ }
+  try { renderAutoQueue(); } catch { /* ignore */ }
+  try { renderHistory(); } catch { /* ignore */ }
+});

@@ -14,15 +14,23 @@
     <div class="nav-links">
       <a class="nav-link active" href="../index.html">
         <span class="home-icon" aria-hidden="true"></span>
-        Home
+        <span data-i18n="nav.home">Home</span>
       </a>
       <a class="nav-link" href="../users/index.html">
-        Users
+        <span data-i18n="nav.users">Users</span>
       </a>
     </div>
+    <button class="nav-guide-btn bill-guide-trigger" type="button" data-i18n-aria-label="nav.guide" aria-label="คู่มือการสร้างบิล">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10a3 3 0 0 1 2 .76A3 3 0 0 1 14 3h4.5A1.5 1.5 0 0 1 20 4.5V18a1 1 0 0 1-1 1h-5a2 2 0 0 0-2 2 2 2 0 0 0-2-2H5a1 1 0 0 1-1-1V4.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12 5v15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="nav-guide-btn-text" data-i18n="nav.guide">คู่มือการสร้างบิล</span>
+    </button>
+    <button class="lang-toggle" data-lang-toggle="th" type="button" aria-label="Change language"></button>
     <div class="nav-auth">
       <span id="auth-user" class="pill auth-user"></span>
-      <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+      <button id="logout-btn" class="small-btn nav-logout" type="button" data-i18n="nav.logout">ออกจากระบบ</button>
     </div>
   </nav>
 
@@ -35,38 +43,39 @@
           </svg>
         </button>
         <div class="mode-toggle">
-          <button class="toggle-btn active" id="mode-meters" type="button">Meters</button>
-          <button class="toggle-btn" id="mode-billing" type="button">Billing</button>
+          <button class="toggle-btn active" id="mode-meters" type="button" data-i18n="plant.mode.meters">Meters</button>
+          <button class="toggle-btn" id="mode-billing" type="button" data-i18n="plant.mode.billing">Billing</button>
+          <button class="toggle-btn" id="mode-audit" type="button" data-i18n="plant.mode.audit">History Edit</button>
         </div>
       </div>
     </div>
 
     <section class="plant-hero">
       <div>
-        <p class="eyebrow">Plant</p>
+        <p class="eyebrow" data-i18n="plant.eyebrow">Plant</p>
         <h1 id="plant-name">ชื่อโรงไฟฟ้า</h1>
       </div>
     </section>
 
     <section class="panel" id="meters-panel">
       <div class="panel-head">
-        <h3>มิเตอร์ / Meters</h3>
+        <h3 data-i18n="meters.panel.title">มิเตอร์ / Meters</h3>
         <div class="panel-actions">
-          <button class="primary small-btn" id="meter-new-btn" type="button">เพิ่มมิเตอร์</button>
+          <button class="primary small-btn" id="meter-new-btn" type="button" data-i18n="meters.panel.add">เพิ่มมิเตอร์</button>
         </div>
       </div>
       <div class="device-table-wrap">
         <table class="device-table">
           <thead>
             <tr>
-              <th style="width: 80px;">Status</th>
-              <th>Meter</th>
-              <th style="width: 220px;">Address</th>
-              <th style="width: 110px;">จัดการ</th>
+              <th style="width: 80px;" data-i18n="meters.col.status">Status</th>
+              <th data-i18n="meters.col.meter">Meter</th>
+              <th style="width: 220px;" data-i18n="meters.col.address">Address</th>
+              <th style="width: 110px;" data-i18n="meters.col.action">จัดการ</th>
             </tr>
           </thead>
           <tbody id="device-rows">
-            <tr><td class="empty" colspan="4">กำลังโหลด...</td></tr>
+            <tr><td class="empty" colspan="4" data-i18n="common.loading">กำลังโหลด...</td></tr>
           </tbody>
         </table>
       </div>
@@ -74,31 +83,31 @@
 
     <section class="panel hidden" id="billing-panel">
       <div class="panel-head">
-        <h3>บิลค่าไฟ / Billing</h3>
+        <h3 data-i18n="billing.panel.title">บิลค่าไฟ / Billing</h3>
         <div class="panel-actions">
-          <button class="primary small-btn" id="bill-new-btn" type="button">สร้างบิลใหม่</button>
+          <button class="primary small-btn" id="bill-new-btn" type="button" data-i18n="billing.panel.new_bill">สร้างบิลใหม่</button>
         </div>
       </div>
       <div class="bill-flow-tabs" id="bill-flow-tabs">
-        <button class="bill-flow-btn active" id="bill-flow-manual" type="button">ออกบิลแบบกำหนดวัน</button>
-        <button class="bill-flow-btn" id="bill-flow-auto" type="button">ออกบิลอัตโนมัติ</button>
+        <button class="bill-flow-btn active" id="bill-flow-manual" type="button" data-i18n="billing.tab.manual">ออกบิลแบบกำหนดวัน</button>
+        <button class="bill-flow-btn" id="bill-flow-auto" type="button" data-i18n="billing.tab.auto">ออกบิลอัตโนมัติ</button>
       </div>
       <div class="panel-sub hidden" id="bill-queue-panel">
         <div class="summary-header">
-          <h4 id="bill-queue-title">รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้</h4>
+          <h4 id="bill-queue-title" data-i18n="billing.queue.title">รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้</h4>
         </div>
         <div class="history-wrap">
           <table class="history-table">
             <thead>
               <tr>
-                <th style="width: 90px;">รอบวันที่</th>
-                <th>รายละเอียด</th>
-                <th style="width: 200px;">สถานะ</th>
-                <th style="width: 300px;">การทำงาน</th>
+                <th style="width: 90px;" data-i18n="billing.queue.col.cutoff">รอบวันที่</th>
+                <th data-i18n="billing.queue.col.detail">รายละเอียด</th>
+                <th style="width: 200px;" data-i18n="billing.queue.col.status">สถานะ</th>
+                <th style="width: 300px;" data-i18n="billing.queue.col.action">การทำงาน</th>
               </tr>
             </thead>
             <tbody id="bill-queue-rows">
-              <tr><td class="empty" colspan="4">ยังไม่มีรอบอัตโนมัติ</td></tr>
+              <tr><td class="empty" colspan="4" data-i18n="billing.queue.empty">ยังไม่มีรอบอัตโนมัติ</td></tr>
             </tbody>
           </table>
         </div>
@@ -106,26 +115,86 @@
       </div>
       <div class="panel-sub" id="bill-history-panel">
         <div class="summary-header">
-          <h4 id="bill-history-title">ประวัติการสร้างบิลแบบกำหนดวัน</h4>
+          <h4 id="bill-history-title" data-i18n="billing.history.title">ประวัติการสร้างบิลแบบกำหนดวัน</h4>
         </div>
         <div class="history-wrap">
           <table class="history-table">
             <thead>
               <tr>
-                <th style="width: 90px;">ใบที่</th>
-                <th>สร้างจากมิเตอร์</th>
-                <th>ช่วงวันที่</th>
-                <th style="width: 130px;">อัตรา (฿/kWh)</th>
-                <th style="width: 140px;">หน่วยรวม (kWh)</th>
-                <th style="width: 140px;">ยอดรวม</th>
-                <th style="width: 140px;">การทำงาน</th>
+                <th style="width: 90px;" data-i18n="billing.history.col.bill_no">ใบที่</th>
+                <th data-i18n="billing.history.col.period">ช่วงวันที่</th>
+                <th style="width: 130px;" data-i18n="billing.history.col.rate">อัตรา (฿/kWh)</th>
+                <th style="width: 140px;" data-i18n="billing.history.col.kwh">หน่วยรวม (kWh)</th>
+                <th style="width: 140px;" data-i18n="billing.history.col.total">ยอดรวม</th>
+                <th style="width: 140px;" data-i18n="billing.history.col.action">การทำงาน</th>
               </tr>
             </thead>
             <tbody id="bill-history-rows">
-              <tr><td class="empty" colspan="7">ยังไม่มีบิล</td></tr>
+              <tr><td class="empty" colspan="6" data-i18n="billing.history.empty">ยังไม่มีบิล</td></tr>
             </tbody>
           </table>
         </div>
+      </div>
+      <div class="bill-guide-footer">
+        <button class="ghost small-btn bill-guide-btn bill-guide-trigger" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10a3 3 0 0 1 2 .76A3 3 0 0 1 14 3h4.5A1.5 1.5 0 0 1 20 4.5V18a1 1 0 0 1-1 1h-5a2 2 0 0 0-2 2 2 2 0 0 0-2-2H5a1 1 0 0 1-1-1V4.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M12 5v15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+          <span data-i18n="nav.guide">คู่มือการสร้างบิล</span>
+        </button>
+      </div>
+    </section>
+
+    <div class="modal hidden" id="bill-guide-modal" role="dialog" aria-modal="true" aria-labelledby="bill-guide-title">
+      <div class="modal-content bill-guide-modal-content">
+        <div class="modal-header bill-guide-header">
+          <div class="bill-guide-header-text">
+            <h3 id="bill-guide-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10a3 3 0 0 1 2 .76A3 3 0 0 1 14 3h4.5A1.5 1.5 0 0 1 20 4.5V18a1 1 0 0 1-1 1h-5a2 2 0 0 0-2 2 2 2 0 0 0-2-2H5a1 1 0 0 1-1-1V4.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M12 5v15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span data-i18n="guide.title">คู่มือการสร้างบิล</span>
+            </h3>
+            <p class="muted small" data-i18n="guide.subtitle">เลือกหัวข้อด้านซ้ายเพื่ออ่านขั้นตอน</p>
+          </div>
+          <button class="ghost icon-btn" id="bill-guide-close" aria-label="ปิด">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="bill-guide-body">
+          <aside class="bill-guide-toc" id="bill-guide-toc" aria-label="หัวข้อคู่มือ"></aside>
+          <section class="bill-guide-detail" id="bill-guide-detail" aria-live="polite"></section>
+        </div>
+      </div>
+    </div>
+
+    <section class="panel hidden" id="audit-panel">
+      <div class="panel-head">
+        <h3 data-i18n="audit.title">History Edit</h3>
+        <div class="panel-actions">
+          <div class="audit-filter" id="audit-filter">
+            <button class="audit-filter-btn active" data-filter="all" type="button" data-i18n="audit.filter.all">ทั้งหมด</button>
+            <button class="audit-filter-btn" data-filter="bill" type="button" data-i18n="audit.filter.bill">บิล</button>
+            <button class="audit-filter-btn" data-filter="schedule" type="button" data-i18n="audit.filter.schedule">รอบอัตโนมัติ</button>
+          </div>
+          <div class="audit-date-filter">
+            <input type="date" id="audit-date" class="audit-date-input" data-i18n-aria-label="audit.date.label" aria-label="กรองตามวัน" />
+            <button class="audit-date-clear hidden" id="audit-date-clear" type="button" data-i18n="audit.date.clear" aria-label="ล้างวันที่">ล้าง</button>
+          </div>
+          <button class="ghost small-btn icon-btn" id="audit-refresh" type="button" data-i18n-aria-label="audit.refresh" data-i18n-title="audit.refresh" aria-label="โหลดข้อมูลล่าสุด" title="โหลดข้อมูลล่าสุด">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M20 4v4h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="audit-feed" id="audit-feed">
+        <p class="empty audit-empty" data-i18n="common.loading">กำลังโหลด...</p>
       </div>
     </section>
 
@@ -133,12 +202,12 @@
       <div class="modal-content receipt-preview">
         <div class="modal-header">
           <div>
-            <h3>ตัวอย่างรายงานบิล</h3>
+            <h3 data-i18n="receipt.preview.title">ตัวอย่างรายงานบิล</h3>
             <p class="muted small" id="receipt-preview-month"></p>
           </div>
           <div class="header-actions">
-            <button class="primary small-btn" id="receipt-preview-download" type="button">ดาวน์โหลด PDF</button>
-            <button class="ghost icon-btn" id="receipt-preview-close" aria-label="ปิด">
+            <button class="primary small-btn" id="receipt-preview-download" type="button" data-i18n="receipt.download_pdf">ดาวน์โหลด PDF</button>
+            <button class="ghost icon-btn" id="receipt-preview-close" data-i18n-aria-label="common.close" aria-label="ปิด">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
@@ -156,8 +225,8 @@
     <div class="modal hidden" id="bill-modal" role="dialog" aria-modal="true">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="bill-modal-title">สร้างใบแจ้งค่าไฟ</h3>
-          <button class="ghost icon-btn" id="bill-modal-close" aria-label="ปิด">
+          <h3 id="bill-modal-title" data-i18n="bill.modal.title.manual">สร้างใบแจ้งค่าไฟ</h3>
+          <button class="ghost icon-btn" id="bill-modal-close" data-i18n-aria-label="common.close" aria-label="ปิด">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
@@ -165,25 +234,25 @@
         </div>
         <div class="modal-body">
           <div class="field hidden" id="bill-auto-preview-field">
-            <p class="muted small" id="bill-auto-preview">ระบบจะสร้างบิลตามรอบอัตโนมัติ</p>
+            <p class="muted small" id="bill-auto-preview" data-i18n="bill.auto_preview_text">ระบบจะสร้างบิลตามรอบอัตโนมัติ</p>
           </div>
           <div class="field grid-2" id="bill-date-range-field">
             <div>
-              <label for="bill-start">วันที่เริ่ม</label>
+              <label for="bill-start" data-i18n="bill.label.start_date">วันที่เริ่ม</label>
               <input type="date" id="bill-start">
             </div>
             <div>
-              <label for="bill-end">ถึงวันที่</label>
+              <label for="bill-end" data-i18n="bill.label.end_date">ถึงวันที่</label>
               <input type="date" id="bill-end">
             </div>
           </div>
           <div class="field grid-2">
             <div>
-              <label for="bill-rate">อัตรา (฿/kWh)</label>
+              <label for="bill-rate" data-i18n="bill.label.rate">อัตรา (฿/kWh)</label>
               <input type="number" id="bill-rate" step="0.001">
             </div>
             <div>
-              <label for="bill-type">ประเภทอัตรา</label>
+              <label for="bill-type" data-i18n="bill.label.rate_type">ประเภทอัตรา</label>
               <select id="bill-type">
                 <option value="flat">Flat rate</option>
                 <option value="tou">TOU</option>
@@ -191,16 +260,18 @@
             </div>
           </div>
           <div class="field">
-            <label>รูปแบบคำนวณหน่วย</label>
+            <label data-i18n="bill.label.calc_mode">รูปแบบคำนวณหน่วย</label>
             <div class="calc-mode-actions">
-              <div class="calc-mode-switch" id="calc-mode-switch" role="tablist" aria-label="รูปแบบคำนวณหน่วย">
-                <button class="calc-mode-btn active" id="calc-mode-single" type="button">ออกบิลค่าเดี่ยว</button>
-                <button class="calc-mode-btn" id="calc-mode-formula" type="button">ออกบิลแบบคำนวณ</button>
+              <div class="calc-mode-switch" id="calc-mode-switch" role="tablist" data-i18n-aria-label="bill.label.calc_mode" aria-label="รูปแบบคำนวณหน่วย">
+                <button class="calc-mode-btn active" id="calc-mode-single" type="button" data-i18n="bill.calc.single">ออกบิลค่าเดี่ยว</button>
+                <button class="calc-mode-btn" id="calc-mode-formula" type="button" data-i18n="bill.calc.formula">ออกบิลแบบคำนวณ</button>
               </div>
               <button
                 class="ghost icon-btn calc-reset-btn"
                 id="calc-mode-reset"
                 type="button"
+                data-i18n-aria-label="bill.calc.reset_aria"
+                data-i18n-title="bill.calc.reset_title"
                 aria-label="รีเซ็ตรูปแบบคำนวณหน่วย"
                 title="รีเซ็ตค่ารูปแบบคำนวณหน่วย"
               >
@@ -214,15 +285,15 @@
           <div class="field">
             <div class="formula-inline-grid" id="formula-inline-grid">
               <div class="formula-inline-cell" id="formula-meter-left-cell">
-                <label for="formula-meter-left" id="formula-meter-left-label">ชื่อมิเตอร์</label>
+                <label for="formula-meter-left" id="formula-meter-left-label" data-i18n="bill.formula.meter_name">ชื่อมิเตอร์</label>
                 <select id="formula-meter-left"></select>
               </div>
               <div class="formula-inline-cell" id="formula-value-left-cell">
-                <label for="formula-value-left" id="formula-value-left-label">ค่าที่ใช้คำนวณ</label>
+                <label for="formula-value-left" id="formula-value-left-label" data-i18n="bill.formula.value">ค่าที่ใช้คำนวณ</label>
                 <select id="formula-value-left"></select>
               </div>
               <div class="formula-inline-cell formula-op-cell" id="formula-op-cell">
-                <label for="formula-operator">เครื่องหมาย</label>
+                <label for="formula-operator" data-i18n="bill.formula.operator">เครื่องหมาย</label>
                 <select id="formula-operator">
                   <option value="+">+</option>
                   <option value="-">-</option>
@@ -231,31 +302,31 @@
                 </select>
               </div>
               <div class="formula-inline-cell" id="formula-meter-right-cell">
-                <label for="formula-meter-right">ชื่อมิเตอร์</label>
+                <label for="formula-meter-right" data-i18n="bill.formula.meter_name">ชื่อมิเตอร์</label>
                 <select id="formula-meter-right"></select>
               </div>
               <div class="formula-inline-cell" id="formula-value-right-cell">
-                <label for="formula-value-right">ค่าที่ใช้คำนวณ</label>
+                <label for="formula-value-right" data-i18n="bill.formula.value">ค่าที่ใช้คำนวณ</label>
                 <select id="formula-value-right"></select>
               </div>
               <div class="formula-inline-cell" id="formula-result-name-cell">
-                <label for="formula-result-name">ชื่อผลคำนวณ</label>
+                <label for="formula-result-name" data-i18n="bill.formula.result_name">ชื่อผลคำนวณ</label>
                 <input type="text" id="formula-result-name">
               </div>
               <div class="formula-inline-cell" id="formula-result-value-cell">
-                <label for="formula-result-value">ผลคำนวน</label>
+                <label for="formula-result-value" data-i18n="bill.formula.result_value">ผลคำนวน</label>
                 <input type="text" id="formula-result-value" readonly value="-">
               </div>
             </div>
             <div class="formula-column-builder hidden" id="formula-column-builder">
               <div class="formula-column-builder-head">
-                <button class="chip-btn" id="formula-add-column-btn" type="button">
+                <button class="chip-btn" id="formula-add-column-btn" type="button" data-i18n="bill.column.add_basic">
                   เพิ่มคอลัมน์
                 </button>
-                <button class="chip-btn" id="formula-add-calc-column-btn" type="button">
+                <button class="chip-btn" id="formula-add-calc-column-btn" type="button" data-i18n="bill.column.add_calc">
                   เพิ่มคอลัมคำนวณ
                 </button>
-                <button class="chip-btn ghost" id="formula-remove-column-btn" type="button">
+                <button class="chip-btn ghost" id="formula-remove-column-btn" type="button" data-i18n="bill.column.remove">
                   ลบคอลัมน์
                 </button>
               </div>
@@ -266,22 +337,22 @@
                     <path d="M4 8.2l2.1 2.2L12 4.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
                   </svg>
                 </span>
-                <span>เลือกช่องเพื่อแสดงยอดรวมในการชำระเงิน</span>
+                <span data-i18n="bill.column.helper">เลือกช่องเพื่อแสดงยอดรวมในการชำระเงิน</span>
               </p>
               <div class="formula-columns-boxes" id="formula-columns-boxes"></div>
             </div>
           </div>
           <div class="field" id="bill-cutoff-field">
-            <label for="bill-cutoff">ตัดรอบวันที่</label>
+            <label for="bill-cutoff" data-i18n="bill.cutoff_label">ตัดรอบวันที่</label>
             <select id="bill-cutoff"></select>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="small-btn btn-danger hidden" id="bill-delete-cutoff" type="button">
+          <button class="small-btn btn-danger hidden" id="bill-delete-cutoff" type="button" data-i18n="bill.delete_cutoff">
             ลบรอบวันที่
           </button>
-          <button class="ghost small-btn" id="bill-cancel" type="button">ยกเลิก</button>
-          <button class="primary" id="bill-confirm" type="button">สร้างบิล</button>
+          <button class="ghost small-btn" id="bill-cancel" type="button" data-i18n="bill.action.cancel">ยกเลิก</button>
+          <button class="primary" id="bill-confirm" type="button" data-i18n="bill.action.confirm">สร้างบิล</button>
         </div>
       </div>
     </div>
@@ -289,8 +360,8 @@
     <div class="modal hidden" id="meter-create-modal" role="dialog" aria-modal="true">
       <div class="modal-content small">
         <div class="modal-header">
-          <h3>เพิ่มมิเตอร์</h3>
-          <button class="ghost icon-btn" id="meter-create-modal-close" aria-label="ปิด">
+          <h3 data-i18n="meter.create.title">เพิ่มมิเตอร์</h3>
+          <button class="ghost icon-btn" id="meter-create-modal-close" data-i18n-aria-label="common.close" aria-label="ปิด">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>
@@ -298,59 +369,62 @@
         </div>
         <div class="modal-body">
           <div class="field">
-            <label for="meter-create-type">ประเภทอุปกรณ์</label>
+            <label for="meter-create-type" data-i18n="meter.create.type_label">ประเภทอุปกรณ์</label>
             <select id="meter-create-type">
-              <option value="SOLAR_PANEL">โซล่าร์ (SOLAR_PANEL)</option>
-              <option value="METER">มิเตอร์ (METER)</option>
-              <option value="MDB_IN">มิเตอร์ขาเข้า (MDB_IN)</option>
-              <option value="MDB_OUT">มิเตอร์ขาออก (MDB_OUT)</option>
+              <option value="SOLAR_PANEL" data-i18n="meter.type.solar">โซล่าร์ (SOLAR_PANEL)</option>
+              <option value="METER" data-i18n="meter.type.meter">มิเตอร์ (METER)</option>
+              <option value="MDB_IN" data-i18n="meter.type.mdb_in">มิเตอร์ขาเข้า (MDB_IN)</option>
+              <option value="MDB_OUT" data-i18n="meter.type.mdb_out">มิเตอร์ขาออก (MDB_OUT)</option>
             </select>
           </div>
           <div class="field">
-            <label for="meter-create-name">ชื่ออุปกรณ์</label>
+            <label for="meter-create-name" data-i18n="meter.create.name_label">ชื่ออุปกรณ์</label>
             <input
               id="meter-create-name"
               type="text"
               autocomplete="off"
+              data-i18n-placeholder="meter.create.name_placeholder"
               placeholder="เช่น Main Solar Inverter"
             />
           </div>
           <div class="meter-create-section meter-create-section-import">
-            <p class="meter-create-section-title">Modbus Address ขาเข้า (Import)</p>
+            <p class="meter-create-section-title" data-i18n="meter.create.import_label">Modbus Address ขาเข้า (Import)</p>
             <div class="grid-2 meter-create-grid">
               <div class="field">
-                <label for="meter-create-in-1">Address IN 1 (High Word)</label>
+                <label for="meter-create-in-1" data-i18n="meter.create.address_in_1">Address IN 1 (High Word)</label>
                 <input id="meter-create-in-1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43205" />
               </div>
               <div class="field">
-                <label for="meter-create-in-2">Address IN 2 (Low Word)</label>
+                <label for="meter-create-in-2" data-i18n="meter.create.address_in_2">Address IN 2 (Low Word)</label>
                 <input id="meter-create-in-2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43206" />
               </div>
             </div>
           </div>
           <div class="meter-create-section meter-create-section-export">
-            <p class="meter-create-section-title">Modbus Address ขาออก (Export)</p>
+            <p class="meter-create-section-title" data-i18n="meter.create.export_label">Modbus Address ขาออก (Export)</p>
             <div class="grid-2 meter-create-grid">
               <div class="field">
-                <label for="meter-create-out-1">Address OUT 1 (High Word)</label>
+                <label for="meter-create-out-1" data-i18n="meter.create.address_out_1">Address OUT 1 (High Word)</label>
                 <input id="meter-create-out-1" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43209" />
               </div>
               <div class="field">
-                <label for="meter-create-out-2">Address OUT 2 (Low Word)</label>
+                <label for="meter-create-out-2" data-i18n="meter.create.address_out_2">Address OUT 2 (Low Word)</label>
                 <input id="meter-create-out-2" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="เช่น 43210" />
               </div>
             </div>
-            <p class="muted small meter-create-note">* ไม่บังคับ หากไม่มีขาออกสามารถเว้นว่างได้</p>
+            <p class="muted small meter-create-note" data-i18n="meter.create.note">* ไม่บังคับ หากไม่มีขาออกสามารถเว้นว่างได้</p>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="ghost small-btn" id="meter-create-cancel" type="button">ยกเลิก</button>
-          <button class="primary" id="meter-create-confirm" type="button">เพิ่มมิเตอร์</button>
+          <button class="ghost small-btn" id="meter-create-cancel" type="button" data-i18n="bill.action.cancel">ยกเลิก</button>
+          <button class="primary" id="meter-create-confirm" type="button" data-i18n="meter.create.confirm">เพิ่มมิเตอร์</button>
         </div>
       </div>
     </div>
 
+  <script src="../assets/i18n.js" defer></script>
   <script src="../assets/nav-auth.js" defer></script>
+  <script src="../assets/bill-guide.js" defer></script>
   <script src="./plant.js?v=20260401c" defer></script>
   <script src="../billing/billing.js?v=20260401c" defer></script>
   <script src="../meters/meters.js?v=20260401c" defer></script>

@@ -6,12 +6,24 @@ const passwordToggleText = document.querySelector(".password-toggle-text");
 const submitBtn = document.getElementById("login-submit");
 const messageEl = document.getElementById("login-message");
 
+function tLogin(key, fallback, params) {
+  if (typeof window.t === "function") {
+    const v = window.t(key, params);
+    if (v !== key) return v;
+  }
+  return params
+    ? String(fallback || "").replace(/\{(\w+)\}/g, (_m, k) => params[k] ?? "")
+    : fallback || "";
+}
+
 const setPasswordVisibility = (isVisible) => {
   if (!passwordInput || !passwordToggleBtn) return;
   passwordInput.type = isVisible ? "text" : "password";
   passwordToggleBtn.classList.toggle("is-visible", isVisible);
   passwordToggleBtn.setAttribute("aria-pressed", isVisible ? "true" : "false");
-  const buttonLabel = isVisible ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน";
+  const buttonLabel = isVisible
+    ? tLogin("login.action.hide_password", "ซ่อนรหัสผ่าน")
+    : tLogin("login.action.show_password", "แสดงรหัสผ่าน");
   passwordToggleBtn.setAttribute("aria-label", buttonLabel);
   passwordToggleBtn.setAttribute("title", buttonLabel);
   if (passwordToggleText) passwordToggleText.textContent = buttonLabel;
@@ -90,12 +102,12 @@ form?.addEventListener("submit", async (event) => {
   const email = emailInput?.value.trim();
   const password = passwordInput?.value || "";
   if (!email || !password) {
-    setMessage("กรุณากรอกอีเมลและรหัสผ่าน", "error");
+    setMessage(tLogin("login.message.fill_required", "กรุณากรอกอีเมลและรหัสผ่าน"), "error");
     return;
   }
 
   submitBtn.disabled = true;
-  setMessage("กำลังเข้าสู่ระบบ...");
+  setMessage(tLogin("login.message.signing_in", "กำลังเข้าสู่ระบบ..."));
 
   try {
     const response = await fetch("/api/auth/login", {
@@ -109,17 +121,21 @@ form?.addEventListener("submit", async (event) => {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setMessage(payload.message || "เข้าสู่ระบบไม่สำเร็จ", "error");
+      setMessage(payload.message || tLogin("login.message.failed", "เข้าสู่ระบบไม่สำเร็จ"), "error");
       return;
     }
 
-    setMessage("เข้าสู่ระบบสำเร็จ", "success");
+    setMessage(tLogin("login.message.success", "เข้าสู่ระบบสำเร็จ"), "success");
     redirectToApp();
   } catch {
-    setMessage("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", "error");
+    setMessage(tLogin("login.message.network_error", "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้"), "error");
   } finally {
     submitBtn.disabled = false;
   }
 });
 
 checkSession();
+
+document.addEventListener("i18n:changed", () => {
+  try { setPasswordVisibility(passwordInput?.type === "text"); } catch { /* ignore */ }
+});

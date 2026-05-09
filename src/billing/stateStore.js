@@ -130,6 +130,7 @@ const normalizeStoredEntry = (entry, identity = {}, resolvedKey = "") => {
   const sourceIdentity = readStoreSiteIdentity(source);
   const schedule = isRecord(source.schedule) ? safeJsonClone(source.schedule, {}) : {};
   const history = Array.isArray(source.history) ? safeJsonClone(source.history, []) : [];
+  const auditLog = Array.isArray(source.auditLog) ? safeJsonClone(source.auditLog, []) : [];
   const billSequence = toNonNegativeInt(source.billSequence ?? source.sequence, 0);
   const updatedAt = String(source.updatedAt || "");
   return {
@@ -139,6 +140,7 @@ const normalizeStoredEntry = (entry, identity = {}, resolvedKey = "") => {
     siteName: normalizedIdentity.siteName || sourceIdentity.siteName || "",
     schedule,
     history,
+    auditLog,
     billSequence,
     updatedAt
   };
@@ -299,6 +301,7 @@ export const writeBillingState = async (siteIdentity = {}, nextState = {}) => {
   const current = normalizeStoredEntry(stateCache.plants[resolvedKey], identity, resolvedKey);
   const hasScheduleField = Object.prototype.hasOwnProperty.call(nextState || {}, "schedule");
   const hasHistoryField = Object.prototype.hasOwnProperty.call(nextState || {}, "history");
+  const hasAuditField = Object.prototype.hasOwnProperty.call(nextState || {}, "auditLog");
   const hasSequenceField =
     Object.prototype.hasOwnProperty.call(nextState || {}, "billSequence") ||
     Object.prototype.hasOwnProperty.call(nextState || {}, "sequence");
@@ -313,6 +316,11 @@ export const writeBillingState = async (siteIdentity = {}, nextState = {}) => {
       ? safeJsonClone(nextState.history, [])
       : []
     : current.history;
+  const auditLog = hasAuditField
+    ? Array.isArray(nextState?.auditLog)
+      ? safeJsonClone(nextState.auditLog.slice(0, 500), [])
+      : []
+    : current.auditLog;
   const billSequence = hasSequenceField
     ? toNonNegativeInt(nextState?.billSequence ?? nextState?.sequence, current.billSequence)
     : current.billSequence;
@@ -323,6 +331,7 @@ export const writeBillingState = async (siteIdentity = {}, nextState = {}) => {
     siteName: identity.siteName || current.siteName || "",
     schedule,
     history,
+    auditLog,
     billSequence,
     updatedAt: new Date().toISOString()
   };
