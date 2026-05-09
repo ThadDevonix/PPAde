@@ -242,7 +242,7 @@ const proxyRequest = async (req, res, upstreamUrl, extraHeaders = {}, options = 
   });
 
   const rawBody = await upstreamRes.text();
-  const body = applyJsonBodyTransform(
+  const body = await applyJsonBodyTransform(
     rawBody,
     upstreamRes.headers.get("content-type"),
     transformResponseBody
@@ -310,7 +310,7 @@ const proxySitesGetWithCache = async (
   const rawBody = await upstreamRes.text();
   const contentType =
     upstreamRes.headers.get("content-type") || "application/json; charset=utf-8";
-  const body = applyJsonBodyTransform(rawBody, contentType, transformResponseBody);
+  const body = await applyJsonBodyTransform(rawBody, contentType, transformResponseBody);
   if (upstreamRes.ok) {
     sitesResponseCache.set(cacheKey, {
       body,
@@ -813,7 +813,7 @@ const filterPayloadListByAllowedSites = (payload, allowedSiteIdSet, siteIdReader
   return payload;
 };
 
-const applyJsonBodyTransform = (rawBody, contentType, transformFn) => {
+const applyJsonBodyTransform = async (rawBody, contentType, transformFn) => {
   if (typeof transformFn !== "function") return rawBody;
   const type = String(contentType || "").toLowerCase();
   if (!type.includes("json")) return rawBody;
@@ -823,7 +823,7 @@ const applyJsonBodyTransform = (rawBody, contentType, transformFn) => {
 
   try {
     const parsed = JSON.parse(bodyText);
-    const transformed = transformFn(parsed);
+    const transformed = await transformFn(parsed);
     if (transformed === undefined) return bodyText;
     return JSON.stringify(transformed);
   } catch {
@@ -1040,7 +1040,7 @@ const normalizeCreateUserPayload = (payload, context = {}) => {
   };
 };
 
-const normalizeUserFromApi = (user, fallbackEmail = "") => {
+const normalizeUserFromApi = async (user, fallbackEmail = "") => {
   if (!user || typeof user !== "object") return null;
   const email = normalizeEmail(
     readUserField(
@@ -1074,7 +1074,7 @@ const normalizeUserFromApi = (user, fallbackEmail = "") => {
     canViewAllSites: role === "superadmin",
     isActive: Number(user.is_active ?? user.isActive ?? user.active ?? 1) !== 0
   };
-  return applyUserAccessOverride(normalized);
+  return await applyUserAccessOverride(normalized);
 };
 
 const arraysEqual = (left, right) => {
@@ -1085,9 +1085,9 @@ const arraysEqual = (left, right) => {
   }
   return true;
 };
-const mergeUserOverrideToRow = (row) => {
+const mergeUserOverrideToRow = async (row) => {
   if (!row || typeof row !== "object" || Array.isArray(row)) return row;
-  const normalized = normalizeUserFromApi(row);
+  const normalized = await normalizeUserFromApi(row);
   if (!normalized) return row;
 
   const role = normalizeRole(normalized.role);
@@ -1119,37 +1119,39 @@ const mergeUserOverrideToRow = (row) => {
     }
   };
 };
-const applyUserOverridesToPayload = (payload) => {
+const applyUserOverridesToPayload = async (payload) => {
   const listKeys = ["data", "items", "rows", "list", "users", "result"];
   if (Array.isArray(payload)) {
-    return payload.map((row) => mergeUserOverrideToRow(row));
+    return Promise.all(payload.map((row) => mergeUserOverrideToRow(row)));
   }
   if (!payload || typeof payload !== "object") return payload;
 
   const nextPayload = { ...payload };
   let changed = false;
-  listKeys.forEach((key) => {
+  for (const key of listKeys) {
     if (Array.isArray(payload[key])) {
-      nextPayload[key] = payload[key].map((row) => mergeUserOverrideToRow(row));
+      nextPayload[key] = await Promise.all(payload[key].map((row) => mergeUserOverrideToRow(row)));
       changed = true;
-      return;
+      continue;
     }
     const nested = payload[key];
-    if (!nested || typeof nested !== "object" || Array.isArray(nested)) return;
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
     const nextNested = { ...nested };
     let nestedChanged = false;
-    listKeys.forEach((nestedKey) => {
-      if (!Array.isArray(nested[nestedKey])) return;
-      nextNested[nestedKey] = nested[nestedKey].map((row) => mergeUserOverrideToRow(row));
+    for (const nestedKey of listKeys) {
+      if (!Array.isArray(nested[nestedKey])) continue;
+      nextNested[nestedKey] = await Promise.all(
+        nested[nestedKey].map((row) => mergeUserOverrideToRow(row))
+      );
       nestedChanged = true;
-    });
+    }
     if (nestedChanged) {
       nextPayload[key] = nextNested;
       changed = true;
     }
-  });
+  }
   if (changed) return nextPayload;
-  return mergeUserOverrideToRow(payload);
+  return await mergeUserOverrideToRow(payload);
 };
 
 const mergeNormalizedUsers = (...users) => {
@@ -1281,7 +1283,7 @@ const fetchCurrentUserFromUpstream = async (token, cookieHeader = "") => {
     });
     if (!response.ok) return null;
     const payload = await parseJsonResponse(response);
-    const normalized = normalizeUserFromApi(extractAuthUser(payload) || payload);
+    const normalized = await normalizeUserFromApi(extractAuthUser(payload) || payload);
     return normalized;
   } catch {
     return null;
@@ -1318,7 +1320,7 @@ const fetchUserFromUsersApi = async (email, token, cookieHeader = "") => {
       });
       if (!response.ok) continue;
       const payload = await parseJsonResponse(response);
-      const users = extractList(payload).map((item) => normalizeUserFromApi(item)).filter(Boolean);
+      const users = (await Promise.all(extractList(payload).map((item) => normalizeUserFromApi(item)))).filter(Boolean);
       const matched = users.find((user) => normalizeEmail(user.email) === targetEmail) || null;
       if (!matched) continue;
 
@@ -1363,11 +1365,11 @@ const tryUpstreamLogin = async (email, password) => {
   }
 
   const token = extractAuthToken(payload);
-  const payloadUser = normalizeUserFromApi(extractAuthUser(payload), email);
-  const payloadRootUser = normalizeUserFromApi(payload, email);
+  const payloadUser = await normalizeUserFromApi(extractAuthUser(payload), email);
+  const payloadRootUser = await normalizeUserFromApi(payload, email);
   const meUser = await fetchCurrentUserFromUpstream(token, upstreamCookie);
   const usersApiUser = await fetchUserFromUsersApi(email, token, upstreamCookie);
-  const normalizedUser = applyUserAccessOverride(
+  const normalizedUser = await applyUserAccessOverride(
     mergeNormalizedUsers(
       usersApiUser,
       meUser,
@@ -1975,7 +1977,7 @@ export const handleRequest = async (req, res) => {
             body: Buffer.from(JSON.stringify(normalizedUserWrite.payload))
           });
           const rawBody = await upstreamRes.text();
-          const body = applyJsonBodyTransform(
+          const body = await applyJsonBodyTransform(
             rawBody,
             upstreamRes.headers.get("content-type"),
             applyUserOverridesToPayload
@@ -1984,7 +1986,7 @@ export const handleRequest = async (req, res) => {
           if (upstreamRes.ok) {
             const overrideUserId =
               readEntityIdFromPayload(normalizedUserWrite.payload) || targetUserId || "";
-            upsertUserAccessOverride({
+            await upsertUserAccessOverride({
               id: overrideUserId,
               email: normalizedUserWrite.email,
               role: normalizedUserWrite.role,

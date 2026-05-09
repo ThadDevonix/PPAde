@@ -2822,20 +2822,26 @@ const hydrateBillingStateFromApi = async () => {
   if (Array.isArray(data?.auditLog)) {
     auditLog = data.auditLog;
   }
+  // Server is the source of truth — always sync local cache from server,
+  // even if the server returns empty state. This ensures that when admin A
+  // creates an auto schedule, user B sees it after the next page load
+  // (and that bills deleted on the server are also removed locally).
   try {
-    if (!hasScheduleState && hasStateSchedule) {
-      localStorage.setItem(scheduleKey, JSON.stringify(scheduleFromState));
-      hasAnyState = true;
-      hasScheduleState = true;
-    }
-    if (hasStateHistory) {
-      localStorage.setItem(historyKey, JSON.stringify(historyFromState));
-      hasAnyState = true;
-    }
+    localStorage.setItem(
+      scheduleKey,
+      JSON.stringify(hasStateSchedule ? scheduleFromState : {})
+    );
+    localStorage.setItem(
+      historyKey,
+      JSON.stringify(Array.isArray(historyFromState) ? historyFromState : [])
+    );
     if (hasStateSequence) {
       localStorage.setItem(sequenceKey, String(Math.trunc(sequenceValue)));
-      hasAnyState = true;
+    } else {
+      localStorage.removeItem(sequenceKey);
     }
+    hasAnyState = true;
+    hasScheduleState = hasStateSchedule;
   } catch {
     // ignore storage access errors
   }
@@ -4012,6 +4018,54 @@ const closeAutoQueueActionMenus = () => {
     menu.classList.add("hidden");
   });
 };
+const autoRunInProgress = new Set();
+const triggerPendingAutoBill = async (cutoff, startStr, endStr) => {
+  const key = `${cutoff}:${startStr}:${endStr}`;
+  if (autoRunInProgress.has(key)) return;
+  autoRunInProgress.add(key);
+  try {
+    const autoConfig = getAutoScheduleByCutoff(cutoff);
+    if (!autoConfig) return;
+    // Re-check that no bill exists yet (state may have changed)
+    const alreadyExists = history.some(
+      (b) => Boolean(b?.auto) && Number(b?.cutoffDay) === Number(cutoff) &&
+        b.periodStart === startStr && b.periodEnd === endStr
+    );
+    if (alreadyExists) return;
+    const { rows, source } = await getDailyEnergyForRange(startStr, endStr).catch(() => ({ rows: [], source: "api" }));
+    if (!rows || !rows.length) return;
+    const calcFormula = getFormulaForContext(autoConfig.calcFormula, autoConfig.calcMethod, meterProfiles);
+    const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
+    const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
+    const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
+    const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr).catch(() => ({}));
+    createBill({
+      periodStart: startStr,
+      periodEnd: endStr,
+      meters: selectedMeters,
+      rate: autoConfig.defaultRate,
+      rateType: autoConfig.rateType,
+      calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
+      calcFormula,
+      calcLabel: autoConfig.calcLabel || defaultCalcLabel,
+      formulaColumns: autoConfig.formulaColumns || [],
+      cutoffDay: Number(cutoff),
+      detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+      auto: true,
+      source,
+      dailyRows: rows,
+      meterReadings: capturedReadings
+    });
+    renderAutoQueue();
+    renderHistory();
+    updateSummary();
+  } catch (err) {
+    console.error("[auto-bill] auto-trigger failed:", err);
+  } finally {
+    autoRunInProgress.delete(key);
+  }
+};
+
 const getScheduleRoundInfo = (cutoffDay) => {
   const today = new Date();
   const todayStr = formatDate(today);
@@ -4077,13 +4131,20 @@ const renderAutoQueue = () => {
       let statusHtml = "";
       let actionBtns = "";
       if (pendingBill) {
-        statusHtml = `<span class="badge ready">พร้อมออกบิล</span><div class="muted" style="font-size:11px;margin-top:3px;">${pendingBill.startStr} - ${pendingBill.endStr}</div>`;
-        actionBtns = `<button class="small-btn" data-action="upcoming-generate" data-start="${pendingBill.startStr}" data-end="${pendingBill.endStr}" data-cutoff="${cutoffDay}" type="button">สร้างบิล</button>`;
+        const runKey = `${cutoffDay}:${pendingBill.startStr}:${pendingBill.endStr}`;
+        const isRunning = autoRunInProgress.has(runKey);
+        statusHtml = `<span class="badge ${isRunning ? "ready" : "auto"}">${
+          isRunning ? "กำลังสร้างอัตโนมัติ…" : "ออกบิลอัตโนมัติแล้ว"
+        }</span><div class="muted" style="font-size:11px;margin-top:3px;">${pendingBill.startStr} - ${pendingBill.endStr}</div>`;
+        // Trigger creation in the background — no manual button needed
+        Promise.resolve().then(() =>
+          triggerPendingAutoBill(cutoffDay, pendingBill.startStr, pendingBill.endStr)
+        );
       } else {
         statusHtml = `<span class="badge pending">รอบถัดไป</span><div class="muted" style="font-size:11px;margin-top:3px;">${currentPeriod.startStr} - ${currentPeriod.endStr}</div>`;
       }
       if (currentStarted) {
-        actionBtns += `<button class="ghost small-btn" data-action="upcoming-partial-preview" data-start="${currentPeriod.startStr}" data-end="${currentPeriod.endStr}" data-cutoff="${cutoffDay}" type="button">ดูตัวอย่างปัจจุบัน</button>`;
+        actionBtns = `<button class="ghost small-btn" data-action="upcoming-partial-preview" data-start="${currentPeriod.startStr}" data-end="${currentPeriod.endStr}" data-cutoff="${cutoffDay}" type="button">ดูตัวอย่างปัจจุบัน</button>`;
       }
       const menuItems = [];
       if (canManageAutoBilling()) {
