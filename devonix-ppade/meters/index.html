@@ -10,6 +10,22 @@
   <link rel="stylesheet" href="../style.css">
 </head>
 <body class="meter-page">
+  <nav class="nav">
+    <div class="nav-links">
+      <a class="nav-link active" href="../index.html">
+        <span class="home-icon" aria-hidden="true"></span>
+        Home
+      </a>
+      <a class="nav-link" href="../users/index.html">
+        Users
+      </a>
+    </div>
+    <div class="nav-auth">
+      <span id="auth-user" class="pill auth-user"></span>
+      <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+    </div>
+  </nav>
+
   <div class="shell">
     <button class="ghost back-btn icon-btn" id="back-meter" type="button" aria-label="กลับหน้า plant" title="กลับหน้า plant">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -62,6 +78,7 @@
     </section>
   </div>
 
+  <script src="../assets/nav-auth.js" defer></script>
   <script src="./meter.js" defer></script>
 </body>
 </html>

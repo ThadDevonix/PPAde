@@ -10,6 +10,22 @@
   <link rel="stylesheet" href="../style.css?v=20260401c">
 </head>
 <body class="plant-page">
+  <nav class="nav">
+    <div class="nav-links">
+      <a class="nav-link active" href="../index.html">
+        <span class="home-icon" aria-hidden="true"></span>
+        Home
+      </a>
+      <a class="nav-link" href="../users/index.html">
+        Users
+      </a>
+    </div>
+    <div class="nav-auth">
+      <span id="auth-user" class="pill auth-user"></span>
+      <button id="logout-btn" class="small-btn nav-logout" type="button">ออกจากระบบ</button>
+    </div>
+  </nav>
+
   <div class="shell">
     <div class="top-controls">
       <div class="left-group">
@@ -334,6 +350,7 @@
       </div>
     </div>
 
+  <script src="../assets/nav-auth.js" defer></script>
   <script src="./plant.js?v=20260401c" defer></script>
   <script src="../billing/billing.js?v=20260401c" defer></script>
   <script src="../meters/meters.js?v=20260401c" defer></script>

@@ -3634,3 +3634,1008 @@ body.meter-page .meter-chart-summary {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   CLEAN POLISH (light touch — no restructure)
+   - tone down shadows
+   - calm decorative blobs/gradients
+   - tighten spacing slightly
+   ============================================================ */
+
+/* Softer global rendering */
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+/* Calm body decoration on per-page themes — pure white, no gradient */
+body.home-page,
+body.users-page,
+body.meter-page,
+body.plant-page {
+  background: #fafbfc !important;
+}
+body.users-page::before,
+body.users-page::after,
+body.meter-page::before,
+body.meter-page::after,
+body.plant-page::before,
+body.plant-page::after { display: none !important; }
+
+/* Soften card/panel shadows everywhere */
+.filters,
+.table-wrap,
+.users-table-wrap,
+.plant-hero,
+.card,
+.panel,
+.bill-meta-note,
+.panel-sub,
+.users-toolbar,
+.actions-center,
+.history-wrap,
+.device-table-wrap,
+body.users-page .users-toolbar,
+body.users-page .table-wrap,
+body.meter-page .panel {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Modal: subtle, focused depth */
+.modal-content {
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+}
+
+/* Calm meter-page hero (was a loud blue gradient) */
+body.meter-page .plant-hero {
+  background: #ffffff !important;
+  border: 1px solid #e3e8f0 !important;
+  color: #1f2937 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  animation: none !important;
+}
+body.meter-page .plant-hero::before,
+body.meter-page .plant-hero::after { display: none !important; }
+body.meter-page .plant-hero h1 {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+body.meter-page .eyebrow { color: #697386 !important; }
+body.meter-page .meter-kicker { color: #0f63d4 !important; }
+
+/* Meter hero KPI cards — flatten */
+body.meter-page .meter-total-box,
+body.meter-page .meter-live-box {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  animation: none !important;
+}
+
+/* Period switch (meter page) — flatten gradient track */
+body.meter-page .period-switch {
+  background: #f5f7fb !important;
+  border: 1px solid #e3e8f0 !important;
+  box-shadow: none !important;
+}
+body.meter-page .period-btn {
+  color: #4b5563 !important;
+  background: transparent !important;
+}
+body.meter-page .period-btn.active {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+  transform: none !important;
+}
+
+/* Subtle gradient cards inside actions-center */
+.actions-center {
+  background: #f7faff !important;
+  border: 1px solid #e6ebf3 !important;
+  box-shadow: none !important;
+}
+
+/* Filters card — flatter */
+.filters {
+  background: #ffffff !important;
+  border: 1px solid #e6ebf3 !important;
+}
+
+/* Pill chips: calmer baseline */
+#plant-count { box-shadow: none !important; }
+
+/* Buttons: gentler primary shadow */
+button.primary {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 10px rgba(22, 119, 255, 0.14) !important;
+}
+
+/* Table rows: subtler hover/zebra */
+tbody tr:hover { background: #f5f7fb !important; }
+tbody tr:nth-child(even) { background: #fafbfc !important; }
+
+/* Modal stepper — calmer track */
+.modal-step-track { background: #eef0f5 !important; }
+.modal-step-fill { background: linear-gradient(90deg, #1677ff, #0fa37f) !important; }
+
+/* Slimmer scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #d3d8e2 transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d3d8e2; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #b9c0cd; }
+
+/* ============================================================
+   PALETTE — unified blue (one hue, harmonized)
+   Tames the original mishmash of blue shades into a single
+   blue-600 system. No teal/green; cohesive with existing style.
+   ============================================================ */
+:root {
+  --accent:        #2563eb;   /* blue-600 — primary CTAs */
+  --accent-hover:  #1d4ed8;   /* blue-700 */
+  --accent-strong: #1e40af;   /* blue-800 — text on light tint */
+  --accent-soft:   #eff6ff;   /* blue-50 — soft bg */
+  --accent-tint:   #dbeafe;   /* blue-100 */
+  --accent-border: #bfdbfe;   /* blue-200 */
+  --accent-line:   #93c5fd;   /* blue-300 — emphasis lines */
+}
+
+::selection { background: rgba(37, 99, 235, 0.18); color: #0f172a; }
+
+/* Primary buttons & calls-to-action */
+button.primary,
+.bill-flow-btn.active,
+.calc-mode-btn.active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 10px rgba(37, 99, 235, 0.18) !important;
+}
+button.primary:hover,
+.bill-flow-btn.active:hover,
+.calc-mode-btn.active:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+}
+
+/* Focus rings — single blue */
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+}
+button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22) !important;
+}
+
+/* Selected row indicator */
+tbody tr.selected {
+  background: var(--accent-soft) !important;
+  box-shadow: inset 3px 0 0 var(--accent) !important;
+}
+
+/* Pills & badges — unified blue tints */
+.pill,
+.pill.count,
+#plant-count,
+.pill.schedule {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+.pill.schedule.alt { background: #f1f5f9 !important; color: #475569 !important; border-color: #e3e8f0 !important; }
+
+.cache-status.cache-miss {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+
+.meter-count-badge {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+  box-shadow: none !important;
+}
+
+.badge.manual {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+
+/* Chips / formula order */
+.chip {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border: 1px solid var(--accent-border) !important;
+}
+.formula-column-order {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+.formula-inline-grid.single-mode::before {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+
+/* Mode toggle / period switch active state */
+.toggle-btn.active { background: var(--accent-soft) !important; color: var(--accent-strong) !important; }
+
+/* Pager active */
+.pager-btn.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+
+/* Stepper */
+.modal-step-fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover)) !important;
+}
+.modal-step-item.done .step-dot {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+.modal-step-item.active { background: var(--accent-soft) !important; color: var(--accent-strong) !important; }
+.modal-step-item.active .step-dot {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+}
+.modal-step {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+
+/* Meter page — single blue accent */
+body.meter-page .meter-kicker { color: var(--accent-strong) !important; }
+body.meter-page .meter-total-box strong,
+body.meter-page .meter-total-card .v,
+body.meter-page .meter-live-box strong { color: var(--accent-strong) !important; }
+body.meter-page .meter-total-box .label,
+body.meter-page .meter-live-box .k { color: #4b5563 !important; }
+body.meter-page .meter-crosshair-line { stroke: rgba(37, 99, 235, 0.7) !important; }
+
+/* Tame remaining ad-hoc blue tints to the unified palette */
+.name { color: var(--accent-strong) !important; }
+.toggle-btn.active,
+.modal-step-item.active,
+.bill-flow-btn.active,
+.calc-mode-btn.active { letter-spacing: 0.005em; }
+
+/* Cards / boxes that used legacy gradients of mismatched blues */
+body.meter-page .meter-total-box,
+body.meter-page .meter-live-box {
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+}
+body.meter-page .meter-total-card.in,
+body.meter-page .meter-total-card.out {
+  background: #ffffff !important;
+  border-color: var(--accent-border) !important;
+}
+body.meter-page .meter-chart-controls {
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+}
+body.meter-page .meter-chart-controls .field.compact {
+  background: #ffffff !important;
+  border: 1px solid var(--accent-border) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+body.meter-page .meter-chart-controls .field.compact select {
+  background: #ffffff !important;
+  border: 1px solid #e3e8f0 !important;
+  color: #1f2937 !important;
+}
+body.meter-page .meter-chart-svg {
+  background: #ffffff !important;
+  border: 1px solid var(--accent-border) !important;
+}
+body.meter-page .meter-chart-legend span {
+  background: #ffffff !important;
+  border: 1px solid var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+body.meter-page .meter-chart-summary {
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+
+/* Meter card checked state */
+.meter-card.checked {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent-border) !important;
+}
+.meter-card input { accent-color: var(--accent) !important; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent) !important; }
+
+/* Filters input focus */
+.filters input:focus, .filters select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+}
+
+/* Calc reset hover */
+.calc-reset-btn:hover {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+
+/* Tame the receipt-meta tint badges (preview cards) — keep within palette */
+.receipt-meta .box:last-child strong {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+.receipt-meta .box::after { background: var(--accent) !important; }
+
+/* nav-link hover/active — unified */
+.nav-link:hover { color: #93c5fd; }
+.nav-link.active { color: #ffffff; }
+
+/* ============================================================
+   DEVONIX BRAND — navy nav + D-mark, light body kept
+   Echoes the brand identity (deep navy header, electric blue
+   accent, clean tech feel) without darkening the workspace.
+   ============================================================ */
+:root {
+  --brand-navy-950: #0a1530;
+  --brand-navy-900: #0e1a3a;
+  --brand-navy-800: #102447;
+  --brand-blue:     #2563eb;
+  --brand-blue-200: #93c5fd;
+  --brand-blue-100: #bfdbfe;
+}
+
+/* Nav: deep navy gradient with subtle dot constellation */
+.nav {
+  background:
+    radial-gradient(circle at 22% 38%, rgba(147, 197, 253, 0.10) 0 1px, transparent 2px),
+    radial-gradient(circle at 56% 70%, rgba(147, 197, 253, 0.08) 0 1px, transparent 2px),
+    radial-gradient(circle at 84% 32%, rgba(147, 197, 253, 0.10) 0 1px, transparent 2px),
+    radial-gradient(circle at 38% 14%, rgba(147, 197, 253, 0.06) 0 1px, transparent 2px),
+    linear-gradient(135deg, var(--brand-navy-950) 0%, var(--brand-navy-900) 52%, var(--brand-navy-800) 100%) !important;
+  border: 1px solid rgba(147, 197, 253, 0.14) !important;
+  box-shadow: 0 6px 16px rgba(10, 21, 48, 0.18) !important;
+  color: rgba(220, 232, 255, 0.78) !important;
+  position: relative;
+}
+
+/* Brand mark + DEVONIX wordmark injected before nav links */
+.nav::before {
+  content: "DEVONIX";
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  margin-right: 10px;
+  padding: 0 12px 0 38px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #ffffff;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%2360a5fa'/><stop offset='100%25' stop-color='%232563eb'/></linearGradient></defs><path fill='url(%23g)' fill-rule='evenodd' d='M6 4h8.5a12 12 0 0 1 0 24H6V4zm5.5 6v12l8-6-8-6z'/></svg>") no-repeat 6px center / 26px 26px;
+  border-right: 1px solid rgba(147, 197, 253, 0.18);
+  flex-shrink: 0;
+}
+
+.nav-links { color: rgba(220, 232, 255, 0.78); }
+.nav-link {
+  color: rgba(220, 232, 255, 0.74) !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  transition: background 140ms ease, color 140ms ease !important;
+}
+.nav-link:hover {
+  background: rgba(147, 197, 253, 0.10) !important;
+  color: #ffffff !important;
+}
+.nav-link.active {
+  background: rgba(147, 197, 253, 0.16) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.22) !important;
+}
+.home-icon { display: none !important; }
+
+/* Auth pill / logout — match navy */
+.auth-user,
+.nav .auth-user {
+  background: rgba(147, 197, 253, 0.12) !important;
+  color: #e7eefe !important;
+  border: 1px solid rgba(147, 197, 253, 0.22) !important;
+  box-shadow: none !important;
+}
+.nav-logout {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(147, 197, 253, 0.22) !important;
+  color: #e7eefe !important;
+  box-shadow: none !important;
+}
+.nav-logout:hover {
+  background: rgba(147, 197, 253, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.36) !important;
+  color: #ffffff !important;
+}
+
+/* Headings: shift slightly toward brand navy */
+h1, h2, h3, h4, h5, h6 { color: var(--brand-navy-950) !important; }
+.plant-hero h1, .panel-head h3, .summary-card h4 { color: var(--brand-navy-950) !important; }
+body.users-page .users-toolbar h1 { color: var(--brand-navy-950) !important; }
+
+/* Page-level background stays white */
+body.home-page,
+body.users-page,
+body.meter-page,
+body.plant-page { background: #fafbfc !important; }
+
+/* On narrow nav, hide DEVONIX wordmark text but keep the D mark */
+@media (max-width: 640px) {
+  .nav::before {
+    content: "";
+    width: 32px;
+    padding: 0;
+    margin-right: 6px;
+    background-position: center;
+    border-right: 0;
+  }
+}
+
+/* ============================================================
+   SIDEBAR LAYOUT — desktop (≥980px)
+   Converts the top nav to a fixed left sidebar.
+   Applies to all pages that contain a <nav class="nav">.
+   Mobile keeps the horizontal nav (no HTML changes needed).
+   ============================================================ */
+@media (min-width: 980px) {
+  body.home-page,
+  body.users-page,
+  body.plant-page,
+  body.meter-page {
+    padding-left: 256px !important;
+  }
+
+  body.home-page .nav,
+  body.users-page .nav,
+  body.plant-page .nav,
+  body.meter-page .nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 240px;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0 !important;
+    padding: 20px 14px !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    border-right: 1px solid rgba(147, 197, 253, 0.14) !important;
+    z-index: 50;
+    background:
+      radial-gradient(circle at 28% 18%, rgba(147, 197, 253, 0.10) 0 1px, transparent 2px),
+      radial-gradient(circle at 70% 38%, rgba(147, 197, 253, 0.08) 0 1px, transparent 2px),
+      radial-gradient(circle at 22% 64%, rgba(147, 197, 253, 0.07) 0 1px, transparent 2px),
+      radial-gradient(circle at 78% 80%, rgba(147, 197, 253, 0.08) 0 1px, transparent 2px),
+      linear-gradient(180deg, var(--brand-navy-950) 0%, var(--brand-navy-900) 60%, var(--brand-navy-800) 100%) !important;
+  }
+
+  /* Brand mark / wordmark — top of sidebar */
+  body.home-page .nav::before,
+  body.users-page .nav::before,
+  body.plant-page .nav::before,
+  body.meter-page .nav::before {
+    width: auto;
+    margin: 0 0 14px !important;
+    padding: 0 12px 14px 50px !important;
+    background-position: 12px 4px !important;
+    background-size: 30px 30px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(147, 197, 253, 0.16);
+    height: auto !important;
+    min-height: 50px;
+    font-size: 14px;
+    letter-spacing: 0.18em;
+  }
+
+  /* Vertical nav-links */
+  body.home-page .nav .nav-links,
+  body.users-page .nav .nav-links,
+  body.plant-page .nav .nav-links,
+  body.meter-page .nav .nav-links {
+    flex-direction: column !important;
+    gap: 3px !important;
+    align-items: stretch !important;
+    flex: 0 0 auto;
+    margin-top: 4px;
+  }
+  body.home-page .nav .nav-link,
+  body.users-page .nav .nav-link,
+  body.plant-page .nav .nav-link,
+  body.meter-page .nav .nav-link {
+    display: flex !important;
+    width: 100%;
+    padding: 9px 12px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Auth section pinned to bottom */
+  body.home-page .nav .nav-auth,
+  body.users-page .nav .nav-auth,
+  body.plant-page .nav .nav-auth,
+  body.meter-page .nav .nav-auth {
+    margin-top: auto !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+    padding-top: 14px !important;
+    border-top: 1px solid rgba(147, 197, 253, 0.16);
+  }
+  body.home-page .nav .auth-user,
+  body.users-page .nav .auth-user,
+  body.plant-page .nav .auth-user,
+  body.meter-page .nav .auth-user {
+    width: 100%;
+    justify-content: center;
+    padding: 6px 10px !important;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  body.home-page .nav .nav-logout,
+  body.users-page .nav .nav-logout,
+  body.plant-page .nav .nav-logout,
+  body.meter-page .nav .nav-logout {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Wider screen: a bit more breathing room */
+@media (min-width: 1280px) {
+  body.home-page,
+  body.users-page,
+  body.plant-page,
+  body.meter-page {
+    padding-left: 264px !important;
+  }
+}
+
+/* ============================================================
+   THEME HARMONY — slate-blue family
+   Aligns body palette with the navy sidebar so the whole
+   surface reads as one design system.
+   ============================================================ */
+:root {
+  /* Body neutrals — slate (cool, pairs with navy) */
+  --slate-25:  #fbfcfd;   /* canvas */
+  --slate-50:  #f7f9fc;   /* hover bg, soft surface */
+  --slate-100: #eef1f7;   /* dividers */
+  --slate-200: #e2e7ef;   /* hairline border */
+  --slate-300: #cbd2dd;   /* strong border */
+  --slate-400: #94a0b3;   /* muted icon */
+  --slate-500: #64748b;   /* secondary text */
+  --slate-600: #475569;   /* body text */
+  --slate-700: #334155;   /* strong text */
+  --slate-800: #1e293b;   /* headings (alt) */
+
+  /* Re-tune accent (blue-600 family stays, link reads against navy) */
+  --accent:        #2563eb;   /* primary CTA */
+  --accent-hover:  #1d4ed8;
+  --accent-strong: #1e3a8a;   /* deep blue, ties to navy */
+  --accent-soft:   #eef4ff;   /* subtle, less saturated */
+  --accent-tint:   #dde8ff;
+  --accent-border: #c7d8fb;
+  --accent-line:   #93b4f5;
+}
+
+/* Body canvas — slightly cool */
+body.home-page,
+body.users-page,
+body.plant-page,
+body.meter-page { background: var(--slate-25) !important; }
+
+/* Body text & headings */
+body { color: var(--slate-700) !important; }
+h1, h2, h3, h4, h5, h6,
+.plant-hero h1, .panel-head h3, .summary-card h4,
+body.users-page .users-toolbar h1 { color: var(--brand-navy-950) !important; }
+
+.muted, .small.muted, .meta, .sub,
+.users-message.muted, .field-head .muted { color: var(--slate-500) !important; }
+.kv { color: var(--slate-500) !important; }
+.kv strong { color: var(--slate-800) !important; }
+
+/* Borders — single hairline ↦ slate-200 */
+.filters,
+.table-wrap,
+.users-table-wrap,
+.history-wrap,
+.device-table-wrap,
+.plant-hero,
+.card,
+.panel,
+.bill-meta-note,
+.panel-sub,
+.users-toolbar,
+.actions-center,
+.modal-content,
+.modal-content.small,
+.formula-inline-grid,
+.formula-column-builder,
+.meter-card,
+.meter-item,
+.address-group-item,
+#meter-modal .address-group-item,
+body.users-page .users-sites-list {
+  border-color: var(--slate-200) !important;
+}
+th, td { border-bottom-color: var(--slate-100) !important; }
+.modal-header { border-bottom-color: var(--slate-100) !important; }
+.modal-footer { border-top-color: var(--slate-100) !important; }
+
+/* Inputs / selects */
+input, select, textarea {
+  border-color: var(--slate-200) !important;
+  color: var(--slate-800) !important;
+}
+input::placeholder, textarea::placeholder { color: var(--slate-400) !important; }
+input:hover, select:hover, textarea:hover { border-color: var(--slate-300) !important; }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+}
+input[readonly] { background: var(--slate-50) !important; color: var(--slate-500) !important; }
+
+/* Field labels — slate */
+.field label, .filters label, label { color: var(--slate-600) !important; }
+
+/* Buttons (default) — neutral slate */
+button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):not(.toggle-btn):not(.bill-flow-btn):not(.calc-mode-btn):not(.period-btn):not(.password-toggle),
+.small-btn:not(.btn-danger):not(.nav-logout) {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+  color: var(--slate-700) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02) !important;
+}
+button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):hover,
+.small-btn:not(.btn-danger):not(.nav-logout):hover {
+  background: var(--slate-50) !important;
+  border-color: var(--slate-300) !important;
+  color: var(--slate-800) !important;
+}
+
+/* Ghost buttons */
+button.ghost { color: var(--slate-600) !important; }
+button.ghost:hover { background: var(--slate-50) !important; color: var(--slate-800) !important; }
+
+/* Primary stays brand blue */
+button.primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 1px 0 rgba(15, 23, 42, 0.04),
+    0 4px 12px rgba(37, 99, 235, 0.18) !important;
+}
+button.primary:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  box-shadow:
+    0 1px 0 rgba(15, 23, 42, 0.04),
+    0 6px 16px rgba(37, 99, 235, 0.24) !important;
+}
+
+/* Danger button — softer red, navy-friendly rose */
+.btn-danger,
+.inline-delete,
+.users-delete-btn,
+.meter-remove {
+  background: #ffffff !important;
+  color: #be123c !important;
+  border-color: #fbcfd8 !important;
+}
+.btn-danger:hover, .inline-delete:hover,
+.users-delete-btn:hover, .meter-remove:hover {
+  background: #fff1f2 !important;
+  border-color: #f8a4b6 !important;
+  color: #9f1239 !important;
+}
+
+/* Tables — calmer rows */
+thead, .device-table thead, .history-table thead {
+  background: var(--slate-50) !important;
+}
+th { color: var(--slate-500) !important; font-weight: 600; }
+tbody tr:nth-child(even) { background: transparent !important; }
+tbody tr:hover { background: var(--slate-50) !important; }
+tbody tr.selected {
+  background: var(--accent-soft) !important;
+  box-shadow: inset 3px 0 0 var(--accent) !important;
+}
+
+/* Pills / badges — refined tones */
+.pill, .pill.count, #plant-count {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+.pill.schedule.alt {
+  background: var(--slate-50) !important;
+  color: var(--slate-600) !important;
+  border-color: var(--slate-200) !important;
+}
+.cache-status.cache-hit {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+.cache-status.cache-stale,
+.cache-status.cache-retry {
+  background: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fcd34d !important;
+}
+.cache-status.cache-error {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+
+.badge.auto, .queue-status.ready, .status-badge.active {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+.badge.ready {
+  background: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fcd34d !important;
+}
+.badge.pending {
+  background: var(--slate-50) !important;
+  color: var(--slate-500) !important;
+  border-color: var(--slate-200) !important;
+}
+.status-badge.inactive {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+.role-chip {
+  background: var(--slate-50) !important;
+  color: var(--slate-600) !important;
+  border: 1px solid var(--slate-200) !important;
+}
+
+/* Status dots */
+.status-dot { background: #10b981 !important; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14) !important; }
+.status-dot.offline { background: #f43f5e !important; box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.14) !important; }
+
+/* Segmented controls — calmer track */
+.mode-toggle, .bill-flow-tabs, .calc-mode-switch, .period-switch {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+  box-shadow: none !important;
+}
+.toggle-btn, .bill-flow-btn, .calc-mode-btn, .period-btn {
+  color: var(--slate-600) !important;
+}
+.toggle-btn:hover, .bill-flow-btn:hover, .calc-mode-btn:hover, .period-btn:hover {
+  color: var(--slate-800) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+}
+.toggle-btn.active {
+  background: #ffffff !important;
+  color: var(--slate-800) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 0 rgba(15, 23, 42, 0.04) !important;
+}
+.bill-flow-btn.active, .calc-mode-btn.active, .period-btn.active {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06), 0 4px 10px rgba(37, 99, 235, 0.18) !important;
+}
+
+/* Pager active */
+.pager-btn.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  border-color: var(--accent-border) !important;
+}
+
+/* Stepper */
+.modal-step-track { background: var(--slate-100) !important; }
+.modal-step-fill { background: linear-gradient(90deg, var(--accent), var(--accent-strong)) !important; }
+.modal-step-item { color: var(--slate-500) !important; }
+.modal-step-item .step-dot {
+  background: var(--slate-50) !important;
+  border-color: var(--slate-200) !important;
+  color: var(--slate-500) !important;
+}
+.modal-step-item.done { color: var(--slate-700) !important; }
+.modal-step-item.done .step-dot {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+.modal-step-item.active { background: var(--accent-soft) !important; color: var(--accent-strong) !important; }
+.modal-step-item.active .step-dot {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+}
+.modal-step {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-strong) !important;
+}
+
+/* Cards (clean, no warm tints) */
+.filters,
+.actions-center,
+.users-toolbar,
+body.users-page .users-toolbar,
+body.plant-page .panel-sub,
+body.plant-page .modal-content {
+  background: #ffffff !important;
+}
+body.users-page,
+body.users-page .table-wrap,
+body.users-page .users-table-wrap { background-color: var(--slate-25) !important; }
+body.users-page .table-wrap,
+body.users-page .users-table-wrap { background: #ffffff !important; }
+
+/* Modal overlay — softer dark */
+.modal { background: rgba(15, 23, 42, 0.42) !important; }
+.modal-content {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+  box-shadow:
+    0 1px 0 rgba(15, 23, 42, 0.04),
+    0 24px 48px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* Meter detail / KPI cards — slate base, blue accent */
+body.meter-page .plant-hero {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+  color: var(--slate-700) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04) !important;
+}
+body.meter-page .plant-hero h1 { color: var(--brand-navy-950) !important; text-shadow: none !important; }
+body.meter-page .meter-kicker { color: var(--accent-strong) !important; }
+body.meter-page .eyebrow { color: var(--slate-500) !important; }
+
+body.meter-page .panel {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+}
+
+body.meter-page .meter-total-box,
+body.meter-page .meter-live-box {
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+  box-shadow: none !important;
+}
+body.meter-page .meter-total-box .label,
+body.meter-page .meter-live-box .k { color: var(--accent-strong) !important; opacity: 0.8; }
+body.meter-page .meter-total-box strong,
+body.meter-page .meter-live-box strong,
+body.meter-page .meter-total-card .v { color: var(--accent-strong) !important; }
+body.meter-page .meter-total-card.in,
+body.meter-page .meter-total-card.out {
+  background: #ffffff !important;
+  border-color: var(--accent-border) !important;
+}
+
+body.meter-page .meter-chart-controls {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+}
+body.meter-page .meter-chart-controls .field.compact {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+}
+body.meter-page .meter-chart-controls .field.compact label { color: var(--slate-500) !important; }
+body.meter-page .meter-chart-controls .field.compact select {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+  color: var(--slate-800) !important;
+}
+body.meter-page .meter-chart-svg {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+}
+body.meter-page .meter-chart-legend span {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+  color: var(--slate-700) !important;
+}
+body.meter-page .meter-chart-summary {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+  color: var(--slate-700) !important;
+}
+body.meter-page .meter-crosshair-line { stroke: rgba(37, 99, 235, 0.6) !important; }
+
+/* Plant page panels */
+body.plant-page .plant-hero,
+body.plant-page .panel,
+body.plant-page .panel-sub {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04) !important;
+}
+body.plant-page .modal-content {
+  background: #ffffff !important;
+  border: 1px solid var(--slate-200) !important;
+}
+body.plant-page #meter-create-modal .meter-create-section {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+}
+body.plant-page #meter-create-modal .meter-create-section-import .meter-create-section-title {
+  color: #047857 !important;
+}
+body.plant-page #meter-create-modal .meter-create-section-export .meter-create-section-title {
+  color: #b45309 !important;
+}
+
+/* Meter card / list items */
+.meter-card { background: #ffffff !important; border: 1px solid var(--slate-200) !important; }
+.meter-card:hover { background: var(--slate-50) !important; border-color: var(--slate-300) !important; }
+.meter-card.checked {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 0 0 1px var(--accent-tint) !important;
+}
+.meter-status.online { background: #ecfdf5 !important; color: #047857 !important; border-color: #a7f3d0 !important; }
+.meter-status.offline { background: #fef2f2 !important; color: #b91c1c !important; border-color: #fca5a5 !important; }
+.meter-item { background: var(--slate-50) !important; border: 1px solid var(--slate-200) !important; }
+#meter-modal .address-group-item { background: var(--slate-50) !important; border: 1px solid var(--slate-200) !important; }
+
+.formula-inline-grid, .formula-column-builder {
+  background: var(--slate-50) !important;
+  border: 1px solid var(--slate-200) !important;
+}
+
+/* Selection */
+::selection { background: rgba(37, 99, 235, 0.18) !important; color: var(--brand-navy-950) !important; }
+
+/* Scrollbar — slate */
+* { scrollbar-color: var(--slate-300) transparent !important; }
+::-webkit-scrollbar-thumb { background: var(--slate-300) !important; }
+::-webkit-scrollbar-thumb:hover { background: var(--slate-400) !important; }
+
+/* Active link inside sidebar — refined */
+@media (min-width: 980px) {
+  body.home-page .nav .nav-link.active,
+  body.users-page .nav .nav-link.active,
+  body.plant-page .nav .nav-link.active,
+  body.meter-page .nav .nav-link.active {
+    background: rgba(147, 197, 253, 0.16) !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.28) !important;
+    position: relative;
+  }
+  body.home-page .nav .nav-link.active::before,
+  body.users-page .nav .nav-link.active::before,
+  body.plant-page .nav .nav-link.active::before,
+  body.meter-page .nav .nav-link.active::before {
+    content: "";
+    position: absolute;
+    left: -14px;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    background: var(--accent-line);
+    border-radius: 0 2px 2px 0;
+  }
+}
+
+
