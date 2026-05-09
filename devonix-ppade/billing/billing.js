@@ -1719,6 +1719,120 @@ const closeModal = () => {
   resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
 };
+// === Per-meter live totalizer capture (auto bills only) ===
+const pickEnergyTotalFromPayload = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const totalKeys = [
+    "energy_total", "energyTotal", "total_energy", "totalEnergy",
+    "kwh_total", "kwhTotal", "total_kwh", "totalKwh",
+    "kwh", "energy", "total"
+  ];
+  const queue = [payload];
+  let best = null;
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) { queue.push(...node); continue; }
+    for (const key of totalKeys) {
+      if (key in node) {
+        const num = parseNumber(node[key]);
+        if (Number.isFinite(num) && num > 0) {
+          if (best === null || num > best) best = num;
+        }
+      }
+    }
+    Object.values(node).forEach((v) => { if (v && typeof v === "object") queue.push(v); });
+  }
+  return best;
+};
+const fetchMeterLiveTotalKwh = async (meter) => {
+  const meterId = Number(meter?.id);
+  const siteId = Number(plant?.apiId);
+  if (!Number.isFinite(meterId) || meterId <= 0) return null;
+  if (!Number.isFinite(siteId) || siteId <= 0) return null;
+  const tryUrl = async (url) => {
+    try {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      const total = pickEnergyTotalFromPayload(data);
+      return Number.isFinite(total) ? total : null;
+    } catch {
+      return null;
+    }
+  };
+  const candidates = [
+    `/api/device-energy?site_id=${siteId}&device_id=${meterId}&period=live`,
+    `/api/device-energy?site_id=${siteId}&period=live&device_id=${meterId}`,
+    `/api/device-energy?period=live&device_id=${meterId}`
+  ];
+  for (const url of candidates) {
+    const value = await tryUrl(url);
+    if (value !== null) return value;
+  }
+  return null;
+};
+const lookupPreviousMeterAfter = (plantApiId, plantSiteCode, meterKey, beforeDate) => {
+  if (!Array.isArray(history) || !meterKey) return null;
+  const plantKeyA = String(plantApiId ?? "").trim();
+  const plantKeyB = String(plantSiteCode ?? "").trim();
+  let best = null;
+  let bestEnd = "";
+  history.forEach((prev) => {
+    if (!prev?.auto) return;
+    const readings = prev?.meterReadings;
+    if (!readings || typeof readings !== "object") return;
+    const entry = readings[meterKey];
+    const after = Number(entry?.after);
+    if (!Number.isFinite(after)) return;
+    const prevA = String(prev?.plantApiId ?? "").trim();
+    const prevB = String(prev?.plantSiteCode ?? "").trim();
+    if (plantKeyA && prevA && plantKeyA !== prevA) return;
+    if (!plantKeyA && plantKeyB && prevB && plantKeyB !== prevB) return;
+    const prevEnd = String(prev?.periodEnd || "");
+    if (!prevEnd) return;
+    if (beforeDate && prevEnd >= beforeDate) return;
+    if (prevEnd > bestEnd) {
+      bestEnd = prevEnd;
+      best = after;
+    }
+  });
+  return best;
+};
+const captureMeterReadingsForBill = async (meters, periodStart) => {
+  const result = {};
+  if (!Array.isArray(meters) || !meters.length) return result;
+  const plantApiId = plant?.apiId;
+  const plantSiteCode = plant?.siteCode;
+  await Promise.all(
+    meters.map(async (meter) => {
+      const key = getMeterKey(meter);
+      if (!key) return;
+      const after = await fetchMeterLiveTotalKwh(meter);
+      const before = lookupPreviousMeterAfter(plantApiId, plantSiteCode, key, periodStart);
+      if (after === null && before === null) return;
+      result[key] = {
+        before: Number.isFinite(before) ? roundTo(before, 1) : null,
+        after: Number.isFinite(after) ? roundTo(after, 1) : null,
+        capturedAt: Date.now()
+      };
+    })
+  );
+  return result;
+};
+const getMeterReadingForRender = (bill, meter) => {
+  const key = getMeterKey(meter);
+  if (!key) return null;
+  const readings = bill?.meterReadings;
+  if (!readings || typeof readings !== "object") return null;
+  const entry = readings[key];
+  if (!entry) return null;
+  const before = Number.isFinite(Number(entry.before)) ? Number(entry.before) : null;
+  const after = Number.isFinite(Number(entry.after)) ? Number(entry.after) : null;
+  if (before === null && after === null) return null;
+  const diff = before !== null && after !== null ? roundTo(after - before, 1) : null;
+  return { before, after, diff };
+};
 const buildReceiptHtml = ({
   bill,
   issueDate,
@@ -2045,6 +2159,60 @@ const buildReceiptHtml = ({
       <span class="legend-item sun"><span class="legend-swatch"></span>วันอาทิตย์</span>
     </div>
   `;
+  const startDateLabel = bill?.periodStart ? formatThaiDateShort(bill.periodStart) : "—";
+  const endDateLabel = bill?.periodEnd ? formatThaiDateShort(bill.periodEnd) : "—";
+  const isAutoBill = Boolean(bill?.auto);
+  const meterReadingsCards = isAutoBill
+    ? meterPool
+        .map((meter) => ({ meter, reading: getMeterReadingForRender(bill, meter) }))
+        .filter((entry) => entry.reading)
+    : [];
+  const fmtReading = (val) =>
+    val === null || val === undefined ? `<span class="reading-empty">—</span>` : formatNumber(val, 1);
+  const meterReadingsHtml = meterReadingsCards.length
+    ? `
+      <div class="receipt-meter-readings" aria-label="ค่ามิเตอร์ก่อน-หลังตามมิเตอร์ที่เลือก">
+        <div class="receipt-section-title">
+          <span>สรุปค่ามิเตอร์ตามที่เลือก</span>
+          <span class="receipt-section-meta">${meterReadingsCards.length} มิเตอร์</span>
+        </div>
+        <div class="meter-readings-grid">
+          ${meterReadingsCards
+            .map(({ meter, reading }) => {
+              const meterLabel = getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, "");
+              const meterSn = (() => {
+                const match = getMeterLabel(meter).match(/\(SN:\s*([^)]+)\)/);
+                return match ? match[1].trim() : "";
+              })();
+              return `
+                <div class="meter-reading-card">
+                  <div class="meter-reading-head">
+                    <div class="meter-reading-name" title="${escapeHtml(meterLabel)}">${escapeHtml(meterLabel)}</div>
+                    ${meterSn ? `<div class="meter-reading-sn">SN: ${escapeHtml(meterSn)}</div>` : ""}
+                  </div>
+                  <table class="meter-reading-table">
+                    <tbody>
+                      <tr>
+                        <td class="lbl">ก่อน <span class="dt">${escapeHtml(startDateLabel)}</span></td>
+                        <td class="val">${fmtReading(reading.before)}</td>
+                      </tr>
+                      <tr>
+                        <td class="lbl">หลัง <span class="dt">${escapeHtml(endDateLabel)}</span></td>
+                        <td class="val">${fmtReading(reading.after)}</td>
+                      </tr>
+                      <tr class="diff-row">
+                        <td class="lbl">ใช้ในงวดนี้</td>
+                        <td class="val">${fmtReading(reading.diff)}<span class="unit"> kWh</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>`;
+            })
+            .join("")}
+        </div>
+      </div>
+    `
+    : "";
   const buildPage = (rows, pageIndex) => `
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
       <div class="receipt-title">
@@ -2061,6 +2229,7 @@ const buildReceiptHtml = ({
           ${periodMetaHtml}
         </div>
       </div>
+      ${pageIndex === 0 ? meterReadingsHtml : ""}
       <div class="receipt-divider"></div>
       ${weekendLegendHtml}
       <div class="receipt-table-area">
@@ -3976,6 +4145,7 @@ const renderAutoQueue = () => {
           const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
           const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
           const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
+          const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr);
           createBill({
             periodStart: startStr, periodEnd: endStr, meters: selectedMeters,
             rate: autoConfig.defaultRate, rateType: autoConfig.rateType,
@@ -3983,7 +4153,8 @@ const renderAutoQueue = () => {
             calcFormula, calcLabel: autoConfig.calcLabel || defaultCalcLabel,
             formulaColumns: autoConfig.formulaColumns || [],
             cutoffDay: cutoff, detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
-            auto: true, source, dailyRows: rows
+            auto: true, source, dailyRows: rows,
+            meterReadings: capturedReadings
           });
           renderAutoQueue();
           updateSummary();
@@ -4005,7 +4176,8 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff };
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr);
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
           const issueDate = parseDateInput(endStr);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
         } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
@@ -4029,7 +4201,8 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff };
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr);
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
           const issueDate = parseDateInput(effectiveEnd);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
         } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
@@ -4411,6 +4584,7 @@ const createBill = ({
   cutoffDay,
   detailColumns,
   dailyRows,
+  meterReadings,
   auto = false,
   source = "api",
   createdAt = Date.now()
@@ -4473,7 +4647,9 @@ const createBill = ({
     detailColumns: normalizedColumns,
     source,
     meters: meterPool.map((meter) => ({ ...meter })),
-    daily
+    daily,
+    meterReadings:
+      auto && meterReadings && typeof meterReadings === "object" ? meterReadings : undefined
   };
   history = [bill, ...history];
   saveHistory();
@@ -4687,6 +4863,7 @@ const runAutoIfDue = async () => {
       meterProfiles
     );
     const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
+    const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr);
     createBill({
       periodStart: startStr,
       periodEnd: endStr,
@@ -4701,7 +4878,8 @@ const runAutoIfDue = async () => {
       detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
       auto: true,
       source,
-      dailyRows: rows
+      dailyRows: rows,
+      meterReadings: capturedReadings
     });
   }
 };

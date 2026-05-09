@@ -10,8 +10,16 @@ const stateDataDir = configuredStateFilePath
   ? path.dirname(configuredStateFilePath)
   : defaultDataDir;
 const stateFilePath = configuredStateFilePath || path.join(stateDataDir, "billing-state.json");
+// Where the committed seed file lives (always inside the repo)
+const seedFilePath = path.join(__dirname, "..", "data", "billing-state.json");
+
+// Vercel Blob is enabled when the standard env var is present.
+const blobEnabled = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+const BLOB_PATHNAME = "billing-state.json";
 
 let stateCache = null;
+let cacheLoaded = false;
+let blobModulePromise = null;
 
 const isRecord = (value) =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -74,7 +82,6 @@ const readStoreSiteIdentity = (entry = {}) => ({
 });
 
 const findStoredKeyByIdentity = (identity = {}) => {
-  ensureLoaded();
   const plants = isRecord(stateCache?.plants) ? stateCache.plants : {};
   const directKey = String(identity.key || "").trim().toLowerCase();
   const targetSiteId = toPositiveInt(identity.siteId);
@@ -137,8 +144,69 @@ const normalizeStoredEntry = (entry, identity = {}, resolvedKey = "") => {
   };
 };
 
-const ensureLoaded = () => {
-  if (isRecord(stateCache) && isRecord(stateCache.plants)) return;
+const loadBlobModule = async () => {
+  if (!blobEnabled) return null;
+  if (!blobModulePromise) {
+    blobModulePromise = import("@vercel/blob").catch((err) => {
+      console.error("[billing-state] failed to load @vercel/blob:", err?.message || err);
+      blobModulePromise = null;
+      return null;
+    });
+  }
+  return blobModulePromise;
+};
+
+const readBlobState = async () => {
+  const mod = await loadBlobModule();
+  if (!mod) return null;
+  try {
+    const { blobs } = await mod.list({ prefix: BLOB_PATHNAME });
+    const target = blobs?.find((b) => b.pathname === BLOB_PATHNAME);
+    if (!target?.url) return null;
+    const res = await fetch(target.url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const parsed = await res.json().catch(() => null);
+    if (isRecord(parsed) && isRecord(parsed.plants)) {
+      return { plants: { ...parsed.plants } };
+    }
+  } catch (err) {
+    console.error("[billing-state] Blob read failed:", err?.message || err);
+  }
+  return null;
+};
+
+const writeBlobState = async (state) => {
+  const mod = await loadBlobModule();
+  if (!mod) return false;
+  try {
+    await mod.put(BLOB_PATHNAME, JSON.stringify(state), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json"
+    });
+    return true;
+  } catch (err) {
+    console.error("[billing-state] Blob write failed:", err?.message || err);
+    return false;
+  }
+};
+
+const readSeedState = () => {
+  try {
+    if (!existsSync(seedFilePath)) return null;
+    const raw = readFileSync(seedFilePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (isRecord(parsed) && isRecord(parsed.plants) && Object.keys(parsed.plants).length > 0) {
+      return { plants: { ...parsed.plants } };
+    }
+  } catch (err) {
+    console.warn("[billing-state] seed read failed:", err?.message || err);
+  }
+  return null;
+};
+
+const readStateFromFile = () => {
   try {
     mkdirSync(stateDataDir, { recursive: true });
     if (!existsSync(stateFilePath)) {
@@ -147,36 +215,85 @@ const ensureLoaded = () => {
     const raw = readFileSync(stateFilePath, "utf8");
     const parsed = JSON.parse(raw);
     if (isRecord(parsed) && isRecord(parsed.plants)) {
-      stateCache = {
-        plants: { ...parsed.plants }
-      };
+      return { plants: { ...parsed.plants } };
+    }
+  } catch (err) {
+    console.warn("[billing-state] file read failed:", err?.message || err);
+  }
+  return null;
+};
+
+const writeStateToFile = (state) => {
+  try {
+    mkdirSync(stateDataDir, { recursive: true });
+    writeFileSync(stateFilePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    return true;
+  } catch (err) {
+    console.warn("[billing-state] file write failed:", err?.message || err);
+    return false;
+  }
+};
+
+const ensureLoaded = async () => {
+  if (cacheLoaded && isRecord(stateCache) && isRecord(stateCache.plants)) return;
+
+  // 1) Vercel Blob (production).
+  if (blobEnabled) {
+    const blobState = await readBlobState();
+    if (blobState) {
+      stateCache = blobState;
+      cacheLoaded = true;
       return;
     }
-  } catch {
-    // fallback below
+    // Blob is empty — bootstrap from the committed seed file.
+    const seed = readSeedState();
+    if (seed) {
+      stateCache = seed;
+      cacheLoaded = true;
+      const ok = await writeBlobState(stateCache);
+      if (ok) {
+        console.log("[billing-state] bootstrapped Vercel Blob from src/data/billing-state.json");
+      }
+      return;
+    }
+    stateCache = { plants: {} };
+    cacheLoaded = true;
+    return;
+  }
+
+  // 2) File path (local dev or no Blob token).
+  const fileState = readStateFromFile();
+  if (fileState) {
+    stateCache = fileState;
+    cacheLoaded = true;
+    return;
   }
   stateCache = { plants: {} };
+  cacheLoaded = true;
 };
 
-const saveStore = () => {
-  ensureLoaded();
-  try {
-    writeFileSync(stateFilePath, `${JSON.stringify(stateCache, null, 2)}\n`, "utf8");
-  } catch {
-    // ignore write errors
+const persistStore = async () => {
+  if (!isRecord(stateCache)) return;
+  const snapshot = safeJsonClone(stateCache, { plants: {} });
+
+  if (blobEnabled) {
+    const ok = await writeBlobState(snapshot);
+    if (ok) return;
+    // fall through to file as best-effort backup
   }
+  writeStateToFile(snapshot);
 };
 
-export const readBillingState = (siteIdentity = {}) => {
-  ensureLoaded();
+export const readBillingState = async (siteIdentity = {}) => {
+  await ensureLoaded();
   const identity = normalizeSiteIdentity(siteIdentity);
   const resolvedKey = findStoredKeyByIdentity(identity) || identity.key;
   const stored = stateCache.plants[resolvedKey];
   return normalizeStoredEntry(stored, identity, resolvedKey);
 };
 
-export const writeBillingState = (siteIdentity = {}, nextState = {}) => {
-  ensureLoaded();
+export const writeBillingState = async (siteIdentity = {}, nextState = {}) => {
+  await ensureLoaded();
   const identity = normalizeSiteIdentity(siteIdentity);
   const resolvedKey = findStoredKeyByIdentity(identity) || identity.key;
   const current = normalizeStoredEntry(stateCache.plants[resolvedKey], identity, resolvedKey);
@@ -210,6 +327,6 @@ export const writeBillingState = (siteIdentity = {}, nextState = {}) => {
     updatedAt: new Date().toISOString()
   };
   stateCache.plants[resolvedKey] = updated;
-  saveStore();
+  await persistStore();
   return normalizeStoredEntry(updated, identity, resolvedKey);
 };

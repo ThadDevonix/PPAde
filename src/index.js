@@ -1515,7 +1515,7 @@ export const handleRequest = async (req, res) => {
             return;
           }
         }
-        const data = readBillingState(siteIdentity);
+        const data = await readBillingState(siteIdentity);
         sendJson(res, 200, { data }, corsHeaders);
         return;
       }
@@ -1549,7 +1549,7 @@ export const handleRequest = async (req, res) => {
           }
         }
 
-        const currentState = readBillingState(siteIdentity);
+        const currentState = await readBillingState(siteIdentity);
         const payloadObject =
           payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
         const hasScheduleField = Object.prototype.hasOwnProperty.call(payloadObject, "schedule");
@@ -1577,7 +1577,7 @@ export const handleRequest = async (req, res) => {
             )
           : currentState.billSequence;
 
-        const data = writeBillingState(siteIdentity, {
+        const data = await writeBillingState(siteIdentity, {
           schedule: nextSchedule,
           history: nextHistory,
           billSequence: nextBillSequence
