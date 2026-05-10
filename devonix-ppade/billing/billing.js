@@ -1255,14 +1255,17 @@ const fetchPlantDevicesFromApi = async (targetPlant) => {
   });
   return normalizeMeterRows(filtered);
 };
-const getMeterKey = (meter) =>
-  String(
-    meter?.sn ||
-      meter?.serial ||
-      meter?.id ||
-      meter?.name ||
-      ""
-  ).trim();
+const getMeterKey = (meter) => {
+  // Prefer the unique device id; SN/serial may be a placeholder ("-")
+  // shared across meters when no real serial is configured.
+  const id = String(meter?.id ?? "").trim();
+  if (id) return id;
+  const sn = String(meter?.sn ?? "").trim();
+  if (sn && sn !== "-") return sn;
+  const serial = String(meter?.serial ?? "").trim();
+  if (serial && serial !== "-") return serial;
+  return String(meter?.name ?? "").trim();
+};
 const getMeterLabel = (meter) => {
   if (!meter || typeof meter !== "object") return "Meter";
   return meter.name || meter.sn || "Meter";
@@ -1772,45 +1775,73 @@ const closeModal = () => {
 };
 // === Per-meter live reading capture (auto bills only) ===
 // Pulls IN/OUT from /api/energy?period=live (same as the meter page's
-// "Total kWh : Live ล่าสุด" box) and picks the channel that represents the
-// cumulative reading for the meter's device type.
-const extractInOutFromLivePayload = (payload) => {
+// "Total kWh : Live ล่าสุด" box) for ONE specific device, then picks the
+// channel that represents the cumulative reading for the meter's device type.
+const liveInKeys = [
+  "solar_in", "solarIn", "value_in", "valueIn",
+  "energy_in", "energyIn", "solar_kw", "solarKw",
+  "solar", "pv", "pv_in", "pvIn"
+];
+const liveOutKeys = [
+  "self_use", "selfUse", "value_out", "valueOut",
+  "energy_out", "energyOut", "grid_import", "gridImport",
+  "egat", "utility", "utility_in", "utilityIn",
+  "mdb_in", "mdbIn", "consumption"
+];
+const liveDeviceIdKeys = ["device_id", "deviceId", "meter_id", "meterId", "id"];
+const extractInOutForDevice = (payload, deviceId) => {
   if (!payload || typeof payload !== "object") return null;
-  const inKeys = [
-    "solar_in", "solarIn", "value_in", "valueIn",
-    "energy_in", "energyIn", "solar_kw", "solarKw",
-    "solar", "pv", "pv_in", "pvIn"
-  ];
-  const outKeys = [
-    "self_use", "selfUse", "value_out", "valueOut",
-    "energy_out", "energyOut", "grid_import", "gridImport",
-    "egat", "utility", "utility_in", "utilityIn",
-    "mdb_in", "mdbIn", "consumption"
-  ];
-  let bestIn = null;
-  let bestOut = null;
+  const targetId = String(deviceId ?? "").trim();
+  if (!targetId) return null;
+  // Walk the tree and collect every node that looks like an energy row
+  // (has at least one IN or OUT key).
+  const energyRows = [];
   const queue = [payload];
   while (queue.length) {
     const node = queue.shift();
     if (!node || typeof node !== "object") continue;
     if (Array.isArray(node)) { queue.push(...node); continue; }
-    for (const key of inKeys) {
-      if (key in node) {
-        const num = parseNumber(node[key]);
-        if (Number.isFinite(num) && num > 0 && (bestIn === null || num > bestIn)) {
-          bestIn = num;
-        }
+    const hasEnergyField =
+      liveInKeys.some((k) => k in node) || liveOutKeys.some((k) => k in node);
+    if (hasEnergyField) energyRows.push(node);
+    Object.values(node).forEach((v) => {
+      if (v && typeof v === "object") queue.push(v);
+    });
+  }
+  if (!energyRows.length) return null;
+  // Prefer the row whose device id matches our target.
+  const matchRow = energyRows.find((row) =>
+    liveDeviceIdKeys.some((k) => {
+      if (!(k in row)) return false;
+      return String(row[k] ?? "").trim() === targetId;
+    })
+  );
+  let source = matchRow;
+  if (!source) {
+    // No row tagged with this device id. If the response has multiple energy
+    // rows for different devices, we can't safely pick one — return null
+    // (better empty than wrong, per the "ปล่อย flow" rule).
+    if (energyRows.length > 1) return null;
+    // Single row: assume the upstream filtered for us; use it.
+    source = energyRows[0];
+  }
+  let bestIn = null;
+  let bestOut = null;
+  for (const key of liveInKeys) {
+    if (key in source) {
+      const num = parseNumber(source[key]);
+      if (Number.isFinite(num) && num > 0 && (bestIn === null || num > bestIn)) {
+        bestIn = num;
       }
     }
-    for (const key of outKeys) {
-      if (key in node) {
-        const num = parseNumber(node[key]);
-        if (Number.isFinite(num) && num > 0 && (bestOut === null || num > bestOut)) {
-          bestOut = num;
-        }
+  }
+  for (const key of liveOutKeys) {
+    if (key in source) {
+      const num = parseNumber(source[key]);
+      if (Number.isFinite(num) && num > 0 && (bestOut === null || num > bestOut)) {
+        bestOut = num;
       }
     }
-    Object.values(node).forEach((v) => { if (v && typeof v === "object") queue.push(v); });
   }
   if (bestIn === null && bestOut === null) return null;
   return { in: bestIn, out: bestOut };
@@ -1840,7 +1871,7 @@ const fetchMeterLiveReading = async (meter) => {
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) continue;
       const data = await res.json().catch(() => null);
-      const inOut = extractInOutFromLivePayload(data);
+      const inOut = extractInOutForDevice(data, meterId);
       const value = pickReadingForMeterType(inOut, meter);
       if (Number.isFinite(value) && value > 0) return value;
     } catch {
