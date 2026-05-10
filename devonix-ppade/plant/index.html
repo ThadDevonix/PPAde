@@ -198,6 +198,41 @@
       </div>
     </section>
 
+    <div class="modal hidden" id="schedule-history-modal" role="dialog" aria-modal="true">
+      <div class="modal-content" style="width: min(820px, 95vw);">
+        <div class="modal-header">
+          <div>
+            <h3 data-i18n="schedule.history.title">ประวัติบิลที่เคยออก</h3>
+            <p class="muted small" id="schedule-history-subtitle"></p>
+          </div>
+          <button class="ghost icon-btn" id="schedule-history-close" data-i18n-aria-label="common.close" aria-label="ปิด">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="history-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th style="width: 80px;" data-i18n="bill.history.col.bill_no">ใบที่</th>
+                  <th data-i18n="bill.history.col.period">ช่วงวันที่</th>
+                  <th style="width: 110px;" data-i18n="bill.history.col.rate">อัตรา (฿/kWh)</th>
+                  <th style="width: 120px;" data-i18n="bill.history.col.kwh">หน่วยรวม (kWh)</th>
+                  <th style="width: 120px;" data-i18n="bill.history.col.total">ยอดรวม</th>
+                  <th style="width: 110px;" data-i18n="bill.history.col.action">การทำงาน</th>
+                </tr>
+              </thead>
+              <tbody id="schedule-history-rows">
+                <tr><td class="empty" colspan="6" data-i18n="schedule.history.empty">ยังไม่มีบิลที่ออกในรอบนี้</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal hidden" id="receipt-preview-modal" role="dialog" aria-modal="true">
       <div class="modal-content receipt-preview">
         <div class="modal-header">

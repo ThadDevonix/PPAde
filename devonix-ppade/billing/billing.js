@@ -14,6 +14,10 @@ const receiptPreviewMonth = document.getElementById("receipt-preview-month");
 const receiptPreviewDownload = document.getElementById(
   "receipt-preview-download"
 );
+const scheduleHistoryModal = document.getElementById("schedule-history-modal");
+const scheduleHistoryClose = document.getElementById("schedule-history-close");
+const scheduleHistoryRows = document.getElementById("schedule-history-rows");
+const scheduleHistorySubtitle = document.getElementById("schedule-history-subtitle");
 const billTotalCount = document.getElementById("bill-total-count");
 const billLastPeriod = document.getElementById("bill-last-period");
 const billLastAmount = document.getElementById("bill-last-amount");
@@ -146,12 +150,14 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
       const type = draft?.type === "calc" ? "calc" : "basic";
       const name = String(draft?.name || "").trim();
       const include = draft?.include !== false;
+      const showKwh = draft?.showKwh !== false;
       if (type === "calc") {
         const operator = formulaOperators.includes(draft?.operator) ? draft.operator : "-";
         return {
           type,
           name,
           include,
+          showKwh,
           leftMeterKey: String(draft?.leftMeterKey || "").trim(),
           leftField: normalizeFormulaFieldKey(draft?.leftField),
           operator,
@@ -163,6 +169,7 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
         type,
         name,
         include,
+        showKwh,
         meterKey: String(draft?.meterKey || "").trim(),
         field: normalizeFormulaFieldKey(draft?.field)
       };
@@ -281,7 +288,16 @@ const renderFormulaColumnDraftBoxes = () => {
         renderFormulaColumnDraftBoxes();
       });
 
-      item.append(includeLabel, orderBadge, nameInput, meterSelect, fieldSelect);
+      const showKwhSelect = document.createElement("select");
+      showKwhSelect.className =
+        "formula-column-input formula-column-show-kwh-select";
+      showKwhSelect.innerHTML = `
+        <option value="yes">แสดง kWh</option>
+        <option value="no">ไม่แสดง kWh</option>
+      `;
+      showKwhSelect.value = draft?.showKwh === false ? "no" : "yes";
+
+      item.append(includeLabel, orderBadge, nameInput, meterSelect, fieldSelect, showKwhSelect);
     } else {
       const preferredLeftMeterKey = String(draft?.leftMeterKey || draft?.meterKey || "").trim();
       const preferredRightMeterKey = String(draft?.rightMeterKey || draft?.meterKey || "").trim();
@@ -397,6 +413,15 @@ const renderFormulaColumnDraftBoxes = () => {
         renderFormulaColumnDraftBoxes();
       });
 
+      const showKwhSelect = document.createElement("select");
+      showKwhSelect.className =
+        "formula-column-input formula-column-show-kwh-select";
+      showKwhSelect.innerHTML = `
+        <option value="yes">แสดง kWh</option>
+        <option value="no">ไม่แสดง kWh</option>
+      `;
+      showKwhSelect.value = draft?.showKwh === false ? "no" : "yes";
+
       item.append(
         includeLabel,
         orderBadge,
@@ -405,7 +430,8 @@ const renderFormulaColumnDraftBoxes = () => {
         leftFieldSelect,
         operatorSelect,
         rightMeterSelect,
-        rightFieldSelect
+        rightFieldSelect,
+        showKwhSelect
       );
     }
 
@@ -419,11 +445,13 @@ const syncFormulaColumnDraftValuesFromDom = () => {
     Array.from(formulaColumnsBoxes.querySelectorAll(".formula-column-item")).map(
     (item) => {
       const draftType = item.dataset.columnType === "calc" ? "calc" : "basic";
+      const showKwh = item.querySelector(".formula-column-show-kwh-select")?.value !== "no";
       if (draftType === "basic") {
         return {
           type: "basic",
           name: String(item.querySelector(".formula-column-name-input")?.value || ""),
           include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
+          showKwh,
           meterKey: String(item.querySelector(".formula-column-meter-basic-select")?.value || ""),
           field: String(item.querySelector(".formula-column-field-basic-select")?.value || "")
         };
@@ -432,6 +460,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
         type: "calc",
         name: String(item.querySelector(".formula-column-name-input")?.value || ""),
         include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
+        showKwh,
         leftMeterKey: String(item.querySelector(".formula-column-meter-left-select")?.value || ""),
         leftField: String(item.querySelector(".formula-column-field-left-select")?.value || ""),
         operator: String(item.querySelector(".formula-column-operator-select")?.value || "-"),
@@ -477,6 +506,7 @@ const addFormulaColumnDraftBox = () => {
     type: "basic",
     name: "",
     include: true,
+    showKwh: true,
     meterKey: getMeterKey(firstMeter),
     field: fieldKeys.length
       ? resolvePreferredFormulaField(fieldKeys, [defaultFormulaField])
@@ -504,6 +534,7 @@ const addFormulaCalcColumnDraftBox = () => {
     type: "calc",
     name: "",
     include: true,
+    showKwh: true,
     leftMeterKey: getMeterKey(firstMeter),
     leftField: leftFieldKeys.length
       ? resolvePreferredFormulaField(leftFieldKeys, [defaultFormulaField])
@@ -1739,97 +1770,119 @@ const closeModal = () => {
   resetFormulaColumnDraftBoxes();
   updateScheduleInfo(schedule.cutoffDay);
 };
-// === Per-meter live totalizer capture (auto bills only) ===
-const pickEnergyTotalFromPayload = (payload) => {
+// === Per-meter live reading capture (auto bills only) ===
+// Pulls IN/OUT from /api/energy?period=live (same as the meter page's
+// "Total kWh : Live ล่าสุด" box) and picks the channel that represents the
+// cumulative reading for the meter's device type.
+const extractInOutFromLivePayload = (payload) => {
   if (!payload || typeof payload !== "object") return null;
-  const totalKeys = [
-    "energy_total", "energyTotal", "total_energy", "totalEnergy",
-    "kwh_total", "kwhTotal", "total_kwh", "totalKwh",
-    "kwh", "energy", "total"
+  const inKeys = [
+    "solar_in", "solarIn", "value_in", "valueIn",
+    "energy_in", "energyIn", "solar_kw", "solarKw",
+    "solar", "pv", "pv_in", "pvIn"
   ];
+  const outKeys = [
+    "self_use", "selfUse", "value_out", "valueOut",
+    "energy_out", "energyOut", "grid_import", "gridImport",
+    "egat", "utility", "utility_in", "utilityIn",
+    "mdb_in", "mdbIn", "consumption"
+  ];
+  let bestIn = null;
+  let bestOut = null;
   const queue = [payload];
-  let best = null;
   while (queue.length) {
     const node = queue.shift();
     if (!node || typeof node !== "object") continue;
     if (Array.isArray(node)) { queue.push(...node); continue; }
-    for (const key of totalKeys) {
+    for (const key of inKeys) {
       if (key in node) {
         const num = parseNumber(node[key]);
-        if (Number.isFinite(num) && num > 0) {
-          if (best === null || num > best) best = num;
+        if (Number.isFinite(num) && num > 0 && (bestIn === null || num > bestIn)) {
+          bestIn = num;
+        }
+      }
+    }
+    for (const key of outKeys) {
+      if (key in node) {
+        const num = parseNumber(node[key]);
+        if (Number.isFinite(num) && num > 0 && (bestOut === null || num > bestOut)) {
+          bestOut = num;
         }
       }
     }
     Object.values(node).forEach((v) => { if (v && typeof v === "object") queue.push(v); });
   }
-  return best;
+  if (bestIn === null && bestOut === null) return null;
+  return { in: bestIn, out: bestOut };
 };
-const fetchMeterLiveTotalKwh = async (meter) => {
+const pickReadingForMeterType = (inOut, meter) => {
+  if (!inOut) return null;
+  const type = String(meter?.deviceType || "METER").toUpperCase();
+  // MDB_OUT measures export (เช่น Fed to Grid) — ใช้ค่า OUT เป็นเลขมิเตอร์สะสม
+  if (type === "MDB_OUT") {
+    return inOut.out !== null ? inOut.out : inOut.in;
+  }
+  // SOLAR_PANEL / METER / MDB_IN / default → ใช้ค่า IN
+  return inOut.in !== null ? inOut.in : inOut.out;
+};
+const fetchMeterLiveReading = async (meter) => {
   const meterId = Number(meter?.id);
   const siteId = Number(plant?.apiId);
   if (!Number.isFinite(meterId) || meterId <= 0) return null;
   if (!Number.isFinite(siteId) || siteId <= 0) return null;
-  const tryUrl = async (url) => {
-    try {
-      const res = await fetch(url, { credentials: "same-origin" });
-      if (!res.ok) return null;
-      const data = await res.json().catch(() => null);
-      const total = pickEnergyTotalFromPayload(data);
-      return Number.isFinite(total) ? total : null;
-    } catch {
-      return null;
-    }
-  };
   const candidates = [
-    `/api/device-energy?site_id=${siteId}&device_id=${meterId}&period=live`,
-    `/api/device-energy?site_id=${siteId}&period=live&device_id=${meterId}`,
-    `/api/device-energy?period=live&device_id=${meterId}`
+    `/api/energy?site_id=${siteId}&device_id=${meterId}&period=live`,
+    `/api/energy?site_id=${siteId}&period=live&device_id=${meterId}`,
+    `/api/energy?period=live&device_id=${meterId}`
   ];
   for (const url of candidates) {
-    const value = await tryUrl(url);
-    if (value !== null) return value;
+    try {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => null);
+      const inOut = extractInOutFromLivePayload(data);
+      const value = pickReadingForMeterType(inOut, meter);
+      if (Number.isFinite(value) && value > 0) return value;
+    } catch {
+      // try next candidate
+    }
   }
   return null;
 };
-const lookupPreviousMeterAfter = (plantApiId, plantSiteCode, meterKey, beforeDate) => {
-  if (!Array.isArray(history) || !meterKey) return null;
-  const plantKeyA = String(plantApiId ?? "").trim();
-  const plantKeyB = String(plantSiteCode ?? "").trim();
-  let best = null;
-  let bestEnd = "";
-  history.forEach((prev) => {
-    if (!prev?.auto) return;
-    const readings = prev?.meterReadings;
-    if (!readings || typeof readings !== "object") return;
-    const entry = readings[meterKey];
-    const after = Number(entry?.after);
-    if (!Number.isFinite(after)) return;
-    const prevA = String(prev?.plantApiId ?? "").trim();
-    const prevB = String(prev?.plantSiteCode ?? "").trim();
-    if (plantKeyA && prevA && plantKeyA !== prevA) return;
-    if (!plantKeyA && plantKeyB && prevB && plantKeyB !== prevB) return;
-    const prevEnd = String(prev?.periodEnd || "");
-    if (!prevEnd) return;
-    if (beforeDate && prevEnd >= beforeDate) return;
-    if (prevEnd > bestEnd) {
-      bestEnd = prevEnd;
-      best = after;
-    }
-  });
-  return best;
+// A snapshot is only trustworthy if it was captured at (or within 1 day of)
+// the period start it claims to represent. Otherwise it's a mid-period reading
+// mislabelled with the period start — we'd rather show empty than wrong.
+const isOpeningSnapshotTrustworthy = (snap) => {
+  if (!snap || !snap.capturedFor) return false;
+  const periodStart = parseDateInput(snap.capturedFor);
+  if (!periodStart) return false;
+  const capturedAt = Number(snap.capturedAt);
+  if (!Number.isFinite(capturedAt) || capturedAt <= 0) return false;
+  const daysLate = Math.floor(
+    (capturedAt - periodStart.getTime()) / (24 * 3600 * 1000)
+  );
+  return daysLate <= 1;
 };
-const captureMeterReadingsForBill = async (meters, periodStart) => {
+const captureMeterReadingsForBill = async (meters, periodStart, autoConfig = null) => {
   const result = {};
   if (!Array.isArray(meters) || !meters.length) return result;
-  const plantApiId = plant?.apiId;
-  const plantSiteCode = plant?.siteCode;
+  const openingMap =
+    autoConfig?.openingReadings && typeof autoConfig.openingReadings === "object"
+      ? autoConfig.openingReadings
+      : {};
   await Promise.all(
     meters.map(async (meter) => {
       const key = getMeterKey(meter);
       if (!key) return;
-      const after = await fetchMeterLiveTotalKwh(meter);
-      const before = lookupPreviousMeterAfter(plantApiId, plantSiteCode, key, periodStart);
+      const after = await fetchMeterLiveReading(meter);
+      // BEFORE: only use snapshot captured at/very near periodStart.
+      //         If we don't have a trustworthy opening, leave it null —
+      //         we'd rather show empty than a misleading value.
+      let before = null;
+      const snap = openingMap[key];
+      if (snap && snap.capturedFor === periodStart && isOpeningSnapshotTrustworthy(snap)) {
+        before = Number(snap.value);
+      }
       if (after === null && before === null) return;
       result[key] = {
         before: Number.isFinite(before) ? roundTo(before, 1) : null,
@@ -1839,6 +1892,56 @@ const captureMeterReadingsForBill = async (meters, periodStart) => {
     })
   );
   return result;
+};
+// Capture each meter's cumulative reading as the OPENING of the currently-running
+// period. We only capture on the actual periodStart day — capturing any later
+// would store a mid-period reading mislabelled as the opening. Missed periods
+// stay null (BEFORE shows empty in the bill) until the next period rolls around.
+const captureOpeningReadingsIfNeeded = async (autoConfig, meters) => {
+  if (!autoConfig || !Array.isArray(meters) || !meters.length) return false;
+  const cutoffDay = Number(autoConfig.cutoffDay);
+  if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return false;
+  const roundInfo = getScheduleRoundInfo(cutoffDay);
+  const target = roundInfo?.currentPeriod?.startStr;
+  if (!target) return false;
+  // Strict: only capture on the exact periodStart day. Any later capture would
+  // record a stale value (BEFORE = AFTER bug). Better to leave it empty.
+  const todayStr = formatDate(new Date());
+  if (todayStr !== target) return false;
+  const existing =
+    autoConfig.openingReadings && typeof autoConfig.openingReadings === "object"
+      ? { ...autoConfig.openingReadings }
+      : {};
+  const captures = await Promise.all(
+    meters.map(async (meter) => {
+      const key = getMeterKey(meter);
+      if (!key) return null;
+      const prev = existing[key];
+      if (prev && prev.capturedFor === target && Number.isFinite(Number(prev.value))) {
+        return null; // already captured for this round
+      }
+      const value = await fetchMeterLiveReading(meter);
+      if (!Number.isFinite(value)) return null;
+      return {
+        key,
+        snap: {
+          value: roundTo(value, 1),
+          capturedFor: target,
+          capturedAt: Date.now()
+        }
+      };
+    })
+  );
+  let dirty = false;
+  captures.forEach((entry) => {
+    if (!entry) return;
+    existing[entry.key] = entry.snap;
+    dirty = true;
+  });
+  if (!dirty) return false;
+  autoConfig.openingReadings = existing;
+  saveSchedule();
+  return true;
 };
 const getMeterReadingForRender = (bill, meter) => {
   const key = getMeterKey(meter);
@@ -1933,6 +2036,7 @@ const buildReceiptHtml = ({
         header,
         title: expression,
         include: draft.include !== false,
+        showKwh: draft.showKwh !== false,
         operator: draft.operator,
         leftTerm,
         rightTerm
@@ -1946,6 +2050,7 @@ const buildReceiptHtml = ({
       header,
       title: fallbackTitle,
       include: draft.include !== false,
+      showKwh: draft.showKwh !== false,
       term
     };
   });
@@ -2182,54 +2287,56 @@ const buildReceiptHtml = ({
   const startDateLabel = bill?.periodStart ? formatThaiDateShort(bill.periodStart) : "—";
   const endDateLabel = bill?.periodEnd ? formatThaiDateShort(bill.periodEnd) : "—";
   const isAutoBill = Boolean(bill?.auto);
-  const meterReadingsCards = isAutoBill
-    ? meterPool
-        .map((meter) => ({ meter, reading: getMeterReadingForRender(bill, meter) }))
-        .filter((entry) => entry.reading)
-    : [];
+  const meterReadingRows = (() => {
+    if (!isAutoBill) return [];
+    // ชื่อแถวจาก formula columns ที่ user ตั้งไว้ตอนสร้างบิล
+    const fromDrafts = formulaColumnDefs
+      .filter((col) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
+      .map((col) => {
+        const meter = meterPool.find((m) => getMeterKey(m) === col.term.meterKey) || null;
+        const reading = meter ? getMeterReadingForRender(bill, meter) : null;
+        return { label: col.header || getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, ""), reading };
+      })
+      .filter((entry) => entry.reading);
+    if (fromDrafts.length) return fromDrafts;
+    // Fallback: ใช้ชื่อมิเตอร์ดิบเมื่อไม่มี draft columns
+    return meterPool
+      .map((meter) => ({
+        label: getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, ""),
+        reading: getMeterReadingForRender(bill, meter)
+      }))
+      .filter((entry) => entry.reading);
+  })();
   const fmtReading = (val) =>
     val === null || val === undefined ? `<span class="reading-empty">—</span>` : formatNumber(val, 1);
-  const meterReadingsHtml = meterReadingsCards.length
+  const periodStartIso = bill?.periodStart || "";
+  const periodEndIso = bill?.periodEnd || "";
+  const meterReadingsHtml = meterReadingRows.length
     ? `
-      <div class="receipt-meter-readings" aria-label="ค่ามิเตอร์ก่อน-หลังตามมิเตอร์ที่เลือก">
-        <div class="receipt-section-title">
-          <span>สรุปค่ามิเตอร์ตามที่เลือก</span>
-          <span class="receipt-section-meta">${meterReadingsCards.length} มิเตอร์</span>
-        </div>
-        <div class="meter-readings-grid">
-          ${meterReadingsCards
-            .map(({ meter, reading }) => {
-              const meterLabel = getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, "");
-              const meterSn = (() => {
-                const match = getMeterLabel(meter).match(/\(SN:\s*([^)]+)\)/);
-                return match ? match[1].trim() : "";
-              })();
-              return `
-                <div class="meter-reading-card">
-                  <div class="meter-reading-head">
-                    <div class="meter-reading-name" title="${escapeHtml(meterLabel)}">${escapeHtml(meterLabel)}</div>
-                    ${meterSn ? `<div class="meter-reading-sn">SN: ${escapeHtml(meterSn)}</div>` : ""}
-                  </div>
-                  <table class="meter-reading-table">
-                    <tbody>
-                      <tr>
-                        <td class="lbl">ก่อน <span class="dt">${escapeHtml(startDateLabel)}</span></td>
-                        <td class="val">${fmtReading(reading.before)}</td>
-                      </tr>
-                      <tr>
-                        <td class="lbl">หลัง <span class="dt">${escapeHtml(endDateLabel)}</span></td>
-                        <td class="val">${fmtReading(reading.after)}</td>
-                      </tr>
-                      <tr class="diff-row">
-                        <td class="lbl">ใช้ในงวดนี้</td>
-                        <td class="val">${fmtReading(reading.diff)}<span class="unit"> kWh</span></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>`;
-            })
-            .join("")}
-        </div>
+      <div class="receipt-meter-readings" aria-label="ประวัติการใช้ไฟฟ้า">
+        <table class="meter-readings-history">
+          <thead>
+            <tr>
+              <th rowspan="2" class="usage-col">ประวัติการใช้ไฟฟ้า (Usage History)</th>
+              <th class="reading-col">อ่านหน่วยครั้งก่อน</th>
+              <th class="reading-col">อ่านหน่วย</th>
+            </tr>
+            <tr>
+              <th class="reading-col date-row">${escapeHtml(periodStartIso)}</th>
+              <th class="reading-col date-row">${escapeHtml(periodEndIso)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meterReadingRows
+              .map(({ label, reading }) => `
+                  <tr>
+                    <td class="usage-col">${escapeHtml(label)} (kWh)</td>
+                    <td class="reading-col">${fmtReading(reading.before)}</td>
+                    <td class="reading-col">${fmtReading(reading.after)}</td>
+                  </tr>`)
+              .join("")}
+          </tbody>
+        </table>
       </div>
     `
     : "";
@@ -2249,9 +2356,6 @@ const buildReceiptHtml = ({
           ${periodMetaHtml}
         </div>
       </div>
-      ${pageIndex === 0 ? meterReadingsHtml : ""}
-      <div class="receipt-divider"></div>
-      ${weekendLegendHtml}
       <div class="receipt-table-area">
         <table class="receipt-table receipt-usage-table">
           ${colgroupHtml}
@@ -2269,6 +2373,7 @@ const buildReceiptHtml = ({
           </tbody>
         </table>
       </div>
+      ${pageIndex === pageCount - 1 ? meterReadingsHtml : ""}
       ${pageIndex === pageCount - 1 ? summaryHtml : ""}
       <div class="receipt-power-note">Powered By Devonix</div>
     </div>
@@ -2898,6 +3003,7 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
         : fallbackFields.calcLabel,
     formulaColumns: sanitizeFormulaColumnDrafts(raw?.formulaColumns || fallbackFields.formulaColumns),
     detailColumns: normalizeDetailColumns(raw?.detailColumns),
+    openingReadings: sanitizeOpeningReadings(raw?.openingReadings ?? fallback?.openingReadings),
     updatedAt,
     updatedById: readText(raw?.updatedById, raw?.createdById, fallbackFields.updatedById),
     updatedByName: readText(raw?.updatedByName, raw?.createdByName, fallbackFields.updatedByName),
@@ -2907,6 +3013,23 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
       fallbackFields.updatedByEmail
     )
   };
+};
+const sanitizeOpeningReadings = (raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const result = {};
+  Object.entries(raw).forEach(([key, entry]) => {
+    if (!key || !entry || typeof entry !== "object") return;
+    const value = Number(entry.value);
+    const capturedFor = String(entry.capturedFor || "").trim();
+    if (!Number.isFinite(value) || !capturedFor) return;
+    const capturedAt = Number(entry.capturedAt);
+    result[String(key)] = {
+      value: roundTo(value, 1),
+      capturedFor,
+      capturedAt: Number.isFinite(capturedAt) ? capturedAt : Date.now()
+    };
+  });
+  return result;
 };
 const getAutoSchedules = () =>
   Array.isArray(schedule?.autoSchedules) ? schedule.autoSchedules : [];
@@ -4038,7 +4161,11 @@ const triggerPendingAutoBill = async (cutoff, startStr, endStr) => {
     const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
     const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
     const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
-    const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr).catch(() => ({}));
+    const capturedReadings = await captureMeterReadingsForBill(
+      selectedMeters,
+      startStr,
+      autoConfig
+    ).catch(() => ({}));
     createBill({
       periodStart: startStr,
       periodEnd: endStr,
@@ -4101,6 +4228,66 @@ const getScheduleRoundInfo = (cutoffDay) => {
   const currentStarted = todayStr >= currentPeriod.startStr;
   return { currentPeriod, currentStarted, pendingBill };
 };
+const renderScheduleHistoryModal = (cutoffDay) => {
+  if (!scheduleHistoryRows) return;
+  const bills = history
+    .filter((b) => Boolean(b?.auto) && Number(b?.cutoffDay) === cutoffDay)
+    .slice()
+    .sort((a, b) => {
+      const aKey = a.periodEnd || a.periodStart || "";
+      const bKey = b.periodEnd || b.periodStart || "";
+      return bKey.localeCompare(aKey);
+    });
+  if (scheduleHistorySubtitle) {
+    scheduleHistorySubtitle.textContent = `ตัดรอบวันที่ ${cutoffDay} • ${bills.length} ใบ`;
+  }
+  if (!bills.length) {
+    scheduleHistoryRows.innerHTML =
+      `<tr><td class="empty" colspan="6">ยังไม่มีบิลที่ออกในรอบนี้</td></tr>`;
+    return;
+  }
+  scheduleHistoryRows.innerHTML = bills.map((bill) => {
+    const totals = getBillDisplayTotals(bill);
+    const manualIssueDate = getManualIssueDate(bill);
+    const issueDateStr = manualIssueDate
+      ? formatDate(manualIssueDate)
+      : bill.periodEnd || bill.periodStart || "";
+    const periodRangeText = formatThaiPeriodRange(bill.periodStart, bill.periodEnd);
+    const periodIsoTitle = `${bill.periodStart || "?"} – ${bill.periodEnd || "?"}`;
+    return `
+      <tr data-id="${bill.id}">
+        <td>ใบที่ ${bill.billNo}</td>
+        <td><span title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span></td>
+        <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
+        <td>${formatNumber(totals.totalKwh, 1)}</td>
+        <td>${formatCurrency(totals.amount)}</td>
+        <td>
+          <div class="history-actions">
+            <button class="ghost small-btn" data-action="schedule-history-preview" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดูตัวอย่าง</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join("");
+  scheduleHistoryRows.querySelectorAll("button[data-action='schedule-history-preview']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      const bill = history.find((b) => b.id === id);
+      if (!bill) return;
+      const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
+      if (!issueDate) return;
+      openReceiptPreview({ bill, issueDate });
+    });
+  });
+};
+const openScheduleHistoryModal = (cutoffDay) => {
+  if (!scheduleHistoryModal) return;
+  renderScheduleHistoryModal(cutoffDay);
+  scheduleHistoryModal.classList.remove("hidden");
+};
+const closeScheduleHistoryModal = () => {
+  scheduleHistoryModal?.classList.add("hidden");
+};
 const renderAutoQueue = () => {
   if (!billQueueRows) return;
   const autoSchedules = getAutoSchedules()
@@ -4146,6 +4333,12 @@ const renderAutoQueue = () => {
       if (currentStarted) {
         actionBtns = `<button class="ghost small-btn" data-action="upcoming-partial-preview" data-start="${currentPeriod.startStr}" data-end="${currentPeriod.endStr}" data-cutoff="${cutoffDay}" type="button">ดูตัวอย่างปัจจุบัน</button>`;
       }
+      const historyBtn = `<button class="small-btn meter-row-edit auto-queue-history-btn" data-action="schedule-history" data-cutoff="${cutoffDay}" type="button" aria-label="ดูประวัติบิลรอบนี้" title="ดูประวัติบิลรอบนี้">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>`;
       const menuItems = [];
       if (canManageAutoBilling()) {
         menuItems.push(
@@ -4171,6 +4364,7 @@ const renderAutoQueue = () => {
           <td>
             <div class="history-actions auto-queue-actions">
               ${actionBtns}
+              ${historyBtn}
               ${menuHtml}
             </div>
           </td>
@@ -4205,6 +4399,15 @@ const renderAutoQueue = () => {
         const cutoffDay = Number(btn.getAttribute("data-cutoff"));
         if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return;
         deleteAutoSchedule(cutoffDay);
+      });
+    });
+    billQueueRows.querySelectorAll("button[data-action='schedule-history']").forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeAutoQueueActionMenus();
+        const cutoffDay = Number(btn.getAttribute("data-cutoff"));
+        if (!Number.isFinite(cutoffDay) || cutoffDay < 1) return;
+        openScheduleHistoryModal(cutoffDay);
       });
     });
     billQueueRows.querySelectorAll("button[data-action='upcoming-preview']").forEach((btn) => {
@@ -4246,7 +4449,7 @@ const renderAutoQueue = () => {
           const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
           const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
           const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
-          const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr);
+          const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr, autoConfig);
           createBill({
             periodStart: startStr, periodEnd: endStr, meters: selectedMeters,
             rate: autoConfig.defaultRate, rateType: autoConfig.rateType,
@@ -4277,7 +4480,7 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr);
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
           const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
           const issueDate = parseDateInput(endStr);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
@@ -4302,7 +4505,7 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr);
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
           const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
           const issueDate = parseDateInput(effectiveEnd);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
@@ -4943,56 +5146,74 @@ const deleteAutoSchedule = (cutoffDay, options = {}) => {
   }
 };
 
+const resolveAutoConfigMeters = (autoConfig) => {
+  const calcFormula = getFormulaForContext(
+    autoConfig?.calcFormula,
+    autoConfig?.calcMethod,
+    meterProfiles
+  );
+  const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
+  const formulaColumnMeters = getMetersFromFormulaColumns(
+    autoConfig?.formulaColumns || [],
+    meterProfiles
+  );
+  return {
+    calcFormula,
+    selectedMeters: mergeMetersByKey(formulaMeters, formulaColumnMeters)
+  };
+};
 const runAutoIfDue = async () => {
   const autoSchedules = getAutoSchedules();
   if (!autoSchedules.length) return;
   for (const autoConfig of autoSchedules) {
     const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
+    const { calcFormula, selectedMeters } = resolveAutoConfigMeters(autoConfig);
+    // 1) Create the bill FIRST — it consumes the opening captured at the
+    //    previous period's start (which is still in openingReadings).
     const runContext = getAutoRunContextForCurrentMonth(cutoffDay);
-    if (!runContext?.shouldRunNow) continue;
-    const runDate = runContext.runDate;
-    const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
-    const startStr = formatDate(start);
-    const endStr = formatDate(end);
-    const alreadyGenerated = history.some(
-      (b) =>
-        Boolean(b?.auto) &&
-        Number(b?.cutoffDay) === cutoffDay &&
-        b.periodStart === startStr &&
-        b.periodEnd === endStr
-    );
-    if (alreadyGenerated) continue;
-    const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
-    if (!rows.length) continue;
-    const calcFormula = getFormulaForContext(
-      autoConfig.calcFormula,
-      autoConfig.calcMethod,
-      meterProfiles
-    );
-    const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
-    const formulaColumnMeters = getMetersFromFormulaColumns(
-      autoConfig.formulaColumns || [],
-      meterProfiles
-    );
-    const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
-    const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr);
-    createBill({
-      periodStart: startStr,
-      periodEnd: endStr,
-      meters: selectedMeters,
-      rate: autoConfig.defaultRate,
-      rateType: autoConfig.rateType,
-      calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
-      calcFormula,
-      calcLabel: autoConfig.calcLabel || defaultCalcLabel,
-      formulaColumns: autoConfig.formulaColumns || [],
-      cutoffDay,
-      detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
-      auto: true,
-      source,
-      dailyRows: rows,
-      meterReadings: capturedReadings
-    });
+    if (runContext?.shouldRunNow) {
+      const runDate = runContext.runDate;
+      const { start, end } = getAutoPeriodForRunDate(runDate, cutoffDay);
+      const startStr = formatDate(start);
+      const endStr = formatDate(end);
+      const alreadyGenerated = history.some(
+        (b) =>
+          Boolean(b?.auto) &&
+          Number(b?.cutoffDay) === cutoffDay &&
+          b.periodStart === startStr &&
+          b.periodEnd === endStr
+      );
+      if (!alreadyGenerated) {
+        const { rows, source } = await getDailyEnergyForRange(startStr, endStr);
+        if (rows.length) {
+          const capturedReadings = await captureMeterReadingsForBill(
+            selectedMeters,
+            startStr,
+            autoConfig
+          );
+          createBill({
+            periodStart: startStr,
+            periodEnd: endStr,
+            meters: selectedMeters,
+            rate: autoConfig.defaultRate,
+            rateType: autoConfig.rateType,
+            calcMethod: autoConfig.calcMethod || defaultSchedule.calcMethod,
+            calcFormula,
+            calcLabel: autoConfig.calcLabel || defaultCalcLabel,
+            formulaColumns: autoConfig.formulaColumns || [],
+            cutoffDay,
+            detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+            auto: true,
+            source,
+            dailyRows: rows,
+            meterReadings: capturedReadings
+          });
+        }
+      }
+    }
+    // 2) THEN capture the opening for the new running period (overwrites the
+    //    just-consumed slot). Strict: only fires on the exact periodStart day.
+    await captureOpeningReadingsIfNeeded(autoConfig, selectedMeters).catch(() => false);
   }
 };
 
@@ -5327,6 +5548,10 @@ columnsClearBtn?.addEventListener("click", () => {
 receiptPreviewClose?.addEventListener("click", closeReceiptPreview);
 receiptPreviewModal?.addEventListener("click", (e) => {
   if (e.target === receiptPreviewModal) closeReceiptPreview();
+});
+scheduleHistoryClose?.addEventListener("click", closeScheduleHistoryModal);
+scheduleHistoryModal?.addEventListener("click", (e) => {
+  if (e.target === scheduleHistoryModal) closeScheduleHistoryModal();
 });
 receiptPreviewDownload?.addEventListener("click", () => {
   openReceiptPrint();
