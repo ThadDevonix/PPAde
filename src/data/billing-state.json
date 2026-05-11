@@ -65,7 +65,13 @@
               "energy_out",
               "bill_units"
             ],
-            "openingReadings": {},
+            "openingReadings": {
+              "8": {
+                "value": 350443.2,
+                "capturedFor": "2026-05-11",
+                "capturedAt": 1778469444167
+              }
+            },
             "updatedAt": 1778412980862,
             "updatedById": "1",
             "updatedByName": "System Administrator",
@@ -17117,6 +17123,30 @@
       ],
       "auditLog": [
         {
+          "id": "log_mp0msee6_iyh7nr",
+          "at": "2026-05-11T03:17:25.086Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_updated",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 10,
+            "defaultRate": 5,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
           "id": "log_mozp8uv8_pebb5p",
           "at": "2026-05-10T11:38:25.988Z",
           "actor": {
@@ -17923,7 +17953,7 @@
         }
       ],
       "billSequence": 24,
-      "updatedAt": "2026-05-10T11:38:26.000Z"
+      "updatedAt": "2026-05-11T03:17:25.098Z"
     }
   }
 }

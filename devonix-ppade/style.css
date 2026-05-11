@@ -1042,25 +1042,43 @@ tbody tr.selected {
   }
   body.pdf-view {
     margin: 0;
-    padding: 2.5mm 4.5mm 4mm;
+    padding: 0;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   body.pdf-view .receipt-paper {
-    width: auto;
-    height: auto;
-    min-height: 286mm;
-    margin: 0 auto 3mm;
-    padding: 4.5mm 7.5mm 6mm;
+    width: 210mm;
+    height: 297mm;
+    max-height: 297mm;
+    margin: 0;
+    padding: 6mm 8mm;
+    border: 0;
     border-radius: 0;
     box-shadow: none;
-    border: 1px solid #d8e4f6;
-    overflow: visible;
+    overflow: hidden;
     break-inside: avoid-page;
     page-break-inside: avoid;
+    /* Tighter tokens for print so all content fits on a single A4 sheet */
+    gap: 6px;
+    --fs-title:    16px;
+    --fs-emphasis: 13px;
+    --fs-body:     11px;
+    --fs-label:    10px;
+    --fs-eyebrow:  9px;
+    --row-h:       16px;
+    --table-font:  11px;
   }
+  body.pdf-view .receipt-meta .box { padding: 6px 10px; }
+  body.pdf-view .receipt-meta .box strong { margin-bottom: 4px; }
+  body.pdf-view .receipt-meta .box .meta-line { padding: 2px 0; }
+  body.pdf-view .receipt-table th,
+  body.pdf-view .receipt-table td { padding: 2px 6px; }
+  body.pdf-view .receipt-meter-readings .meter-readings-history th,
+  body.pdf-view .receipt-meter-readings .meter-readings-history td { padding: 3px 8px; }
+  body.pdf-view .receipt-summary .box { padding: 8px 12px; }
+  body.pdf-view .receipt-summary .row.total { margin-top: 6px; padding-top: 6px; }
   body.pdf-view .receipt-table-area {
-    overflow: visible;
+    overflow: hidden;
   }
   .page-break {
     height: 0;
