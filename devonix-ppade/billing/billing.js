@@ -413,15 +413,6 @@ const renderFormulaColumnDraftBoxes = () => {
         renderFormulaColumnDraftBoxes();
       });
 
-      const showKwhSelect = document.createElement("select");
-      showKwhSelect.className =
-        "formula-column-input formula-column-show-kwh-select";
-      showKwhSelect.innerHTML = `
-        <option value="yes">แสดง kWh</option>
-        <option value="no">ไม่แสดง kWh</option>
-      `;
-      showKwhSelect.value = draft?.showKwh === false ? "no" : "yes";
-
       item.append(
         includeLabel,
         orderBadge,
@@ -430,8 +421,7 @@ const renderFormulaColumnDraftBoxes = () => {
         leftFieldSelect,
         operatorSelect,
         rightMeterSelect,
-        rightFieldSelect,
-        showKwhSelect
+        rightFieldSelect
       );
     }
 
@@ -445,8 +435,8 @@ const syncFormulaColumnDraftValuesFromDom = () => {
     Array.from(formulaColumnsBoxes.querySelectorAll(".formula-column-item")).map(
     (item) => {
       const draftType = item.dataset.columnType === "calc" ? "calc" : "basic";
-      const showKwh = item.querySelector(".formula-column-show-kwh-select")?.value !== "no";
       if (draftType === "basic") {
+        const showKwh = item.querySelector(".formula-column-show-kwh-select")?.value !== "no";
         return {
           type: "basic",
           name: String(item.querySelector(".formula-column-name-input")?.value || ""),
@@ -460,7 +450,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
         type: "calc",
         name: String(item.querySelector(".formula-column-name-input")?.value || ""),
         include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
-        showKwh,
+        showKwh: false,
         leftMeterKey: String(item.querySelector(".formula-column-meter-left-select")?.value || ""),
         leftField: String(item.querySelector(".formula-column-field-left-select")?.value || ""),
         operator: String(item.querySelector(".formula-column-operator-select")?.value || "-"),
@@ -506,7 +496,7 @@ const addFormulaColumnDraftBox = () => {
     type: "basic",
     name: "",
     include: true,
-    showKwh: true,
+    showKwh: false,
     meterKey: getMeterKey(firstMeter),
     field: fieldKeys.length
       ? resolvePreferredFormulaField(fieldKeys, [defaultFormulaField])
@@ -534,7 +524,7 @@ const addFormulaCalcColumnDraftBox = () => {
     type: "calc",
     name: "",
     include: true,
-    showKwh: true,
+    showKwh: false,
     leftMeterKey: getMeterKey(firstMeter),
     leftField: leftFieldKeys.length
       ? resolvePreferredFormulaField(leftFieldKeys, [defaultFormulaField])
@@ -1846,17 +1836,10 @@ const extractInOutForDevice = (payload, deviceId) => {
   if (bestIn === null && bestOut === null) return null;
   return { in: bestIn, out: bestOut };
 };
-const pickReadingForMeterType = (inOut, meter) => {
-  if (!inOut) return null;
-  const type = String(meter?.deviceType || "METER").toUpperCase();
-  // MDB_OUT measures export (เช่น Fed to Grid) — ใช้ค่า OUT เป็นเลขมิเตอร์สะสม
-  if (type === "MDB_OUT") {
-    return inOut.out !== null ? inOut.out : inOut.in;
-  }
-  // SOLAR_PANEL / METER / MDB_IN / default → ใช้ค่า IN
-  return inOut.in !== null ? inOut.in : inOut.out;
-};
-const fetchMeterLiveReading = async (meter) => {
+// Fetch the live IN/OUT pair for one meter. Returns { in, out } where either
+// (or both) may be null. Selection of which direction to USE is done later,
+// driven by the user-picked field in the formula column.
+const fetchMeterLiveReadings = async (meter) => {
   const meterId = Number(meter?.id);
   const siteId = Number(plant?.apiId);
   if (!Number.isFinite(meterId) || meterId <= 0) return null;
@@ -1872,14 +1855,17 @@ const fetchMeterLiveReading = async (meter) => {
       if (!res.ok) continue;
       const data = await res.json().catch(() => null);
       const inOut = extractInOutForDevice(data, meterId);
-      const value = pickReadingForMeterType(inOut, meter);
-      if (Number.isFinite(value) && value > 0) return value;
+      if (inOut && (Number.isFinite(inOut.in) || Number.isFinite(inOut.out))) {
+        return inOut;
+      }
     } catch {
       // try next candidate
     }
   }
   return null;
 };
+const directionFromField = (field) =>
+  String(field || "").toLowerCase() === "energy_out" ? "out" : "in";
 // A snapshot is only trustworthy if it was captured at (or within 1 day of)
 // the period start it claims to represent. Otherwise it's a mid-period reading
 // mislabelled with the period start — we'd rather show empty than wrong.
@@ -1901,33 +1887,41 @@ const captureMeterReadingsForBill = async (meters, periodStart, autoConfig = nul
     autoConfig?.openingReadings && typeof autoConfig.openingReadings === "object"
       ? autoConfig.openingReadings
       : {};
+  const roundOrNull = (v) => (Number.isFinite(Number(v)) ? roundTo(Number(v), 1) : null);
   await Promise.all(
     meters.map(async (meter) => {
       const key = getMeterKey(meter);
       if (!key) return;
-      const after = await fetchMeterLiveReading(meter);
-      // BEFORE: only use snapshot captured at/very near periodStart.
-      //         If we don't have a trustworthy opening, leave it null —
-      //         we'd rather show empty than a misleading value.
-      let before = null;
+      const afterPair = await fetchMeterLiveReadings(meter);
       const snap = openingMap[key];
-      if (snap && snap.capturedFor === periodStart && isOpeningSnapshotTrustworthy(snap)) {
-        before = Number(snap.value);
-      }
-      if (after === null && before === null) return;
+      const useSnap =
+        snap && snap.capturedFor === periodStart && isOpeningSnapshotTrustworthy(snap);
+      const before = {
+        in:  useSnap ? roundOrNull(snap.in)  : null,
+        out: useSnap ? roundOrNull(snap.out) : null
+      };
+      const after = {
+        in:  roundOrNull(afterPair?.in),
+        out: roundOrNull(afterPair?.out)
+      };
+      if (
+        before.in === null && before.out === null &&
+        after.in  === null && after.out  === null
+      ) return;
       result[key] = {
-        before: Number.isFinite(before) ? roundTo(before, 1) : null,
-        after: Number.isFinite(after) ? roundTo(after, 1) : null,
+        in:  { before: before.in,  after: after.in  },
+        out: { before: before.out, after: after.out },
         capturedAt: Date.now()
       };
     })
   );
   return result;
 };
-// Capture each meter's cumulative reading as the OPENING of the currently-running
-// period. We only capture on the actual periodStart day — capturing any later
-// would store a mid-period reading mislabelled as the opening. Missed periods
-// stay null (BEFORE shows empty in the bill) until the next period rolls around.
+// Capture each meter's cumulative reading (both IN and OUT channels) as the
+// OPENING of the currently-running period. We only capture on the actual
+// periodStart day — capturing any later would store a mid-period reading
+// mislabelled as the opening. Missed periods stay null (BEFORE shows empty
+// in the bill) until the next period rolls around.
 const captureOpeningReadingsIfNeeded = async (autoConfig, meters) => {
   if (!autoConfig || !Array.isArray(meters) || !meters.length) return false;
   const cutoffDay = Number(autoConfig.cutoffDay);
@@ -1948,15 +1942,19 @@ const captureOpeningReadingsIfNeeded = async (autoConfig, meters) => {
       const key = getMeterKey(meter);
       if (!key) return null;
       const prev = existing[key];
-      if (prev && prev.capturedFor === target && Number.isFinite(Number(prev.value))) {
+      if (prev && prev.capturedFor === target) {
         return null; // already captured for this round
       }
-      const value = await fetchMeterLiveReading(meter);
-      if (!Number.isFinite(value)) return null;
+      const pair = await fetchMeterLiveReadings(meter);
+      if (!pair) return null;
+      const inVal = Number(pair.in);
+      const outVal = Number(pair.out);
+      if (!Number.isFinite(inVal) && !Number.isFinite(outVal)) return null;
       return {
         key,
         snap: {
-          value: roundTo(value, 1),
+          in:  Number.isFinite(inVal)  ? roundTo(inVal,  1) : null,
+          out: Number.isFinite(outVal) ? roundTo(outVal, 1) : null,
           capturedFor: target,
           capturedAt: Date.now()
         }
@@ -1974,15 +1972,25 @@ const captureOpeningReadingsIfNeeded = async (autoConfig, meters) => {
   saveSchedule();
   return true;
 };
-const getMeterReadingForRender = (bill, meter) => {
+const getMeterReadingForRender = (bill, meter, field = "energy_in") => {
   const key = getMeterKey(meter);
   if (!key) return null;
   const readings = bill?.meterReadings;
   if (!readings || typeof readings !== "object") return null;
   const entry = readings[key];
   if (!entry) return null;
-  const before = Number.isFinite(Number(entry.before)) ? Number(entry.before) : null;
-  const after = Number.isFinite(Number(entry.after)) ? Number(entry.after) : null;
+  const direction = directionFromField(field);
+  // New format: entry = { in: {before, after}, out: {before, after} }
+  // Legacy format: entry = { before, after } — used by older saved bills.
+  let pair = null;
+  if (entry[direction] && typeof entry[direction] === "object") {
+    pair = entry[direction];
+  } else if ("before" in entry || "after" in entry) {
+    pair = { before: entry.before, after: entry.after };
+  }
+  if (!pair) return null;
+  const before = Number.isFinite(Number(pair.before)) ? Number(pair.before) : null;
+  const after = Number.isFinite(Number(pair.after)) ? Number(pair.after) : null;
   if (before === null && after === null) return null;
   const diff = before !== null && after !== null ? roundTo(after - before, 1) : null;
   return { before, after, diff };
@@ -2055,16 +2063,18 @@ const buildReceiptHtml = ({
     return roundTo(leftValue, 1);
   };
   const formulaColumnDefs = formulaColumnDrafts.map((draft, index) => {
+    const rawName = String(draft?.name || "").trim();
     if (draft.type === "calc") {
       const leftTerm = buildTerm(draft.leftMeterKey, draft.leftField);
       const rightTerm = buildTerm(draft.rightMeterKey, draft.rightField);
       const leftLabel = getTermHeaderLabel(leftTerm, "ค่าที่ใช้คำนวณ");
       const rightLabel = getTermHeaderLabel(rightTerm, "ค่าที่ใช้คำนวณ");
       const expression = `${leftLabel} ${draft.operator} ${rightLabel}`;
-      const header = draft.name || `คำนวณ ${index + 1}`;
+      const header = rawName || `คำนวณ ${index + 1}`;
       return {
         type: "calc",
         header,
+        rawName,
         title: expression,
         include: draft.include !== false,
         showKwh: draft.showKwh !== false,
@@ -2075,10 +2085,11 @@ const buildReceiptHtml = ({
     }
     const term = buildTerm(draft.meterKey, draft.field);
     const fallbackTitle = getTermHeaderLabel(term, "ค่าที่ใช้คำนวณ");
-    const header = draft.name || fallbackTitle;
+    const header = rawName || fallbackTitle;
     return {
       type: "basic",
       header,
+      rawName,
       title: fallbackTitle,
       include: draft.include !== false,
       showKwh: draft.showKwh !== false,
@@ -2321,22 +2332,16 @@ const buildReceiptHtml = ({
   const meterReadingRows = (() => {
     if (!isAutoBill) return [];
     // ชื่อแถวจาก formula columns ที่ user ตั้งไว้ตอนสร้างบิล
-    const fromDrafts = formulaColumnDefs
+    // แสดงเฉพาะ column ที่ user เพิ่ม + เปิด "แสดง kWh"
+    // Label = ชื่อที่พิมพ์ใน "ชื่อคอลัม" ตรงๆ (ไม่ fallback)
+    return formulaColumnDefs
       .filter((col) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
       .map((col) => {
         const meter = meterPool.find((m) => getMeterKey(m) === col.term.meterKey) || null;
-        const reading = meter ? getMeterReadingForRender(bill, meter) : null;
-        return { label: col.header || getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, ""), reading };
+        const reading = meter ? getMeterReadingForRender(bill, meter, col.term.field) : null;
+        return { label: col.rawName, reading };
       })
-      .filter((entry) => entry.reading);
-    if (fromDrafts.length) return fromDrafts;
-    // Fallback: ใช้ชื่อมิเตอร์ดิบเมื่อไม่มี draft columns
-    return meterPool
-      .map((meter) => ({
-        label: getMeterLabel(meter).replace(/\s*\(SN:[^)]+\)\s*$/, ""),
-        reading: getMeterReadingForRender(bill, meter)
-      }))
-      .filter((entry) => entry.reading);
+      .filter((entry) => entry.reading && entry.label);
   })();
   const fmtReading = (val) =>
     val === null || val === undefined ? `<span class="reading-empty">—</span>` : formatNumber(val, 1);
@@ -2348,7 +2353,7 @@ const buildReceiptHtml = ({
         <table class="meter-readings-history">
           <thead>
             <tr>
-              <th rowspan="2" class="usage-col">ประวัติการใช้ไฟฟ้า (Usage History)</th>
+              <th rowspan="2" class="usage-col">รายการ</th>
               <th class="reading-col">อ่านหน่วยครั้งก่อน</th>
               <th class="reading-col">อ่านหน่วย</th>
             </tr>
@@ -2604,6 +2609,8 @@ let history = [];
 let auditLog = [];
 let auditFilter = "all";
 let auditDateFilter = ""; // "" or "YYYY-MM-DD" (user-local date)
+let auditPage = 1;
+const AUDIT_PAGE_SIZE = 5;
 let billSequence = 0;
 let meterProfiles = [];
 const billingHistoryStoragePrefix = "billingHistoryV2";
@@ -3050,12 +3057,26 @@ const sanitizeOpeningReadings = (raw) => {
   const result = {};
   Object.entries(raw).forEach(([key, entry]) => {
     if (!key || !entry || typeof entry !== "object") return;
-    const value = Number(entry.value);
     const capturedFor = String(entry.capturedFor || "").trim();
-    if (!Number.isFinite(value) || !capturedFor) return;
+    if (!capturedFor) return;
     const capturedAt = Number(entry.capturedAt);
+    const inVal = Number(entry.in);
+    const outVal = Number(entry.out);
+    const legacyVal = Number(entry.value);
+    let snap = null;
+    if (Number.isFinite(inVal) || Number.isFinite(outVal)) {
+      snap = {
+        in:  Number.isFinite(inVal)  ? roundTo(inVal,  1) : null,
+        out: Number.isFinite(outVal) ? roundTo(outVal, 1) : null
+      };
+    } else if (Number.isFinite(legacyVal)) {
+      // Legacy single-value snapshot — assume it was the IN channel.
+      snap = { in: roundTo(legacyVal, 1), out: null };
+    } else {
+      return;
+    }
     result[String(key)] = {
-      value: roundTo(value, 1),
+      ...snap,
       capturedFor,
       capturedAt: Number.isFinite(capturedAt) ? capturedAt : Date.now()
     };
@@ -5818,6 +5839,35 @@ const formatAuditDateForEmpty = (iso) => {
   if (!Number.isFinite(d.getTime())) return iso;
   return formatThaiDateShort(d);
 };
+const computeAuditPageList = (current, total) => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const candidates = new Set([1, 2, current - 1, current, current + 1, total - 1, total]);
+  const pages = [...candidates].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  pages.forEach((p, i) => {
+    result.push(p);
+    if (i < pages.length - 1 && pages[i + 1] !== p + 1) result.push("...");
+  });
+  return result;
+};
+const buildAuditPaginationHtml = (current, total) => {
+  const pages = computeAuditPageList(current, total);
+  const inner = pages
+    .map((p) =>
+      p === "..."
+        ? `<span class="audit-page-ellipsis">…</span>`
+        : `<button class="audit-page-btn${p === current ? " active" : ""}" data-page="${p}" type="button"${p === current ? ' aria-current="page"' : ""}>${p}</button>`
+    )
+    .join("");
+  return `
+    <div class="audit-pagination">
+      <div class="audit-page-controls">
+        <button class="audit-page-btn audit-page-nav" data-page="${current - 1}" ${current <= 1 ? "disabled" : ""} type="button" aria-label="ก่อนหน้า">‹</button>
+        ${inner}
+        <button class="audit-page-btn audit-page-nav" data-page="${current + 1}" ${current >= total ? "disabled" : ""} type="button" aria-label="ถัดไป">›</button>
+      </div>
+    </div>`;
+};
 const renderAuditFeed = () => {
   const feed = document.getElementById("audit-feed");
   if (!feed) return;
@@ -5830,7 +5880,12 @@ const renderAuditFeed = () => {
     feed.innerHTML = `<p class="empty audit-empty">${escapeAuditHtml(msg)}</p>`;
     return;
   }
-  feed.innerHTML = entries
+  const totalPages = Math.max(1, Math.ceil(entries.length / AUDIT_PAGE_SIZE));
+  if (auditPage > totalPages) auditPage = totalPages;
+  if (auditPage < 1) auditPage = 1;
+  const start = (auditPage - 1) * AUDIT_PAGE_SIZE;
+  const pageEntries = entries.slice(start, start + AUDIT_PAGE_SIZE);
+  const entriesHtml = pageEntries
     .map((entry) => {
       const action = String(entry?.action || "");
       const tone = AUDIT_ACTION_TONES[action] || "update";
@@ -5865,6 +5920,19 @@ const renderAuditFeed = () => {
         </div>`;
     })
     .join("");
+  const paginationHtml = totalPages > 1 ? buildAuditPaginationHtml(auditPage, totalPages) : "";
+  feed.innerHTML = entriesHtml + paginationHtml;
+  feed.querySelectorAll(".audit-page-btn[data-page]").forEach((btn) => {
+    if (btn.disabled) return;
+    btn.addEventListener("click", () => {
+      const page = Number(btn.getAttribute("data-page"));
+      if (!Number.isFinite(page) || page < 1) return;
+      auditPage = page;
+      renderAuditFeed();
+      const panel = document.getElementById("audit-panel");
+      if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 };
 
 const fetchAuditLogFromApi = async () => {
@@ -5899,6 +5967,7 @@ document.querySelectorAll("#audit-filter .audit-filter-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     const value = btn.getAttribute("data-filter") || "all";
     auditFilter = value;
+    auditPage = 1;
     document.querySelectorAll("#audit-filter .audit-filter-btn").forEach((b) =>
       b.classList.toggle("active", b === btn)
     );
@@ -5920,11 +5989,13 @@ const updateAuditDateClearVisibility = () => {
 };
 auditDateInput?.addEventListener("change", (ev) => {
   auditDateFilter = ev.target.value || "";
+  auditPage = 1;
   updateAuditDateClearVisibility();
   renderAuditFeed();
 });
 auditDateClear?.addEventListener("click", () => {
   auditDateFilter = "";
+  auditPage = 1;
   if (auditDateInput) auditDateInput.value = "";
   updateAuditDateClearVisibility();
   renderAuditFeed();

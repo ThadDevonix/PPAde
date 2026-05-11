@@ -5,7 +5,7 @@
       "siteCode": "CNX_PPA",
       "siteName": "โรงเรียนเชียงใหม่คริสเตียน",
       "schedule": {
-        "cutoffDay": 30,
+        "cutoffDay": 5,
         "defaultRate": 2,
         "rateType": "flat",
         "calcMethod": "energy_out",
@@ -14,19 +14,27 @@
         "formulaColumns": [
           {
             "type": "basic",
-            "name": "C",
+            "name": "ห",
             "include": true,
             "showKwh": true,
-            "meterKey": "IN @W_10009425#5:43205 / @W_10009425#5:43206 | OUT @W_10009425#4:43209 / @W_10009425#4:43210",
+            "meterKey": "8",
             "field": "energy_in"
           },
           {
             "type": "basic",
-            "name": "D",
+            "name": "หฟ",
             "include": true,
             "showKwh": true,
-            "meterKey": "IN @W_10009425#6:43205 / @W_10009425#6:43206 | OUT @W_10009425#6:43209 / @W_10009425#6:43210",
+            "meterKey": "9",
             "field": "energy_in"
+          },
+          {
+            "type": "basic",
+            "name": "ฟฟห",
+            "include": true,
+            "showKwh": true,
+            "meterKey": "9",
+            "field": "energy_out"
           }
         ],
         "detailColumns": [
@@ -34,86 +42,7 @@
           "energy_out",
           "bill_units"
         ],
-        "autoSchedules": [
-          {
-            "cutoffDay": 10,
-            "defaultRate": 5,
-            "rateType": "flat",
-            "calcMethod": "energy_out",
-            "calcFormula": [],
-            "calcLabel": "ผลคำนวณ",
-            "formulaColumns": [
-              {
-                "type": "basic",
-                "name": "A",
-                "include": false,
-                "showKwh": true,
-                "meterKey": "IN @W_10009425#5:43205 / @W_10009425#5:43206 | OUT @W_10009425#4:43209 / @W_10009425#4:43210",
-                "field": "energy_in"
-              },
-              {
-                "type": "basic",
-                "name": "B",
-                "include": true,
-                "showKwh": true,
-                "meterKey": "IN @W_10009425#6:43205 / @W_10009425#6:43206 | OUT @W_10009425#6:43209 / @W_10009425#6:43210",
-                "field": "energy_in"
-              }
-            ],
-            "detailColumns": [
-              "energy_in",
-              "energy_out",
-              "bill_units"
-            ],
-            "openingReadings": {
-              "8": {
-                "value": 350443.2,
-                "capturedFor": "2026-05-11",
-                "capturedAt": 1778469444167
-              }
-            },
-            "updatedAt": 1778412980862,
-            "updatedById": "1",
-            "updatedByName": "System Administrator",
-            "updatedByEmail": "admin@vbox.local"
-          },
-          {
-            "cutoffDay": 30,
-            "defaultRate": 2,
-            "rateType": "flat",
-            "calcMethod": "energy_out",
-            "calcFormula": [],
-            "calcLabel": "ผลคำนวณ",
-            "formulaColumns": [
-              {
-                "type": "basic",
-                "name": "C",
-                "include": true,
-                "showKwh": true,
-                "meterKey": "IN @W_10009425#5:43205 / @W_10009425#5:43206 | OUT @W_10009425#4:43209 / @W_10009425#4:43210",
-                "field": "energy_in"
-              },
-              {
-                "type": "basic",
-                "name": "D",
-                "include": true,
-                "showKwh": true,
-                "meterKey": "IN @W_10009425#6:43205 / @W_10009425#6:43206 | OUT @W_10009425#6:43209 / @W_10009425#6:43210",
-                "field": "energy_in"
-              }
-            ],
-            "detailColumns": [
-              "energy_in",
-              "energy_out",
-              "bill_units"
-            ],
-            "openingReadings": {},
-            "updatedAt": 1778413093041,
-            "updatedById": "1",
-            "updatedByName": "System Administrator",
-            "updatedByEmail": "admin@vbox.local"
-          }
-        ],
+        "autoSchedules": [],
         "site_name": "โรงเรียนเชียงใหม่คริสเตียน",
         "bills": [
           {
@@ -17123,6 +17052,150 @@
       ],
       "auditLog": [
         {
+          "id": "log_mp1jkzks_olxrtr",
+          "at": "2026-05-11T18:35:26.620Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 30,
+            "defaultRate": 2,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mp1jkx3k_p6d2y9",
+          "at": "2026-05-11T18:35:23.408Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 10,
+            "defaultRate": 5,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mp1jkvdj_yqi0vg",
+          "at": "2026-05-11T18:35:21.175Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_updated",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 10,
+            "defaultRate": 5,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mp1jkvdj_8lh8yo",
+          "at": "2026-05-11T18:35:21.175Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 1,
+            "defaultRate": 2,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mp1ixmsy_570bdg",
+          "at": "2026-05-11T18:17:16.978Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_added",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 1,
+            "defaultRate": 2,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mp1ixmsy_8d439k",
+          "at": "2026-05-11T18:17:16.978Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_updated",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 10,
+            "defaultRate": 5,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
           "id": "log_mp0msee6_iyh7nr",
           "at": "2026-05-11T03:17:25.086Z",
           "actor": {
@@ -17953,7 +18026,7 @@
         }
       ],
       "billSequence": 24,
-      "updatedAt": "2026-05-11T03:17:25.098Z"
+      "updatedAt": "2026-05-11T18:35:26.633Z"
     }
   }
 }
