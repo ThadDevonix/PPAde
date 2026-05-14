@@ -43,6 +43,9 @@ const billStart = document.getElementById("bill-start");
 const billEnd = document.getElementById("bill-end");
 const billRateInput = document.getElementById("bill-rate");
 const billType = document.getElementById("bill-type");
+const billBankInput = document.getElementById("bill-bank");
+const billAccountNameInput = document.getElementById("bill-account-name");
+const billAccountNoInput = document.getElementById("bill-account-no");
 const calcModeSingleBtn = document.getElementById("calc-mode-single");
 const calcModeFormulaBtn = document.getElementById("calc-mode-formula");
 const calcModeResetBtn = document.getElementById("calc-mode-reset");
@@ -578,6 +581,20 @@ const thaiMonthShort = [
   "พ.ย.",
   "ธ.ค."
 ];
+const thaiMonthFull = [
+  "มกราคม",
+  "กุมภาพันธ์",
+  "มีนาคม",
+  "เมษายน",
+  "พฤษภาคม",
+  "มิถุนายน",
+  "กรกฎาคม",
+  "สิงหาคม",
+  "กันยายน",
+  "ตุลาคม",
+  "พฤศจิกายน",
+  "ธันวาคม"
+];
 const parseDateInput = (value) => {
   if (!value) return null;
   const [year, month, day] = value.split("-").map(Number);
@@ -587,7 +604,7 @@ const parseDateInput = (value) => {
 const formatThaiDateShort = (value) => {
   const date = value instanceof Date ? value : parseDateInput(value);
   if (!date) return value || "-";
-  return `${date.getDate()} ${thaiMonthShort[date.getMonth()]} ${date.getFullYear()}`;
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 };
 const formatThaiPeriodRange = (startValue, endValue) => {
   const start = startValue instanceof Date ? startValue : parseDateInput(startValue);
@@ -595,19 +612,12 @@ const formatThaiPeriodRange = (startValue, endValue) => {
   if (!start && !end) return "—";
   if (!start) return formatThaiDateShort(end);
   if (!end) return formatThaiDateShort(start);
-  const sY = start.getFullYear();
-  const eY = end.getFullYear();
-  const sM = start.getMonth();
-  const eM = end.getMonth();
-  const sD = start.getDate();
-  const eD = end.getDate();
-  if (sY === eY && sM === eM) {
-    return `${sD}–${eD} ${thaiMonthShort[sM]} ${sY}`;
-  }
-  if (sY === eY) {
-    return `${sD} ${thaiMonthShort[sM]} – ${eD} ${thaiMonthShort[eM]} ${sY}`;
-  }
-  return `${sD} ${thaiMonthShort[sM]} ${sY} – ${eD} ${thaiMonthShort[eM]} ${eY}`;
+  return `${formatThaiDateShort(start)} - ${formatThaiDateShort(end)}`;
+};
+const formatThaiFullBE = (value) => {
+  const date = value instanceof Date ? value : parseDateInput(value);
+  if (!date) return "-";
+  return `${pad(date.getDate())} ${thaiMonthFull[date.getMonth()]} ${date.getFullYear() + 543}`;
 };
 const formatThaiMonthYear = (value) => {
   const date = value instanceof Date ? value : parseDateInput(value);
@@ -2141,27 +2151,25 @@ const buildReceiptHtml = ({
   );
   const rate = parseNumber(bill.rate);
   const plantName = readText(bill?.plantName, plant?.name) || "PONIX";
-  const creatorLabel = getBillCreatorLabel(bill);
   const issueLabel = formatThaiDateShort(issueDate);
+  const issueLabelFullBE = formatThaiFullBE(issueDate);
   const periodLabel =
     bill?.periodStart && bill?.periodEnd
-      ? `${formatThaiDateShort(bill.periodStart)} - ${formatThaiDateShort(
-        bill.periodEnd
-      )}`
+      ? `${formatThaiDateShort(bill.periodStart)} - ${formatThaiDateShort(bill.periodEnd)}`
       : formatThaiMonthYear(issueDate);
   const billCode = `ST-${String(bill.billNo).padStart(6, "0")}`;
   const buildMetaLineHtml = (label, value) =>
     `<div class="meta-line"><span class="meta-label">${escapeHtml(label)}</span><span class="meta-value">${escapeHtml(
       value
     )}</span></div>`;
+  const calendarIconSvg = `<svg class="meta-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const buildMetaLineIconHtml = (iconHtml, value) =>
+    `<div class="meta-line"><span class="meta-label meta-label-icon">${iconHtml}</span><span class="meta-value">${escapeHtml(value)}</span></div>`;
   const companyMetaHtml = [
-    buildMetaLineHtml("บริษัท", plantName),
-    buildMetaLineHtml("เลขที่บิล", billCode),
-    buildMetaLineHtml("ผู้สร้าง", creatorLabel)
+    buildMetaLineHtml("ชื่อ/สถานที่", plantName)
   ].join("");
   const periodMetaHtml = [
-    buildMetaLineHtml("ช่วงบิล", periodLabel),
-    buildMetaLineHtml("วันที่ออกรายงาน", issueLabel),
+    buildMetaLineIconHtml(calendarIconSvg, periodLabel),
     buildMetaLineHtml("อัตรา", `${formatNumber(rate, rateDecimalPlaces)} บาท/kWh`)
   ].join("");
   const requestedRowsPerPage = Math.max(1, rowsPerPage - 1);
@@ -2347,26 +2355,43 @@ const buildReceiptHtml = ({
     val === null || val === undefined ? `<span class="reading-empty">—</span>` : formatNumber(val, 1);
   const periodStartIso = bill?.periodStart || "";
   const periodEndIso = bill?.periodEnd || "";
+  const bankIconSvg = `<svg class="payment-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 10l9-6 9 6M5 10v9M19 10v9M9 14v4M15 14v4M3 21h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const paymentBankName = readText(bill?.bankName, schedule?.bankName) || "-";
+  const paymentAccountName = readText(bill?.accountName, schedule?.accountName) || "-";
+  const paymentAccountNo = readText(bill?.accountNumber, schedule?.accountNumber) || "-";
+  const paymentInfoHtml = `
+        <div class="payment-info">
+          <div class="payment-info-header">ช่องทางการชำระ</div>
+          <div class="payment-info-body">
+            <div class="payment-info-icon-box">${bankIconSvg}</div>
+            <div class="payment-info-text">
+              <div class="payment-line">ชื่อบัญชี : ${escapeHtml(paymentAccountName)}</div>
+              <div class="payment-line">ธนาคาร : ${escapeHtml(paymentBankName)}</div>
+              <div class="payment-line">เลขบัญชี : ${escapeHtml(paymentAccountNo)}</div>
+            </div>
+          </div>
+        </div>`;
   const meterReadingsHtml = meterReadingRows.length
     ? `
-      <div class="receipt-meter-readings" aria-label="ประวัติการใช้ไฟฟ้า">
+      <div class="receipt-meter-readings" aria-label="ช่องทางการชำระและประวัติการใช้ไฟฟ้า">
+        ${paymentInfoHtml}
         <table class="meter-readings-history">
           <thead>
             <tr>
-              <th rowspan="2" class="usage-col">รายการ</th>
-              <th class="reading-col">อ่านหน่วยครั้งก่อน</th>
+              <th rowspan="2" class="usage-col">ชื่อหน่วย</th>
+              <th class="reading-col">หน่วยครั้งก่อน</th>
               <th class="reading-col">อ่านหน่วย</th>
             </tr>
             <tr>
-              <th class="reading-col date-row">${escapeHtml(periodStartIso)}</th>
-              <th class="reading-col date-row">${escapeHtml(periodEndIso)}</th>
+              <th class="reading-col date-row">${escapeHtml(formatThaiDateShort(periodStartIso))}</th>
+              <th class="reading-col date-row">${escapeHtml(formatThaiDateShort(periodEndIso))}</th>
             </tr>
           </thead>
           <tbody>
             ${meterReadingRows
               .map(({ label, reading }) => `
                   <tr>
-                    <td class="usage-col">${escapeHtml(label)} (kWh)</td>
+                    <td class="usage-col">${escapeHtml(label)}</td>
                     <td class="reading-col">${fmtReading(reading.before)}</td>
                     <td class="reading-col">${fmtReading(reading.after)}</td>
                   </tr>`)
@@ -2379,12 +2404,13 @@ const buildReceiptHtml = ({
   const buildPage = (rows, pageIndex) => `
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
       <div class="receipt-title">
-        <h2>รายงานบิลพลังงาน</h2>
-        <p>Billing Report</p>
+        <h2>Billing Report</h2>
+        <span class="receipt-bill-code">${escapeHtml(billCode)}</span>
+        <p class="receipt-date">Date: ${escapeHtml(issueLabelFullBE)}</p>
       </div>
       <div class="receipt-meta">
         <div class="box">
-          <strong>ข้อมูลบริษัท</strong>
+          <strong>ข้อมูลบิล</strong>
           ${companyMetaHtml}
         </div>
         <div class="box">
@@ -2397,7 +2423,7 @@ const buildReceiptHtml = ({
           ${colgroupHtml}
           <thead>
             <tr>
-              <th class="date-cell">วันที่</th>
+              <th class="date-cell">วัน/เดือน/ปี</th>
               ${useDraftColumns ? draftHeadHtml : formulaHeadHtml}
               ${showUsageColumn ? `<th class="num-cell" title="${escapeHtml(usageHeaderTitle)}">${escapeHtml(
       usageHeaderText
@@ -2424,7 +2450,7 @@ const openReceiptPreview = ({ bill, issueDate }) => {
   if (!receiptPreviewModal || !receiptPreviewContent) return;
   const periodText =
     bill?.periodStart && bill?.periodEnd
-      ? `${bill.periodStart} - ${bill.periodEnd}`
+      ? `${formatThaiDateShort(bill.periodStart)} - ${formatThaiDateShort(bill.periodEnd)}`
       : formatThaiMonthYear(issueDate);
   if (receiptPreviewMonth) {
     receiptPreviewMonth.textContent = `ช่วงบิล ${periodText}`;
@@ -2597,7 +2623,10 @@ const buildDefaultScheduleFields = () => ({
   calcFormula: [],
   calcLabel: defaultCalcLabel,
   formulaColumns: [],
-  detailColumns: detailColumnDefs.map((col) => col.key)
+  detailColumns: detailColumnDefs.map((col) => col.key),
+  bankName: "",
+  accountName: "",
+  accountNumber: ""
 });
 const defaultSchedule = {
   cutoffDay: 5,
@@ -2670,7 +2699,13 @@ const billingScheduleFieldKeys = new Set([
   "detailColumns",
   "detail_columns",
   "autoSchedules",
-  "auto_schedules"
+  "auto_schedules",
+  "bankName",
+  "bank_name",
+  "accountName",
+  "account_name",
+  "accountNumber",
+  "account_number"
 ]);
 const hasMeaningfulSchedule = (value) => {
   if (!isRecord(value)) return false;
@@ -2690,7 +2725,10 @@ const normalizeSchedulePayload = (value) => {
     calcLabel: value.calcLabel ?? value.calc_label,
     formulaColumns: value.formulaColumns ?? value.formula_columns,
     detailColumns: value.detailColumns ?? value.detail_columns,
-    autoSchedules: value.autoSchedules ?? value.auto_schedules
+    autoSchedules: value.autoSchedules ?? value.auto_schedules,
+    bankName: value.bankName ?? value.bank_name,
+    accountName: value.accountName ?? value.account_name,
+    accountNumber: value.accountNumber ?? value.account_number
   };
 };
 const extractScheduleFromBillingPayload = (payload) => {
@@ -3015,6 +3053,9 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
         : defaultCalcLabel,
     formulaColumns: sanitizeFormulaColumnDrafts(fallback?.formulaColumns),
     detailColumns: normalizeDetailColumns(fallback?.detailColumns),
+    bankName: readText(fallback?.bankName, fallback?.bank_name),
+    accountName: readText(fallback?.accountName, fallback?.account_name),
+    accountNumber: readText(fallback?.accountNumber, fallback?.account_number),
     updatedById: readText(fallback?.updatedById, fallback?.createdById),
     updatedByName: readText(fallback?.updatedByName, fallback?.createdByName),
     updatedByEmail: readText(fallback?.updatedByEmail, fallback?.createdByEmail)
@@ -3041,6 +3082,9 @@ const normalizeAutoScheduleEntry = (raw, fallback = defaultSchedule) => {
         : fallbackFields.calcLabel,
     formulaColumns: sanitizeFormulaColumnDrafts(raw?.formulaColumns || fallbackFields.formulaColumns),
     detailColumns: normalizeDetailColumns(raw?.detailColumns),
+    bankName: readText(raw?.bankName, raw?.bank_name, fallbackFields.bankName),
+    accountName: readText(raw?.accountName, raw?.account_name, fallbackFields.accountName),
+    accountNumber: readText(raw?.accountNumber, raw?.account_number, fallbackFields.accountNumber),
     openingReadings: sanitizeOpeningReadings(raw?.openingReadings ?? fallback?.openingReadings),
     updatedAt,
     updatedById: readText(raw?.updatedById, raw?.createdById, fallbackFields.updatedById),
@@ -4040,6 +4084,9 @@ const loadSchedule = () => {
   schedule.calcLabel = normalizedTop.calcLabel;
   schedule.formulaColumns = normalizedTop.formulaColumns;
   schedule.detailColumns = normalizedTop.detailColumns;
+  schedule.bankName = normalizedTop.bankName;
+  schedule.accountName = normalizedTop.accountName;
+  schedule.accountNumber = normalizedTop.accountNumber;
 
   const hasExplicitAutoSchedules = Array.isArray(schedule.autoSchedules);
   const rawAutoSchedules = hasExplicitAutoSchedules ? schedule.autoSchedules : [];
@@ -4230,6 +4277,9 @@ const triggerPendingAutoBill = async (cutoff, startStr, endStr) => {
       formulaColumns: autoConfig.formulaColumns || [],
       cutoffDay: Number(cutoff),
       detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+      bankName: autoConfig.bankName,
+      accountName: autoConfig.accountName,
+      accountNumber: autoConfig.accountNumber,
       auto: true,
       source,
       dailyRows: rows,
@@ -4509,6 +4559,7 @@ const renderAutoQueue = () => {
             calcFormula, calcLabel: autoConfig.calcLabel || defaultCalcLabel,
             formulaColumns: autoConfig.formulaColumns || [],
             cutoffDay: cutoff, detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+            bankName: autoConfig.bankName, accountName: autoConfig.accountName, accountNumber: autoConfig.accountNumber,
             auto: true, source, dailyRows: rows,
             meterReadings: capturedReadings
           });
@@ -4533,7 +4584,7 @@ const renderAutoQueue = () => {
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
           const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
-          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings, bankName: autoConfig?.bankName || schedule.bankName, accountName: autoConfig?.accountName || schedule.accountName, accountNumber: autoConfig?.accountNumber || schedule.accountNumber };
           const issueDate = parseDateInput(endStr);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
         } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
@@ -4558,7 +4609,7 @@ const renderAutoQueue = () => {
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
           const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
-          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings };
+          const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings, bankName: autoConfig?.bankName || schedule.bankName, accountName: autoConfig?.accountName || schedule.accountName, accountNumber: autoConfig?.accountNumber || schedule.accountNumber };
           const issueDate = parseDateInput(effectiveEnd);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
         } catch (err) { alert("ไม่สามารถโหลดข้อมูลได้"); }
@@ -4600,7 +4651,10 @@ const getAutoModalDraft = (cutoffDay) =>
       calcFormula: getFormulaFromInputs(),
       calcLabel: getFormulaResultName(),
       formulaColumns: getFormulaColumnDraftsFromInputs(),
-      detailColumns: getSelectedDetailColumns()
+      detailColumns: getSelectedDetailColumns(),
+      bankName: billBankInput?.value || schedule.bankName,
+      accountName: billAccountNameInput?.value || schedule.accountName,
+      accountNumber: billAccountNoInput?.value || schedule.accountNumber
     },
     schedule
   );
@@ -4613,6 +4667,9 @@ const resetAutoModalForCreateOnly = (preferredCutoffDay) => {
   if (billCutoff) billCutoff.value = String(nextCutoffDay);
   if (billRateInput) billRateInput.value = defaultSchedule.defaultRate;
   if (billType) billType.value = defaultSchedule.rateType;
+  if (billBankInput) billBankInput.value = schedule.bankName || "";
+  if (billAccountNameInput) billAccountNameInput.value = schedule.accountName || "";
+  if (billAccountNoInput) billAccountNoInput.value = schedule.accountNumber || "";
   renderColumnSelector(defaultSchedule.detailColumns);
   setFormulaColumnDrafts([]);
   setCalcInputMode("single", {
@@ -4635,6 +4692,9 @@ const applyAutoScheduleToModal = (cutoffDay) => {
   if (billCutoff) billCutoff.value = String(normalizedDay);
   if (billRateInput) billRateInput.value = active.defaultRate;
   if (billType && active.rateType) billType.value = active.rateType;
+  if (billBankInput) billBankInput.value = active.bankName || "";
+  if (billAccountNameInput) billAccountNameInput.value = active.accountName || "";
+  if (billAccountNoInput) billAccountNoInput.value = active.accountNumber || "";
   renderColumnSelector(active.detailColumns);
   formulaTerms = getFormulaForContext(
     active.calcFormula,
@@ -4951,6 +5011,9 @@ const createBill = ({
   detailColumns,
   dailyRows,
   meterReadings,
+  bankName,
+  accountName,
+  accountNumber,
   auto = false,
   source = "api",
   createdAt = Date.now()
@@ -5012,6 +5075,9 @@ const createBill = ({
     cutoffDay: cutoffDay || schedule.cutoffDay || defaultSchedule.cutoffDay,
     detailColumns: normalizedColumns,
     source,
+    bankName: readText(bankName, schedule.bankName),
+    accountName: readText(accountName, schedule.accountName),
+    accountNumber: readText(accountNumber, schedule.accountNumber),
     meters: meterPool.map((meter) => ({ ...meter })),
     daily,
     meterReadings:
@@ -5180,10 +5246,16 @@ const deleteAutoSchedule = (cutoffDay, options = {}) => {
     (item) => Number(item?.cutoffDay) !== targetDay
   );
   if (!schedule.autoSchedules.length) {
-    schedule.cutoffDay = defaultSchedule.cutoffDay;
+    schedule = {
+      ...schedule,
+      cutoffDay: defaultSchedule.cutoffDay,
+      ...buildDefaultScheduleFields(),
+      autoSchedules: []
+    };
   } else if (!getAutoScheduleByCutoff(schedule.cutoffDay)) {
     schedule.cutoffDay = Number(schedule.autoSchedules[0]?.cutoffDay) || defaultSchedule.cutoffDay;
   }
+  billingSettingsSyncSignature = "";
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);
   updateAutoPreviewText();
@@ -5255,6 +5327,9 @@ const runAutoIfDue = async () => {
             formulaColumns: autoConfig.formulaColumns || [],
             cutoffDay,
             detailColumns: autoConfig.detailColumns || defaultSchedule.detailColumns,
+            bankName: autoConfig.bankName,
+            accountName: autoConfig.accountName,
+            accountNumber: autoConfig.accountNumber,
             auto: true,
             source,
             dailyRows: rows,
@@ -5292,12 +5367,17 @@ const openModal = (mode = billMode, options = {}) => {
   isModalOpen = true;
   resetFormulaColumnDraftBoxes();
   setDefaultRange(initialAutoCutoffDay);
-  if (billRateInput) billRateInput.value = schedule.defaultRate;
-  if (billType && schedule.rateType) billType.value = schedule.rateType;
-  renderColumnSelector(schedule.detailColumns);
+  const activeScheduleForFields =
+    (canEditExistingAutoSchedule && getAutoScheduleByCutoff(initialAutoCutoffDay)) || schedule;
+  if (billRateInput) billRateInput.value = activeScheduleForFields.defaultRate ?? schedule.defaultRate;
+  if (billType && (activeScheduleForFields.rateType || schedule.rateType))
+    billType.value = activeScheduleForFields.rateType || schedule.rateType;
+  if (billBankInput) billBankInput.value = activeScheduleForFields.bankName || schedule.bankName || "";
+  if (billAccountNameInput) billAccountNameInput.value = activeScheduleForFields.accountName || schedule.accountName || "";
+  if (billAccountNoInput) billAccountNoInput.value = activeScheduleForFields.accountNumber || schedule.accountNumber || "";
+  renderColumnSelector(activeScheduleForFields.detailColumns || schedule.detailColumns);
   if (targetMode === "auto") {
-    const activeAutoSchedule =
-      (canEditExistingAutoSchedule && getAutoScheduleByCutoff(initialAutoCutoffDay)) || schedule;
+    const activeAutoSchedule = activeScheduleForFields;
     formulaTerms = getFormulaForContext(
       activeAutoSchedule.calcFormula,
       activeAutoSchedule.calcMethod,
@@ -5377,6 +5457,9 @@ const handleConfirm = async () => {
       );
     }
     const hadSchedule = Boolean(getAutoScheduleByCutoff(cutoffDay));
+    const bankNameVal = readText(billBankInput?.value);
+    const accountNameVal = readText(billAccountNameInput?.value);
+    const accountNumberVal = readText(billAccountNoInput?.value);
     schedule = {
       ...schedule,
       cutoffDay,
@@ -5386,7 +5469,10 @@ const handleConfirm = async () => {
       calcFormula,
       calcLabel,
       formulaColumns,
-      detailColumns
+      detailColumns,
+      bankName: bankNameVal,
+      accountName: accountNameVal,
+      accountNumber: accountNumberVal
     };
     const savedAutoSchedule = upsertAutoSchedule({
       cutoffDay,
@@ -5397,6 +5483,9 @@ const handleConfirm = async () => {
       calcLabel,
       formulaColumns,
       detailColumns,
+      bankName: bankNameVal,
+      accountName: accountNameVal,
+      accountNumber: accountNumberVal,
       updatedAt: Date.now(),
       updatedById: creator.id,
       updatedByName: creator.name,
@@ -5457,6 +5546,13 @@ const handleConfirm = async () => {
     return;
   }
 
+  const bankNameVal = readText(billBankInput?.value);
+  const accountNameVal = readText(billAccountNameInput?.value);
+  const accountNumberVal = readText(billAccountNoInput?.value);
+  schedule.bankName = bankNameVal;
+  schedule.accountName = accountNameVal;
+  schedule.accountNumber = accountNumberVal;
+
   const bill = createBill({
     periodStart,
     periodEnd,
@@ -5476,7 +5572,10 @@ const handleConfirm = async () => {
 
   schedule = {
     ...schedule,
-    ...buildDefaultScheduleFields()
+    ...buildDefaultScheduleFields(),
+    bankName: bankNameVal,
+    accountName: accountNameVal,
+    accountNumber: accountNumberVal
   };
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);

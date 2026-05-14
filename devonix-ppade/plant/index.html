@@ -241,7 +241,12 @@
             <p class="muted small" id="receipt-preview-month"></p>
           </div>
           <div class="header-actions">
-            <button class="primary small-btn" id="receipt-preview-download" type="button" data-i18n="receipt.download_pdf">ดาวน์โหลด PDF</button>
+            <button class="primary small-btn download-pdf-btn" id="receipt-preview-download" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2M6 14h12v7H6z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span data-i18n="receipt.download_pdf">ดาวน์โหลด PDF</span>
+            </button>
             <button class="ghost icon-btn" id="receipt-preview-close" data-i18n-aria-label="common.close" aria-label="ปิด">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -380,6 +385,37 @@
           <div class="field" id="bill-cutoff-field">
             <label for="bill-cutoff" data-i18n="bill.cutoff_label">ตัดรอบวันที่</label>
             <select id="bill-cutoff"></select>
+          </div>
+          <div class="field grid-2">
+            <div>
+              <label for="bill-bank">ธนาคาร</label>
+              <select id="bill-bank">
+                <option value="">— เลือกธนาคาร —</option>
+                <option value="ธนาคารกสิกรไทย">ธนาคารกสิกรไทย</option>
+                <option value="ธนาคารกรุงเทพ">ธนาคารกรุงเทพ</option>
+                <option value="ธนาคารกรุงไทย">ธนาคารกรุงไทย</option>
+                <option value="ธนาคารไทยพาณิชย์">ธนาคารไทยพาณิชย์</option>
+                <option value="ธนาคารกรุงศรีอยุธยา">ธนาคารกรุงศรีอยุธยา</option>
+                <option value="ธนาคารทหารไทยธนชาต">ธนาคารทหารไทยธนชาต</option>
+                <option value="ธนาคารออมสิน">ธนาคารออมสิน</option>
+                <option value="ธนาคาร ธ.ก.ส.">ธนาคาร ธ.ก.ส.</option>
+                <option value="ธนาคารยูโอบี">ธนาคารยูโอบี</option>
+                <option value="ธนาคารซีไอเอ็มบีไทย">ธนาคารซีไอเอ็มบีไทย</option>
+                <option value="ธนาคารแลนด์ แอนด์ เฮ้าส์">ธนาคารแลนด์ แอนด์ เฮ้าส์</option>
+                <option value="ธนาคารเกียรตินาคินภัทร">ธนาคารเกียรตินาคินภัทร</option>
+                <option value="ธนาคารทิสโก้">ธนาคารทิสโก้</option>
+                <option value="ธนาคารไอซีบีซี (ไทย)">ธนาคารไอซีบีซี (ไทย)</option>
+                <option value="ธนาคารอาคารสงเคราะห์">ธนาคารอาคารสงเคราะห์</option>
+              </select>
+            </div>
+            <div>
+              <label for="bill-account-name">ชื่อบัญชี</label>
+              <input type="text" id="bill-account-name" autocomplete="off" placeholder="เช่น บริษัท ABC จำกัด">
+            </div>
+          </div>
+          <div class="field">
+            <label for="bill-account-no">เลขที่บัญชี</label>
+            <input type="text" id="bill-account-no" autocomplete="off" placeholder="เช่น 045-2-12345-6">
           </div>
         </div>
         <div class="modal-footer">
