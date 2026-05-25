@@ -90,20 +90,26 @@ const deviceEnergyApiCandidates = [
   "/api/device-energy",
   "http://localhost:3000/api/device-energy",
   "http://127.0.0.1:3000/api/device-energy",
-  "https://solarmdb.devonix.co.th/api/device-energy"
+  "https://meter.devonix.co.th/api/device-energy"
+];
+const endOfDayReadingApiCandidates = [
+  "/api/devices/end-of-day-reading",
+  "http://localhost:3000/api/devices/end-of-day-reading",
+  "http://127.0.0.1:3000/api/devices/end-of-day-reading",
+  "https://meter.devonix.co.th/api/devices/end-of-day-reading"
 ];
 const billingApiCandidates = [
   "/api/billing",
   "http://localhost:3000/api/billing",
   "http://127.0.0.1:3000/api/billing",
-  "https://solarmdb.devonix.co.th/api/billing"
+  "https://meter.devonix.co.th/api/billing"
 ];
 const billingStateApiPath = "/api/billing-state";
 const devicesApiCandidates = [
   "/api/devices",
   "http://localhost:3000/api/devices",
   "http://127.0.0.1:3000/api/devices",
-  "https://solarmdb.devonix.co.th/api/devices"
+  "https://meter.devonix.co.th/api/devices"
 ];
 const calcMethodLabels = {
   energy_in: "energy_in",
@@ -1874,6 +1880,36 @@ const fetchMeterLiveReadings = async (meter) => {
   }
   return null;
 };
+// Fetch the end-of-day cumulative reading for one device on a specific date.
+// API: GET /api/devices/end-of-day-reading?device_id=X&date=YYYY-MM-DD
+// Returns { in, out } from reading.value_in / reading.value_out, or null.
+const fetchEndOfDayReading = async (deviceId, dateStr) => {
+  const id = Number(deviceId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const date = String(dateStr || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const search = `?device_id=${encodeURIComponent(id)}&date=${encodeURIComponent(date)}`;
+  for (const base of endOfDayReadingApiCandidates) {
+    try {
+      const res = await fetch(`${base}${search}`, {
+        method: "GET",
+        credentials: "same-origin"
+      });
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => null);
+      if (!data || data.found === false || !data.reading) continue;
+      const valueIn = Number(data.reading.value_in);
+      const valueOut = Number(data.reading.value_out);
+      return {
+        in: Number.isFinite(valueIn) ? valueIn : null,
+        out: Number.isFinite(valueOut) ? valueOut : null
+      };
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+};
 const directionFromField = (field) =>
   String(field || "").toLowerCase() === "energy_out" ? "out" : "in";
 // A snapshot is only trustworthy if it was captured at (or within 1 day of)
@@ -1890,25 +1926,27 @@ const isOpeningSnapshotTrustworthy = (snap) => {
   );
   return daysLate <= 1;
 };
-const captureMeterReadingsForBill = async (meters, periodStart, autoConfig = null) => {
+// Capture each meter's cumulative IN/OUT at the period boundaries via the
+// end-of-day-reading API. BEFORE = end of day at periodStart;
+// AFTER = end of day at periodEnd. Both directions are captured; the formula
+// column's chosen field (energy_in/energy_out) picks which to render.
+const captureMeterReadingsForBill = async (meters, periodStart, periodEnd, autoConfig = null) => {
   const result = {};
   if (!Array.isArray(meters) || !meters.length) return result;
-  const openingMap =
-    autoConfig?.openingReadings && typeof autoConfig.openingReadings === "object"
-      ? autoConfig.openingReadings
-      : {};
+  void autoConfig;
   const roundOrNull = (v) => (Number.isFinite(Number(v)) ? roundTo(Number(v), 1) : null);
   await Promise.all(
     meters.map(async (meter) => {
       const key = getMeterKey(meter);
       if (!key) return;
-      const afterPair = await fetchMeterLiveReadings(meter);
-      const snap = openingMap[key];
-      const useSnap =
-        snap && snap.capturedFor === periodStart && isOpeningSnapshotTrustworthy(snap);
+      const deviceId = Number(meter?.id);
+      const [beforePair, afterPair] = await Promise.all([
+        fetchEndOfDayReading(deviceId, periodStart),
+        fetchEndOfDayReading(deviceId, periodEnd)
+      ]);
       const before = {
-        in:  useSnap ? roundOrNull(snap.in)  : null,
-        out: useSnap ? roundOrNull(snap.out) : null
+        in:  roundOrNull(beforePair?.in),
+        out: roundOrNull(beforePair?.out)
       };
       const after = {
         in:  roundOrNull(afterPair?.in),
@@ -4263,6 +4301,7 @@ const triggerPendingAutoBill = async (cutoff, startStr, endStr) => {
     const capturedReadings = await captureMeterReadingsForBill(
       selectedMeters,
       startStr,
+      endStr,
       autoConfig
     ).catch(() => ({}));
     createBill({
@@ -4551,7 +4590,7 @@ const renderAutoQueue = () => {
           const formulaMeters = getMetersFromFormula(calcFormula, meterProfiles);
           const formulaColumnMeters = getMetersFromFormulaColumns(autoConfig.formulaColumns || [], meterProfiles);
           const selectedMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
-          const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr, autoConfig);
+          const capturedReadings = await captureMeterReadingsForBill(selectedMeters, startStr, endStr, autoConfig);
           createBill({
             periodStart: startStr, periodEnd: endStr, meters: selectedMeters,
             rate: autoConfig.defaultRate, rateType: autoConfig.rateType,
@@ -4583,7 +4622,7 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, endStr, autoConfig);
           const previewBill = { billNo: 0, periodStart: startStr, periodEnd: endStr, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings, bankName: autoConfig?.bankName || schedule.bankName, accountName: autoConfig?.accountName || schedule.accountName, accountNumber: autoConfig?.accountNumber || schedule.accountNumber };
           const issueDate = parseDateInput(endStr);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
@@ -4608,7 +4647,7 @@ const renderAutoQueue = () => {
           const calcFormula = getFormulaForContext(autoConfig?.calcFormula, autoConfig?.calcMethod, meterPool);
           const normalizedFormula = normalizeCalcFormula(calcFormula, meterPool);
           const daily = rows.map((row) => ({ ...row, bill_units: getBillUnits(row, autoConfig?.calcMethod || defaultSchedule.calcMethod, normalizedFormula) }));
-          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, autoConfig);
+          const capturedReadings = await captureMeterReadingsForBill(meterPool, startStr, effectiveEnd, autoConfig);
           const previewBill = { billNo: 0, periodStart: startStr, periodEnd: effectiveEnd, rate: autoConfig?.defaultRate || schedule.defaultRate, rateType: autoConfig?.rateType || schedule.rateType, calcMethod: autoConfig?.calcMethod || defaultSchedule.calcMethod, calcFormula, calcLabel: autoConfig?.calcLabel || defaultCalcLabel, formulaColumns: autoConfig?.formulaColumns || [], meters: meterPool, daily, auto: true, cutoffDay: cutoff, meterReadings: capturedReadings, bankName: autoConfig?.bankName || schedule.bankName, accountName: autoConfig?.accountName || schedule.accountName, accountNumber: autoConfig?.accountNumber || schedule.accountNumber };
           const issueDate = parseDateInput(effectiveEnd);
           if (issueDate) openReceiptPreview({ bill: previewBill, issueDate });
@@ -5313,6 +5352,7 @@ const runAutoIfDue = async () => {
           const capturedReadings = await captureMeterReadingsForBill(
             selectedMeters,
             startStr,
+            endStr,
             autoConfig
           );
           createBill({

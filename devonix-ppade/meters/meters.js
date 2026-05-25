@@ -64,7 +64,7 @@ const meterLiveEnergyApiCandidates = [
   "/api/energy",
   "http://localhost:3000/api/energy",
   "http://127.0.0.1:3000/api/energy",
-  "https://solarmdb.devonix.co.th/api/energy"
+  "https://meter.devonix.co.th/api/energy"
 ];
 const meterLivePollIntervalMs = 20 * 1000;
 const meterLiveDeviceFallbackCap = 8;

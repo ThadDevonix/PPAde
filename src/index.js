@@ -11,15 +11,16 @@ import { readBillingState, writeBillingState } from "./billing/stateStore.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "devonix-ppade");
 
-const upstreamEnergyApi = "https://solarmdb.devonix.co.th/api/energy";
-const upstreamDeviceEnergyApi = "https://solarmdb.devonix.co.th/api/device-energy";
-const upstreamSitesApi = "https://solarmdb.devonix.co.th/api/sites";
-const upstreamDevicesApi = "https://solarmdb.devonix.co.th/api/devices";
-const upstreamUsersApi = "https://solarmdb.devonix.co.th/api/users";
-const upstreamBillingApi = "https://solarmdb.devonix.co.th/api/billing";
-const upstreamAuthLoginApi = "https://solarmdb.devonix.co.th/api/auth/login";
-const upstreamAuthLogoutApi = "https://solarmdb.devonix.co.th/api/auth/logout";
-const upstreamAuthMeApi = "https://solarmdb.devonix.co.th/api/auth/me";
+const upstreamBaseUrl = String(process.env.UPSTREAM_BASE_URL || "https://meter.devonix.co.th").replace(/\/+$/, "");
+const upstreamEnergyApi = `${upstreamBaseUrl}/api/energy`;
+const upstreamDeviceEnergyApi = `${upstreamBaseUrl}/api/device-energy`;
+const upstreamSitesApi = `${upstreamBaseUrl}/api/sites`;
+const upstreamDevicesApi = `${upstreamBaseUrl}/api/devices`;
+const upstreamUsersApi = `${upstreamBaseUrl}/api/users`;
+const upstreamBillingApi = `${upstreamBaseUrl}/api/billing`;
+const upstreamAuthLoginApi = `${upstreamBaseUrl}/api/auth/login`;
+const upstreamAuthLogoutApi = `${upstreamBaseUrl}/api/auth/logout`;
+const upstreamAuthMeApi = `${upstreamBaseUrl}/api/auth/me`;
 
 const sessionCookieName = "ppade_session";
 const configuredSessionHours = Number(process.env.AUTH_SESSION_HOURS);

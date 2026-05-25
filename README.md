@@ -60,8 +60,9 @@ npm run add-user -- --email user@example.com --password YourPassword --name "Dis
 
 ### Upstream API integration
 
-- Login validates credentials against `https://solarmdb.devonix.co.th/api/auth/login`
-- User profile resolves from `https://solarmdb.devonix.co.th/api/users`
+- Login validates credentials against `${UPSTREAM_BASE_URL}/api/auth/login` (default `https://meter.devonix.co.th`)
+- User profile resolves from `${UPSTREAM_BASE_URL}/api/users`
+- Override the upstream host by setting `UPSTREAM_BASE_URL` in `.env`
 
 ## Plan picker page
 

@@ -5,175 +5,22 @@
       "siteCode": "CNX_PPA",
       "siteName": "โรงเรียนเชียงใหม่คริสเตียน",
       "schedule": {
-        "cutoffDay": 14,
+        "cutoffDay": 5,
         "defaultRate": 4.2,
         "rateType": "flat",
         "calcMethod": "energy_out",
         "calcFormula": [],
         "calcLabel": "ผลคำนวณ",
-        "formulaColumns": [
-          {
-            "type": "basic",
-            "name": "1",
-            "include": false,
-            "showKwh": true,
-            "meterKey": "8",
-            "field": "energy_in"
-          },
-          {
-            "type": "basic",
-            "name": "2",
-            "include": false,
-            "showKwh": true,
-            "meterKey": "9",
-            "field": "energy_in"
-          },
-          {
-            "type": "basic",
-            "name": "34",
-            "include": false,
-            "showKwh": true,
-            "meterKey": "9",
-            "field": "energy_out"
-          },
-          {
-            "type": "calc",
-            "name": "5",
-            "include": true,
-            "showKwh": false,
-            "leftMeterKey": "8",
-            "leftField": "energy_in",
-            "operator": "-",
-            "rightMeterKey": "9",
-            "rightField": "energy_out"
-          }
-        ],
+        "formulaColumns": [],
         "detailColumns": [
           "energy_in",
           "energy_out",
           "bill_units"
         ],
-        "bankName": "ธนาคารออมสิน",
-        "accountName": "dd",
-        "accountNumber": "1234555555",
-        "autoSchedules": [
-          {
-            "cutoffDay": 14,
-            "defaultRate": 4.2,
-            "rateType": "flat",
-            "calcMethod": "energy_out",
-            "calcFormula": [],
-            "calcLabel": "ผลคำนวณ",
-            "formulaColumns": [
-              {
-                "type": "basic",
-                "name": "1",
-                "include": false,
-                "showKwh": true,
-                "meterKey": "8",
-                "field": "energy_in"
-              },
-              {
-                "type": "basic",
-                "name": "2",
-                "include": false,
-                "showKwh": true,
-                "meterKey": "9",
-                "field": "energy_in"
-              },
-              {
-                "type": "basic",
-                "name": "34",
-                "include": false,
-                "showKwh": true,
-                "meterKey": "9",
-                "field": "energy_out"
-              },
-              {
-                "type": "calc",
-                "name": "5",
-                "include": true,
-                "showKwh": false,
-                "leftMeterKey": "8",
-                "leftField": "energy_in",
-                "operator": "-",
-                "rightMeterKey": "9",
-                "rightField": "energy_out"
-              }
-            ],
-            "detailColumns": [
-              "energy_in",
-              "energy_out",
-              "bill_units"
-            ],
-            "bankName": "ธนาคารออมสิน",
-            "accountName": "dd",
-            "accountNumber": "1234555555",
-            "openingReadings": {},
-            "updatedAt": 1778666946395,
-            "updatedById": "1",
-            "updatedByName": "System Administrator",
-            "updatedByEmail": "admin@vbox.local"
-          },
-          {
-            "cutoffDay": 15,
-            "defaultRate": 4.2,
-            "rateType": "flat",
-            "calcMethod": "energy_in",
-            "calcFormula": [
-              {
-                "operator": "+",
-                "meterKey": "8",
-                "meterName": "Legacy Solar Inverter (Auto-Migrated)",
-                "field": "energy_in"
-              }
-            ],
-            "calcLabel": "Solar",
-            "formulaColumns": [],
-            "detailColumns": [
-              "energy_in",
-              "energy_out",
-              "bill_units"
-            ],
-            "bankName": "ธนาคารออมสิน",
-            "accountName": "dd",
-            "accountNumber": "1234555555",
-            "openingReadings": {},
-            "updatedAt": 1778666777700,
-            "updatedById": "1",
-            "updatedByName": "System Administrator",
-            "updatedByEmail": "admin@vbox.local"
-          },
-          {
-            "cutoffDay": 17,
-            "defaultRate": 4.2,
-            "rateType": "flat",
-            "calcMethod": "energy_out",
-            "calcFormula": [
-              {
-                "operator": "+",
-                "meterKey": "8",
-                "meterName": "Legacy Solar Inverter (Auto-Migrated)",
-                "field": "energy_out"
-              }
-            ],
-            "calcLabel": "ก",
-            "formulaColumns": [],
-            "detailColumns": [
-              "energy_in",
-              "energy_out",
-              "bill_units"
-            ],
-            "bankName": "ธนาคารไทยพาณิชย์",
-            "accountName": "จรย",
-            "accountNumber": "1234555555",
-            "openingReadings": {},
-            "updatedAt": 1778666666329,
-            "updatedById": "1",
-            "updatedByName": "System Administrator",
-            "updatedByEmail": "admin@vbox.local"
-          }
-        ],
+        "bankName": "",
+        "accountName": "",
+        "accountNumber": "",
+        "autoSchedules": [],
         "site_name": "โรงเรียนเชียงใหม่คริสเตียน",
         "bills": [
           {
@@ -26575,6 +26422,78 @@
       ],
       "auditLog": [
         {
+          "id": "log_mpl20axn_2pflwx",
+          "at": "2026-05-25T10:18:51.611Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 14,
+            "defaultRate": 4.2,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
+          "id": "log_mpl207bi_vaxguq",
+          "at": "2026-05-25T10:18:46.926Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 15,
+            "defaultRate": 4.2,
+            "rateType": "flat",
+            "calcMethod": "energy_in",
+            "calcLabel": "Solar"
+          }
+        },
+        {
+          "id": "log_mpl2059s_q5sv13",
+          "at": "2026-05-25T10:18:44.272Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_removed",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 17,
+            "defaultRate": 4.2,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ก"
+          }
+        },
+        {
           "id": "log_mpat2swj_zr4vmw",
           "at": "2026-05-18T06:11:09.907Z",
           "actor": {
@@ -28031,7 +27950,7 @@
         }
       ],
       "billSequence": 34,
-      "updatedAt": "2026-05-18T06:11:09.921Z"
+      "updatedAt": "2026-05-25T10:18:51.626Z"
     }
   }
 }
