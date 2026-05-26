@@ -1036,10 +1036,14 @@ const bootstrapPlantPage = async () => {
   }
   setMode(false);
   applyPlantMeters(plantMeters, { persistPlant: false });
-  await hydrateCurrentUserRole();
-  await hydratePlantMetersFromApi();
+  // Run independent fetches in parallel — role lookup, devices, and billing
+  // init don't depend on one another for their initial load.
+  await Promise.all([
+    hydrateCurrentUserRole().catch(() => null),
+    hydratePlantMetersFromApi().catch(() => null),
+    initBilling().catch((err) => console.error("[billing] init failed:", err))
+  ]);
   startMeterLivePolling();
-  await initBilling();
   document.body.classList.remove("access-checking");
 };
 bootstrapPlantPage();

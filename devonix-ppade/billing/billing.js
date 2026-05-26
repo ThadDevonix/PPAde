@@ -139,7 +139,7 @@ const formulaFieldAliasMap = {
 const defaultFormulaField = "energy_out";
 const defaultCalcLabel = "ผลคำนวณ";
 const maxFormulaDraftColumns = 5;
-const maxBillPeriodDays = 31;
+const maxBillPeriodDays = 35;
 const rateDecimalPlaces = 3;
 const detailColumnDefs = [
   { key: "energy_in", label: "energy_in (kWh)" },
@@ -2082,6 +2082,20 @@ const fetchEndOfDayReading = async (deviceId, dateStr) => {
 };
 const directionFromField = (field) =>
   String(field || "").toLowerCase() === "energy_out" ? "out" : "in";
+const addDaysToDateString = (dateStr, days) => {
+  const date = parseDateInput(dateStr);
+  if (!date) return "";
+  date.setDate(date.getDate() + Number(days || 0));
+  return formatDate(date);
+};
+const resolveReadingBoundaryDates = (periodStart, periodEnd, autoConfig = null) => {
+  const start = normalizeDateValue(periodStart);
+  const end = normalizeDateValue(periodEnd);
+  return {
+    beforeDate: autoConfig ? addDaysToDateString(start, -1) : start,
+    afterDate: end
+  };
+};
 // A snapshot is only trustworthy if it was captured at (or within 1 day of)
 // the period start it claims to represent. Otherwise it's a mid-period reading
 // mislabelled with the period start — we'd rather show empty than wrong.
@@ -2096,14 +2110,13 @@ const isOpeningSnapshotTrustworthy = (snap) => {
   );
   return daysLate <= 1;
 };
-// Capture each meter's cumulative IN/OUT at the period boundaries via the
-// end-of-day-reading API. BEFORE = end of day at periodStart;
-// AFTER = end of day at periodEnd. Both directions are captured; the formula
-// column's chosen field (energy_in/energy_out) picks which to render.
+// Capture each meter's cumulative IN/OUT via the end-of-day-reading API.
+// Manual bills use periodStart/periodEnd. Auto bills read meter totalizers
+// cutoff-to-cutoff: BEFORE = day before periodStart, AFTER = periodEnd.
 const captureMeterReadingsForBill = async (meters, periodStart, periodEnd, autoConfig = null) => {
   const result = {};
   if (!Array.isArray(meters) || !meters.length) return result;
-  void autoConfig;
+  const { beforeDate, afterDate } = resolveReadingBoundaryDates(periodStart, periodEnd, autoConfig);
   const roundOrNull = (v) => (Number.isFinite(Number(v)) ? roundTo(Number(v), 1) : null);
   await Promise.all(
     meters.map(async (meter) => {
@@ -2111,11 +2124,11 @@ const captureMeterReadingsForBill = async (meters, periodStart, periodEnd, autoC
       if (!key) return;
       const deviceId = Number(meter?.id ?? meter?.device_id ?? meter?.deviceId ?? meter?.apiId);
       const [beforePair, afterPair] = await Promise.all([
-        fetchEndOfDayReading(deviceId, periodStart),
-        fetchEndOfDayReading(deviceId, periodEnd)
+        fetchEndOfDayReading(deviceId, beforeDate),
+        fetchEndOfDayReading(deviceId, afterDate)
       ]);
-      const beforeTime = normalizeReadingTimeText(beforePair?.readingTime);
-      const afterTime = normalizeReadingTimeText(afterPair?.readingTime);
+      const beforeTime = normalizeReadingTimeText(beforePair?.readingTime) || beforeDate;
+      const afterTime = normalizeReadingTimeText(afterPair?.readingTime) || afterDate;
       const before = {
         in: roundOrNull(beforePair?.in),
         out: roundOrNull(beforePair?.out)
@@ -2242,6 +2255,22 @@ const hasUsableReadingPair = (entry, direction) => {
   if (!pair) return false;
   return Number.isFinite(Number(pair.before)) || Number.isFinite(Number(pair.after));
 };
+const getReadingPairFromEntry = (entry, direction) => {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry[direction] && typeof entry[direction] === "object") return entry[direction];
+  if ("before" in entry || "after" in entry) return entry;
+  return null;
+};
+const readingPairMatchesBoundaryDates = (entry, direction, boundaryDates) => {
+  const pair = getReadingPairFromEntry(entry, direction);
+  if (!pair) return false;
+  const beforeDate = normalizeDateValue(pair.beforeTime || entry.beforeTime);
+  const afterDate = normalizeDateValue(pair.afterTime || entry.afterTime);
+  return (
+    beforeDate === normalizeDateValue(boundaryDates?.beforeDate) &&
+    afterDate === normalizeDateValue(boundaryDates?.afterDate)
+  );
+};
 const mergeCapturedMeterReadingEntry = (currentEntry, capturedEntry) => {
   if (!capturedEntry || typeof capturedEntry !== "object") return currentEntry || null;
   const merged =
@@ -2271,6 +2300,11 @@ const getBillReadingMetersToRepair = (bill) => {
   if (!bill || typeof bill !== "object") return [];
   const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
   if (!meterPool.length) return [];
+  const boundaryDates = resolveReadingBoundaryDates(
+    bill.periodStart,
+    bill.periodEnd,
+    bill.auto ? { cutoffDay: bill.cutoffDay } : null
+  );
   const meterByKey = new Map(
     meterPool.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
   );
@@ -2289,8 +2323,13 @@ const getBillReadingMetersToRepair = (bill) => {
       if (!meter) return;
       const direction = directionFromField(column.field);
       const entry = readings[meterKey];
-      if (hasUsableReadingPair(entry, direction)) return;
-      needsRepair.set(meterKey, meter);
+      const hasReading = hasUsableReadingPair(entry, direction);
+      const matchesDates =
+        !bill.auto || readingPairMatchesBoundaryDates(entry, direction, boundaryDates);
+      if (hasReading && matchesDates) return;
+      const existing = needsRepair.get(meterKey) || { meter, force: false };
+      existing.force = existing.force || (hasReading && !matchesDates);
+      needsRepair.set(meterKey, existing);
     });
   return Array.from(needsRepair.values());
 };
@@ -2301,19 +2340,36 @@ const saveHistoryIfBillIsPersisted = (bill) => {
 };
 const ensureBillMeterReadingsForReceipt = async (bill) => {
   if (!bill?.periodStart || !bill?.periodEnd) return false;
-  const metersToRepair = getBillReadingMetersToRepair(bill);
-  if (!metersToRepair.length) return false;
+  const repairs = getBillReadingMetersToRepair(bill);
+  if (!repairs.length) return false;
+  const metersToRepair = repairs.map((item) => item.meter).filter(Boolean);
+  const forceReplaceKeys = new Set(
+    repairs
+      .filter((item) => item.force)
+      .map((item) => getMeterKey(item.meter))
+      .filter((key) => key)
+  );
   const captured = await captureMeterReadingsForBill(
     metersToRepair,
     bill.periodStart,
-    bill.periodEnd
+    bill.periodEnd,
+    bill.auto ? { cutoffDay: bill.cutoffDay } : null
   ).catch(() => ({}));
   if (!captured || typeof captured !== "object" || !Object.keys(captured).length) return false;
   const nextReadings =
     bill.meterReadings && typeof bill.meterReadings === "object" ? { ...bill.meterReadings } : {};
   let changed = false;
+  forceReplaceKeys.forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(captured, key) && nextReadings[key]) {
+      delete nextReadings[key];
+      changed = true;
+    }
+  });
   Object.entries(captured).forEach(([key, entry]) => {
-    const merged = mergeCapturedMeterReadingEntry(nextReadings[key], entry);
+    const merged = mergeCapturedMeterReadingEntry(
+      forceReplaceKeys.has(key) ? null : nextReadings[key],
+      entry
+    );
     if (!merged) return;
     const before = JSON.stringify(nextReadings[key] || null);
     const after = JSON.stringify(merged);
@@ -2487,9 +2543,7 @@ const buildReceiptHtml = ({
   const buildMetaLineIconHtml = (iconHtml, value) =>
     `<div class="meta-line"><span class="meta-label meta-label-icon">${iconHtml}</span><span class="meta-value">${escapeHtml(value)}</span></div>`;
   const companyMetaHtml = [
-    buildMetaLineHtml("ชื่อ/สถานที่", plantName)
-  ].join("");
-  const periodMetaHtml = [
+    buildMetaLineHtml("ชื่อ/สถานที่", plantName),
     buildMetaLineIconHtml(calendarIconSvg, periodLabel),
     buildMetaLineHtml("อัตรา", `${formatNumber(rate, rateDecimalPlaces)} บาท/kWh`)
   ].join("");
@@ -2501,6 +2555,7 @@ const buildReceiptHtml = ({
   const pageCount = Math.max(1, Math.ceil(dailyRows.length / dataRowsPerPage));
   const buildTotalRowHtml = () => `
     <tr class="total-row">
+      <td class="seq-cell"></td>
       <td class="date-cell">รวม</td>
       ${useDraftColumns
     ? draftColumnTotals
@@ -2514,16 +2569,21 @@ const buildReceiptHtml = ({
       ${showUsageColumn ? `<td class="num-cell">${formatNumber(totalKwh, 1)}</td>` : ""}
     </tr>
   `;
-  const buildRowsHtml = (rows, { includeTotalRow = false } = {}) => {
+  const buildRowsHtml = (rows, { includeTotalRow = false, rowOffset = 0 } = {}) => {
     const rowsHtml = rows
-      .map((row) => {
+      .map((row, index) => {
         const rowDate = parseDateInput(row.date);
         const dayOfWeek = rowDate ? rowDate.getDay() : -1;
-        const weekendClass =
-          dayOfWeek === 6 ? "weekend-sat" : dayOfWeek === 0 ? "weekend-sun" : "";
+        const weekdayBadge =
+          dayOfWeek === 6
+            ? `<span class="weekday-badge sat">เสาร์</span>`
+            : dayOfWeek === 0
+              ? `<span class="weekday-badge sun">อาทิตย์</span>`
+              : "";
         return `
-        <tr${weekendClass ? ` class="${weekendClass}"` : ""}>
-          <td class="date-cell">${formatThaiDateShort(row.date)}</td>
+        <tr>
+          <td class="seq-cell">${rowOffset + index + 1}</td>
+          <td class="date-cell">${formatThaiDateShort(row.date)}${weekdayBadge}</td>
           ${useDraftColumns
       ? row.draftValues
         .map((value) => `<td class="num-cell">${formatNumber(value, 1)}</td>`)
@@ -2611,10 +2671,11 @@ const buildReceiptHtml = ({
     </div>
   `;
   const draftValueColumnWidth = formulaColumnDefs.length
-    ? (78 / formulaColumnDefs.length).toFixed(2)
-    : "78.00";
+    ? (70 / formulaColumnDefs.length).toFixed(2)
+    : "70.00";
   const colgroupHtml = useDraftColumns
     ? `<colgroup>
+            <col style="width:8%">
             <col style="width:22%">
             ${formulaColumnDefs
       .map(() => `<col style="width:${draftValueColumnWidth}%">`)
@@ -2622,14 +2683,16 @@ const buildReceiptHtml = ({
           </colgroup>`
     : showFormulaColumns
       ? `<colgroup>
-            <col style="width:30%">
-            <col style="width:21%">
+            <col style="width:8%">
+            <col style="width:24%">
+            <col style="width:20%">
             <col style="width:7%">
-            <col style="width:21%">
+            <col style="width:20%">
             <col style="width:21%">
           </colgroup>`
       : `<colgroup>
-            <col style="width:72%">
+            <col style="width:8%">
+            <col style="width:64%">
             <col style="width:28%">
           </colgroup>`;
   const draftHeadHtml = useDraftColumns
@@ -2737,21 +2800,19 @@ const buildReceiptHtml = ({
       </div>
     `
     : "";
-  const buildPage = (rows, pageIndex) => `
+  const buildPage = (rows, pageIndex, rowOffset = 0) => `
     <div class="receipt-paper" data-days="${dailyRows.length}" data-page="${pageIndex + 1}" data-pages="${pageCount}">
-      <div class="receipt-title">
-        <h2>Billing Report</h2>
-        <span class="receipt-bill-code">${escapeHtml(billCode)}</span>
-        <p class="receipt-date">Date: ${escapeHtml(issueLabelFullBE)}</p>
-      </div>
-      <div class="receipt-meta">
-        <div class="box">
-          <strong>ข้อมูลบิล</strong>
-          ${companyMetaHtml}
+      <div class="receipt-header">
+        <div class="receipt-meta">
+          <div class="box">
+            <strong>ข้อมูลบิล</strong>
+            ${companyMetaHtml}
+          </div>
         </div>
-        <div class="box">
-          <strong>รายละเอียดงวด</strong>
-          ${periodMetaHtml}
+        <div class="receipt-title">
+          <h2>Billing Report</h2>
+          <span class="receipt-bill-code">${escapeHtml(billCode)}</span>
+          <p class="receipt-date">Date: ${escapeHtml(issueLabelFullBE)}</p>
         </div>
       </div>
       <div class="receipt-table-area">
@@ -2759,6 +2820,7 @@ const buildReceiptHtml = ({
           ${colgroupHtml}
           <thead>
             <tr>
+              <th class="seq-cell">ลำดับ</th>
               <th class="date-cell">วัน/เดือน/ปี</th>
               ${useDraftColumns ? draftHeadHtml : formulaHeadHtml}
               ${showUsageColumn ? `<th class="num-cell" title="${escapeHtml(usageHeaderTitle)}">${escapeHtml(
@@ -2767,19 +2829,21 @@ const buildReceiptHtml = ({
             </tr>
           </thead>
           <tbody>
-            ${buildRowsHtml(rows, { includeTotalRow: pageIndex === pageCount - 1 })}
+            ${buildRowsHtml(rows, {
+              includeTotalRow: pageIndex === pageCount - 1,
+              rowOffset
+            })}
           </tbody>
         </table>
       </div>
       ${pageIndex === pageCount - 1 ? meterReadingsHtml : ""}
       ${pageIndex === pageCount - 1 ? summaryHtml : ""}
-      <div class="receipt-power-note">Powered By Devonix</div>
     </div>
   `;
   return Array.from({ length: pageCount }, (_, pageIndex) => {
     const start = pageIndex * dataRowsPerPage;
     const pageRows = dailyRows.slice(start, start + dataRowsPerPage);
-    return buildPage(pageRows, pageIndex);
+    return buildPage(pageRows, pageIndex, start);
   }).join('<div class="page-break"></div>');
 };
 const openReceiptPreview = async ({ bill, issueDate }) => {
@@ -3294,7 +3358,17 @@ const queueBillingStateSave = () => {
 const hydrateBillingStateFromApi = async () => {
   let hasAnyState = false;
   let hasScheduleState = false;
-  const scheduleFromPrimary = await fetchBillingSettingsFromPrimaryApi().catch(() => null);
+  // Parallel fetch — both endpoints are independent reads.
+  const query = buildBillingStateQueryString();
+  const [scheduleFromPrimary, response] = await Promise.all([
+    fetchBillingSettingsFromPrimaryApi().catch(() => null),
+    query
+      ? fetch(`${billingStateApiPath}?${query}`, {
+          method: "GET",
+          credentials: "same-origin"
+        }).catch(() => null)
+      : Promise.resolve(null)
+  ]);
   if (hasMeaningfulSchedule(scheduleFromPrimary)) {
     try {
       localStorage.setItem(scheduleKey, JSON.stringify(scheduleFromPrimary));
@@ -3305,7 +3379,6 @@ const hydrateBillingStateFromApi = async () => {
     }
   }
 
-  const query = buildBillingStateQueryString();
   if (!query) {
     if (hasAnyState) {
       loadSchedule();
@@ -3315,13 +3388,6 @@ const hydrateBillingStateFromApi = async () => {
     }
     return false;
   }
-  const response = await fetch(
-    `${billingStateApiPath}${query ? `?${query}` : ""}`,
-    {
-      method: "GET",
-      credentials: "same-origin"
-    }
-  ).catch(() => null);
   if (!response || !response.ok) {
     if (hasAnyState) {
       loadSchedule();
@@ -4161,16 +4227,28 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
   const apiMeters = getMetersWithApiId();
   if (!apiMeters.length) return [];
 
-  const rows = [];
   const monthPayloadCache = new Map();
-  let hasAnyReading = false;
   const dates = listDatesInclusive(start, end);
-  for (const dateStr of dates) {
-    const dayItems = await Promise.all(
-      apiMeters.map((meter) =>
-        fetchDeviceEnergyDayForMeter(meter, dateStr, monthPayloadCache).catch(() => null)
+
+  // Launch every (date × meter) fetch in one big Promise.all. The shared
+  // monthPayloadCache dedupes network calls per (meter, month) so this still
+  // only hits the API once per unique month — but unlike the previous loop,
+  // days within the same month resolve concurrently from the cached promise
+  // instead of waiting on each other.
+  const allDayItems = await Promise.all(
+    dates.map((dateStr) =>
+      Promise.all(
+        apiMeters.map((meter) =>
+          fetchDeviceEnergyDayForMeter(meter, dateStr, monthPayloadCache).catch(() => null)
+        )
       )
-    );
+    )
+  );
+
+  const rows = [];
+  let hasAnyReading = false;
+  dates.forEach((dateStr, dateIndex) => {
+    const dayItems = allDayItems[dateIndex];
     const resolvedItems = dayItems.filter(
       (item) => item && typeof item.meterKey === "string" && item.meterKey
     );
@@ -4197,7 +4275,7 @@ const fetchDeviceEnergyRange = async (startStr, endStr) => {
       mdb_out: roundTo(totalMdbOut, 1),
       by_meter
     });
-  }
+  });
   if (!hasAnyReading) return [];
   return rows;
 };
@@ -6074,10 +6152,19 @@ const initBilling = async () => {
     queueBillingStateSave();
   }
   updateScheduleInfo(schedule.cutoffDay);
-  await runAutoIfDue();
+  // Render UI immediately so the page becomes interactive even while the
+  // auto-bill check runs network calls in the background. Re-render after
+  // runAutoIfDue finishes in case it created a new bill or captured readings.
   renderAutoQueue();
   renderHistory();
   updateSummary();
+  runAutoIfDue()
+    .then(() => {
+      renderAutoQueue();
+      renderHistory();
+      updateSummary();
+    })
+    .catch((err) => console.error("[billing] runAutoIfDue failed:", err));
 };
 
 billNewBtn?.addEventListener("click", () => openModal(billMode));

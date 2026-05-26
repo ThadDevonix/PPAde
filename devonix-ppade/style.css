@@ -743,11 +743,11 @@ tbody tr.selected {
   background: #ffffff;
   border: 1px solid #e3ebf6;
   border-radius: 12px;
-  padding: 8mm 10mm;
+  padding: 4mm 10mm;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 2px;
   overflow: hidden;
   /* Design tokens — used throughout the receipt */
   --c-text:      #122f5d;
@@ -764,7 +764,7 @@ tbody tr.selected {
   --fs-label:    11px;
   --fs-eyebrow:  10px;
   --radius:      8px;
-  --row-h:       19.4px;
+  --row-h:       17px;
   --table-font:  12.8px;
   --meta-font:   12px;
 }
@@ -772,14 +772,22 @@ tbody tr.selected {
   position: relative;
   z-index: 1;
 }
+.receipt-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+  padding-bottom: 6px;
+  border-bottom: 3px solid #1d4ed8;
+}
 .receipt-title {
   display: grid;
   justify-items: end;
+  align-content: center;
   gap: 4px;
   margin: 0;
-  padding: 0 0 12px;
+  padding: 0;
   text-align: right;
-  border-bottom: 4px solid #1d4ed8;
 }
 .receipt-title h2,
 .receipt-title p {
@@ -822,22 +830,28 @@ tbody tr.selected {
 }
 .receipt-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   font-size: var(--meta-font);
+}
+.receipt-header .receipt-meta {
+  align-self: stretch;
+}
+.receipt-header .receipt-meta .box {
+  height: 100%;
 }
 .receipt-meta .box {
   position: relative;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: 4px 10px;
   background: var(--c-bg-soft);
   font-size: var(--fs-body);
-  line-height: 1.4;
+  line-height: 1.2;
 }
 .receipt-meta .box strong {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
   font-size: var(--fs-eyebrow);
   line-height: 1.2;
   letter-spacing: 0.8px;
@@ -850,7 +864,7 @@ tbody tr.selected {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding: 4px 0;
+  padding: 1px 0;
 }
 .receipt-meta .box .meta-line + .meta-line {
   border-top: 1px solid var(--c-border-2);
@@ -899,11 +913,14 @@ tbody tr.selected {
 .receipt-table td {
   border: 0;
   border-bottom: 1px solid var(--c-border-2);
-  padding: 4px 8px;
+  padding: 1px 6px;
   text-align: right;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
+  box-sizing: border-box;
+  height: var(--row-h);
 }
 .receipt-table tbody tr:last-child td {
   border-bottom: 0;
@@ -934,6 +951,11 @@ tbody tr.selected {
 .receipt-usage-table .date-cell {
   text-align: left;
 }
+.receipt-usage-table th.seq-cell,
+.receipt-usage-table td.seq-cell {
+  text-align: center;
+  color: var(--c-muted);
+}
 .receipt-usage-table .num-cell {
   text-align: right;
 }
@@ -954,12 +976,25 @@ tbody tr.selected {
   border-top: 1px solid var(--c-border);
   border-bottom: 0;
 }
-.receipt-usage-table tbody tr.weekend-sat td {
-  color: #7b57d6;
+.receipt-usage-table .weekday-badge {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 44px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: 0.4px;
+  text-align: center;
+  vertical-align: middle;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
-.receipt-usage-table tbody tr.weekend-sun td {
-  color: #d65454;
-}
+.receipt-usage-table .weekday-badge.sat { color: #7c3aed; }
+.receipt-usage-table .weekday-badge.sun { color: #dc2626; }
 .receipt-summary {
   display: flex;
   justify-content: stretch;
@@ -968,7 +1003,7 @@ tbody tr.selected {
   width: 100%;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: 4px 10px;
   background: var(--c-bg-soft);
   font-size: var(--fs-body);
 }
@@ -977,7 +1012,7 @@ tbody tr.selected {
   grid-template-columns: minmax(0, 1fr) minmax(150px, max-content);
   column-gap: 16px;
   align-items: baseline;
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 .receipt-summary .row .summary-expression {
   color: var(--c-muted);
@@ -1018,16 +1053,16 @@ tbody tr.selected {
   font-variant-numeric: tabular-nums;
 }
 .receipt-summary .row.breakdown {
-  padding: 2px 0;
+  padding: 0;
 }
 .receipt-summary .row.breakdown.is-excluded .summary-label,
 .receipt-summary .row.breakdown.is-excluded .summary-amount {
   color: var(--c-muted);
 }
 .receipt-summary .row.total {
-  margin-top: 10px;
+  margin-top: 2px;
   margin-bottom: 0;
-  padding-top: 10px;
+  padding-top: 2px;
   border-top: 1px solid var(--c-border);
   font-weight: 700;
 }
@@ -1093,14 +1128,14 @@ tbody tr.selected {
     --fs-body:     11px;
     --fs-label:    10px;
     --fs-eyebrow:  9px;
-    --row-h:       16px;
+    --row-h:       15.5px;
     --table-font:  11px;
   }
   body.pdf-view .receipt-meta .box { padding: 6px 10px; }
   body.pdf-view .receipt-meta .box strong { margin-bottom: 4px; }
   body.pdf-view .receipt-meta .box .meta-line { padding: 2px 0; }
   body.pdf-view .receipt-table th,
-  body.pdf-view .receipt-table td { padding: 2px 6px; }
+  body.pdf-view .receipt-table td { padding: 2px 5px; }
   body.pdf-view .receipt-meter-readings .meter-readings-history th,
   body.pdf-view .receipt-meter-readings .meter-readings-history td { padding: 3px 8px; }
   body.pdf-view .receipt-summary .box { padding: 8px 12px; }
@@ -4641,7 +4676,7 @@ body.plant-page #meter-create-modal .meter-create-section-export .meter-create-s
    RECEIPT — Usage History table (เลขมิเตอร์สะสม ก่อน/หลัง)
    ============================================================ */
 .receipt-meter-readings {
-  margin-top: 6px;
+  margin-top: 2px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -4709,10 +4744,11 @@ body.plant-page #meter-create-modal .meter-create-section-export .meter-create-s
   border: 0;
   border-bottom: 1px solid var(--c-border-2);
   border-right: 1px solid var(--c-border-2);
-  padding: 5px 10px;
+  padding: 1px 6px;
   vertical-align: middle;
   overflow-wrap: anywhere;
   word-break: break-word;
+  line-height: 1.2;
 }
 .receipt-meter-readings .meter-readings-history th:last-child,
 .receipt-meter-readings .meter-readings-history td:last-child {
@@ -5882,4 +5918,3 @@ button.icon-btn > svg,
     flex-wrap: wrap;
   }
 }
-
