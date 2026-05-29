@@ -1265,7 +1265,15 @@ const fetchPlantDevicesFromApi = async (targetPlant) => {
 const getMeterKey = (meter) => {
   // Prefer the unique device id; SN/serial may be a placeholder ("-")
   // shared across meters when no real serial is configured.
-  const id = String(meter?.id ?? "").trim();
+  const id = String(
+    meter?.id ??
+      meter?.apiId ??
+      meter?.device_id ??
+      meter?.deviceId ??
+      meter?.meter_id ??
+      meter?.meterId ??
+      ""
+  ).trim();
   if (id) return id;
   const sn = String(meter?.sn ?? "").trim();
   if (sn && sn !== "-") return sn;
@@ -2314,9 +2322,23 @@ const mergeCapturedMeterReadingEntry = (currentEntry, capturedEntry) => {
   if (!merged.capturedAt && capturedEntry.capturedAt) merged.capturedAt = capturedEntry.capturedAt;
   return Object.keys(merged).length ? merged : null;
 };
+const getBillMeterPoolForDisplay = (bill) => {
+  const storedMeters = Array.isArray(bill?.meters) ? bill.meters.filter(Boolean) : [];
+  if (storedMeters.length) return storedMeters;
+  return Array.isArray(meterProfiles) ? meterProfiles.filter(Boolean) : [];
+};
+const getBillFormulaColumnsForDisplay = (bill) => {
+  const storedColumns = sanitizeFormulaColumnDrafts(
+    bill?.formulaColumns || bill?.columnDrafts || bill?.calcColumns
+  );
+  if (storedColumns.length) return storedColumns;
+  if (!bill?.auto || typeof getAutoScheduleByCutoff !== "function") return [];
+  const autoConfig = getAutoScheduleByCutoff(bill.cutoffDay);
+  return sanitizeFormulaColumnDrafts(autoConfig?.formulaColumns);
+};
 const getBillReadingMetersToRepair = (bill) => {
   if (!bill || typeof bill !== "object") return [];
-  const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
+  const meterPool = getBillMeterPoolForDisplay(bill);
   if (!meterPool.length) return [];
   const boundaryDates = resolveReadingBoundaryDates(
     bill.periodStart,
@@ -2327,7 +2349,7 @@ const getBillReadingMetersToRepair = (bill) => {
     meterPool.map((meter) => [getMeterKey(meter), meter]).filter(([key]) => key)
   );
   const columns = sanitizeFormulaColumnDrafts(
-    bill?.formulaColumns || bill?.columnDrafts || bill?.calcColumns
+    getBillFormulaColumnsForDisplay(bill)
   );
   const readings = bill?.meterReadings && typeof bill.meterReadings === "object"
     ? bill.meterReadings
@@ -2405,7 +2427,7 @@ const buildReceiptHtml = ({
   issueDate,
   rowsPerPage = 32
 }) => {
-  const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
+  const meterPool = getBillMeterPoolForDisplay(bill);
   const formulaTerms = Array.isArray(bill?.calcFormula) && bill.calcFormula.length
     ? normalizeCalcFormula(bill.calcFormula, meterPool, false)
     : normalizeCalcFormula(
@@ -2413,9 +2435,7 @@ const buildReceiptHtml = ({
       meterPool,
       false
     );
-  const formulaColumnDrafts = sanitizeFormulaColumnDrafts(
-    bill?.formulaColumns || bill?.columnDrafts || bill?.calcColumns
-  );
+  const formulaColumnDrafts = getBillFormulaColumnsForDisplay(bill);
   const leftTerm = formulaTerms[0] || null;
   const rightTerm = formulaTerms[1] || null;
   const legacyFormulaColumns = Boolean(leftTerm && rightTerm);
@@ -5386,10 +5406,10 @@ const calculateFormulaColumnBillTotals = ({
 const getBillDisplayTotals = (bill) => {
   const baseTotalKwh = roundTo(parseNumber(bill?.totalKwh), 1);
   const baseAmount = roundTo(parseNumber(bill?.amount), 2);
-  const meterPool = Array.isArray(bill?.meters) ? bill.meters : [];
+  const meterPool = getBillMeterPoolForDisplay(bill);
   const calculated = calculateFormulaColumnBillTotals({
     dailyRows: Array.isArray(bill?.daily) ? bill.daily : [],
-    formulaColumns: bill?.formulaColumns || bill?.columnDrafts || bill?.calcColumns,
+    formulaColumns: getBillFormulaColumnsForDisplay(bill),
     meterPool,
     rate: bill?.rate
   });
@@ -5399,7 +5419,53 @@ const getBillDisplayTotals = (bill) => {
       amount: baseAmount
     };
   }
+  if (baseTotalKwh > 0 && roundTo(calculated.totalKwh, 1) === 0) {
+    return {
+      totalKwh: baseTotalKwh,
+      amount: baseAmount
+    };
+  }
   return calculated;
+};
+const repairHistoricalBillSnapshots = () => {
+  if (!Array.isArray(history) || !history.length) return false;
+  let changed = false;
+  history.forEach((bill) => {
+    if (!bill || typeof bill !== "object") return;
+    const storedColumns = sanitizeFormulaColumnDrafts(
+      bill.formulaColumns || bill.columnDrafts || bill.calcColumns
+    );
+    const effectiveColumns = getBillFormulaColumnsForDisplay(bill);
+    if (!storedColumns.length && effectiveColumns.length) {
+      bill.formulaColumns = effectiveColumns;
+      changed = true;
+    }
+    const storedMeters = Array.isArray(bill.meters) ? bill.meters.filter(Boolean) : [];
+    const effectiveMeters = getBillMeterPoolForDisplay(bill);
+    if (!storedMeters.length && effectiveMeters.length) {
+      bill.meters = effectiveMeters.map((meter) => ({ ...meter }));
+      changed = true;
+    }
+    const totals = getBillDisplayTotals(bill);
+    const nextKwh = Number(totals?.totalKwh);
+    const nextAmount = Number(totals?.amount);
+    if (
+      Number.isFinite(nextKwh) &&
+      Math.abs(roundTo(parseNumber(bill.totalKwh), 1) - roundTo(nextKwh, 1)) > 0.05
+    ) {
+      bill.totalKwh = roundTo(nextKwh, 1);
+      changed = true;
+    }
+    if (
+      Number.isFinite(nextAmount) &&
+      Math.abs(roundTo(parseNumber(bill.amount), 2) - roundTo(nextAmount, 2)) > 0.005
+    ) {
+      bill.amount = roundTo(nextAmount, 2);
+      changed = true;
+    }
+  });
+  if (changed) saveHistory();
+  return changed;
 };
 const getBillUnits = (row, method, formula) => {
   const byFormula = calculateByFormula(row, formula);
@@ -5576,14 +5642,14 @@ const renderHistory = () => {
   }
   billHistoryRows.innerHTML = visibleHistory
     .map((bill) => {
-      const meterPool = Array.isArray(bill.meters) ? bill.meters : [];
+      const meterPool = getBillMeterPoolForDisplay(bill);
       const displayFormula =
         Array.isArray(bill.calcFormula) && bill.calcFormula.length
           ? bill.calcFormula
           : buildLegacyFormula(bill.calcMethod, meterPool);
       const formulaMeters = getMetersFromFormula(displayFormula, meterPool);
       const formulaColumnMeters = getMetersFromFormulaColumns(
-        bill.formulaColumns || bill.columnDrafts || bill.calcColumns,
+        getBillFormulaColumnsForDisplay(bill),
         meterPool
       );
       const displayMeters = mergeMetersByKey(formulaMeters, formulaColumnMeters);
@@ -6204,6 +6270,7 @@ loadHistory();
 const initBilling = async () => {
   const hydratedFromApi = await hydrateBillingStateFromApi().catch(() => false);
   billingStateReady = true;
+  repairHistoricalBillSnapshots();
   if (!hydratedFromApi) {
     queueBillingStateSave();
   }
