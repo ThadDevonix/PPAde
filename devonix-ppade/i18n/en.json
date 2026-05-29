@@ -47,6 +47,9 @@
   "billing.history.col.total": "Total",
   "billing.history.col.action": "Actions",
   "billing.history.empty": "No bills yet",
+  "schedule.history.title": "Issued Bill History",
+  "schedule.history.subtitle": "Cutoff day {day} • {count} bills",
+  "schedule.history.empty": "No bills issued for this schedule yet",
 
   "audit.title": "History Edit",
   "audit.subtitle": "Pick a topic on the left to read the steps",

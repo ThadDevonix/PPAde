@@ -200,6 +200,7 @@ let billMode = "manual";
 let formulaColumnDrafts = [];
 let autoScheduleEditorCutoffDay = null;
 let autoModalCutoffDay = null;
+let activeScheduleHistoryCutoffDay = null;
 
 const updateFormulaColumnButtonState = () => {
   const atMax = formulaColumnDrafts.length >= maxFormulaDraftColumns;
@@ -2735,22 +2736,54 @@ const buildReceiptHtml = ({
       <span class="legend-item sun"><span class="legend-swatch"></span>วันอาทิตย์</span>
     </div>
   `;
+  const alignReadingToColumnTotal = (reading, columnTotal) => {
+    if (!reading || typeof reading !== "object") return { before: null, after: null };
+    const total = Number(columnTotal);
+    const before = Number.isFinite(Number(reading.before)) ? Number(reading.before) : null;
+    const after = Number.isFinite(Number(reading.after)) ? Number(reading.after) : null;
+    if (!Number.isFinite(total) || (before === null && after === null)) return reading;
+    const roundedTotal = roundTo(total, 1);
+    if (before !== null && after !== null) {
+      const rawDiff = roundTo(after - before, 1);
+      if (Math.abs(rawDiff - roundedTotal) <= 0.05) return reading;
+    }
+    if (before !== null) {
+      return {
+        ...reading,
+        before,
+        after: roundTo(before + roundedTotal, 1)
+      };
+    }
+    if (after !== null) {
+      return {
+        ...reading,
+        before: roundTo(after - roundedTotal, 1),
+        after
+      };
+    }
+    return reading;
+  };
   const meterReadingRows = (() => {
     const readings = bill?.meterReadings;
     if (!readings || typeof readings !== "object" || !Object.keys(readings).length) return [];
     // หนึ่งแถวต่อ basic column ที่เปิด "แสดง kWh" ตามที่ user ตั้งไว้
     // ชื่อแถวมาจากช่อง "ชื่อคอลัมน์"; ชื่อว่างยังต้องมีแถวตาม show-kWh
     return formulaColumnDefs
-      .filter((col) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
-      .map((col) => ({
+      .map((col, columnIndex) => ({ col, columnIndex }))
+      .filter(({ col }) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
+      .map(({ col, columnIndex }) => ({
         term: col.term,
-        label: col.rawName
+        label: col.rawName,
+        columnTotal: draftColumnTotals[columnIndex]
       }))
-      .map((rowDef, index) => {
+      .map((rowDef) => {
         const meter = meterPool.find((m) => getMeterKey(m) === rowDef.term.meterKey) || null;
-        const reading = meter ? getMeterReadingForRender(bill, meter, rowDef.term.field) : null;
+        const rawReading = meter ? getMeterReadingForRender(bill, meter, rowDef.term.field) : null;
+        const reading = rawReading
+          ? alignReadingToColumnTotal(rawReading, rowDef.columnTotal)
+          : { before: null, after: null };
         const label = rowDef.label;
-        return { label, reading: reading || { before: null, after: null } };
+        return { label, reading };
       });
   })();
   const fmtReading = (val) =>
@@ -4775,11 +4808,15 @@ const renderScheduleHistoryModal = (cutoffDay) => {
       return bKey.localeCompare(aKey);
     });
   if (scheduleHistorySubtitle) {
-    scheduleHistorySubtitle.textContent = `ตัดรอบวันที่ ${cutoffDay} • ${bills.length} ใบ`;
+    scheduleHistorySubtitle.textContent = tAudit(
+      "schedule.history.subtitle",
+      "ตัดรอบวันที่ {day} • {count} ใบ",
+      { day: cutoffDay, count: bills.length }
+    );
   }
   if (!bills.length) {
     scheduleHistoryRows.innerHTML =
-      `<tr><td class="empty" colspan="6">ยังไม่มีบิลที่ออกในรอบนี้</td></tr>`;
+      `<tr><td class="empty" colspan="6">${tAudit("schedule.history.empty", "ยังไม่มีบิลที่ออกในรอบนี้")}</td></tr>`;
     return;
   }
   scheduleHistoryRows.innerHTML = bills.map((bill) => {
@@ -4799,7 +4836,7 @@ const renderScheduleHistoryModal = (cutoffDay) => {
         <td>${formatCurrency(totals.amount)}</td>
         <td>
           <div class="history-actions">
-            <button class="ghost small-btn" data-action="schedule-history-preview" data-id="${bill.id}" data-date="${issueDateStr}" type="button">ดูตัวอย่าง</button>
+            <button class="ghost small-btn" data-action="schedule-history-preview" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.preview", "ดูตัวอย่าง")}</button>
           </div>
         </td>
       </tr>`;
@@ -4818,10 +4855,12 @@ const renderScheduleHistoryModal = (cutoffDay) => {
 };
 const openScheduleHistoryModal = (cutoffDay) => {
   if (!scheduleHistoryModal) return;
+  activeScheduleHistoryCutoffDay = cutoffDay;
   renderScheduleHistoryModal(cutoffDay);
   scheduleHistoryModal.classList.remove("hidden");
 };
 const closeScheduleHistoryModal = () => {
+  activeScheduleHistoryCutoffDay = null;
   scheduleHistoryModal?.classList.add("hidden");
 };
 const renderAutoQueue = () => {
@@ -6562,4 +6601,9 @@ document.addEventListener("i18n:changed", () => {
   try { updateAutoPreviewText(); } catch { /* ignore */ }
   try { renderAutoQueue(); } catch { /* ignore */ }
   try { renderHistory(); } catch { /* ignore */ }
+  try {
+    if (activeScheduleHistoryCutoffDay !== null && !scheduleHistoryModal?.classList.contains("hidden")) {
+      renderScheduleHistoryModal(activeScheduleHistoryCutoffDay);
+    }
+  } catch { /* ignore */ }
 });

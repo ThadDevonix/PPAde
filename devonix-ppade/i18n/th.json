@@ -47,6 +47,9 @@
   "billing.history.col.total": "ยอดรวม",
   "billing.history.col.action": "การทำงาน",
   "billing.history.empty": "ยังไม่มีบิล",
+  "schedule.history.title": "ประวัติบิลที่เคยออก",
+  "schedule.history.subtitle": "ตัดรอบวันที่ {day} • {count} ใบ",
+  "schedule.history.empty": "ยังไม่มีบิลที่ออกในรอบนี้",
 
   "audit.title": "History Edit",
   "audit.subtitle": "เลือกหัวข้อด้านซ้ายเพื่ออ่านขั้นตอน",
