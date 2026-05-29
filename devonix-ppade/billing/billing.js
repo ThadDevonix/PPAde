@@ -1998,10 +1998,11 @@ const collectEndOfDayReadingCandidates = (payload) => {
   visit(payload);
   return candidates;
 };
-const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId) => {
+const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId, expectedDate = "") => {
   const candidates = collectEndOfDayReadingCandidates(payload);
   if (!candidates.length) return null;
   const targetId = String(expectedDeviceId ?? "").trim();
+  const targetDate = normalizeDateValue(expectedDate);
   const scored = candidates
     .map((candidate, index) => {
       const sources = [candidate.reading, candidate.container];
@@ -2010,6 +2011,7 @@ const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId) => {
       const deviceIdText = String(deviceId ?? "").trim();
       const readingTime = readLooseObjectValue(sources[0], endOfDayReadingTimeKeys) ??
         readLooseObjectValue(sources[1], endOfDayReadingTimeKeys);
+      const readingDate = normalizeDateValue(readingTime);
       const valueIn = readLooseObjectNumber(sources, endOfDayReadingInKeys);
       const valueOut = readLooseObjectNumber(sources, endOfDayReadingOutKeys);
       const genericValue =
@@ -2017,7 +2019,13 @@ const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId) => {
         readFirstValuePrefixedNumber(sources);
       const hasValue = valueIn !== null || valueOut !== null || genericValue !== null;
       const deviceScore = targetId && deviceIdText === targetId ? 100 : deviceIdText ? 5 : 0;
-      const score = deviceScore + (readingTime ? 10 : 0) + (hasValue ? 20 : 0) - index;
+      const dateScore =
+        targetDate && readingDate === targetDate
+          ? 40
+          : targetDate && readingDate
+            ? -10
+            : 0;
+      const score = deviceScore + dateScore + (readingTime ? 10 : 0) + (hasValue ? 20 : 0) - index;
       return {
         score,
         deviceId: deviceIdText || targetId || "",
@@ -2031,8 +2039,22 @@ const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId) => {
   scored.sort((a, b) => b.score - a.score);
   return scored[0];
 };
+const addDaysToDateString = (dateStr, days) => {
+  const date = parseDateInput(dateStr);
+  if (!date) return "";
+  date.setDate(date.getDate() + Number(days || 0));
+  return formatDate(date);
+};
 const buildEndOfDayReadingSearches = (deviceId, date) => {
   const variants = [];
+  const rangeEndDate = addDaysToDateString(date, 1);
+  if (rangeEndDate) {
+    const rangeParams = new URLSearchParams();
+    rangeParams.set("device_id", String(deviceId));
+    rangeParams.set("start_date", date);
+    rangeParams.set("end_date", rangeEndDate);
+    variants.push(`?${rangeParams.toString()}`);
+  }
   ["date", "reading_time", "readingTime", "day"].forEach((dateKey) => {
     const params = new URLSearchParams();
     params.set("device_id", String(deviceId));
@@ -2047,7 +2069,8 @@ const normalizeReadingTimeText = (value) => {
   return normalized || "";
 };
 // Fetch the end-of-day cumulative reading for one device on a specific date.
-// API: GET /api/devices/end-of-day-reading?device_id=X&date=YYYY-MM-DD
+// API: GET /api/devices/end-of-day-reading?device_id=X&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+// Range convention: target date X is queried as start_date=X, end_date=X+1.
 // Typical payload: { device_id, reading: { reading_time, value_in, value_out } }
 const fetchEndOfDayReading = async (deviceId, dateStr) => {
   const id = Number(deviceId);
@@ -2064,7 +2087,7 @@ const fetchEndOfDayReading = async (deviceId, dateStr) => {
         if (!res.ok) continue;
         const data = await res.json().catch(() => null);
         if (!data || data.found === false) continue;
-        const normalized = normalizeEndOfDayReadingPayload(data, id);
+        const normalized = normalizeEndOfDayReadingPayload(data, id, date);
         if (normalized) {
           return {
             deviceId: normalized.deviceId || String(id),
@@ -2082,12 +2105,6 @@ const fetchEndOfDayReading = async (deviceId, dateStr) => {
 };
 const directionFromField = (field) =>
   String(field || "").toLowerCase() === "energy_out" ? "out" : "in";
-const addDaysToDateString = (dateStr, days) => {
-  const date = parseDateInput(dateStr);
-  if (!date) return "";
-  date.setDate(date.getDate() + Number(days || 0));
-  return formatDate(date);
-};
 const resolveReadingBoundaryDates = (periodStart, periodEnd, autoConfig = null) => {
   const start = normalizeDateValue(periodStart);
   const end = normalizeDateValue(periodEnd);
