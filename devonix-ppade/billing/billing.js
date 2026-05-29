@@ -1931,6 +1931,18 @@ const endOfDayReadingGenericValueKeys = [
   "total_kwh",
   "totalKwh"
 ];
+const endOfDayReadingStartKeys = [
+  "start_reading",
+  "startReading",
+  "opening_reading",
+  "openingReading"
+];
+const endOfDayReadingEndKeys = [
+  "end_reading",
+  "endReading",
+  "closing_reading",
+  "closingReading"
+];
 const normalizeLooseObjectKey = (value) =>
   String(value || "")
     .toLowerCase()
@@ -2048,6 +2060,86 @@ const normalizeEndOfDayReadingPayload = (payload, expectedDeviceId, expectedDate
   scored.sort((a, b) => b.score - a.score);
   return scored[0];
 };
+const normalizeEndOfDayReadingObject = (reading, container, expectedDeviceId) => {
+  if (!reading || typeof reading !== "object" || Array.isArray(reading)) return null;
+  const sources = [reading, container];
+  const deviceId =
+    readLooseObjectValue(sources[0], endOfDayReadingDeviceIdKeys) ??
+    readLooseObjectValue(sources[1], endOfDayReadingDeviceIdKeys);
+  const deviceIdText = String(deviceId ?? expectedDeviceId ?? "").trim();
+  const readingTime =
+    readLooseObjectValue(sources[0], endOfDayReadingTimeKeys) ??
+    readLooseObjectValue(sources[1], endOfDayReadingTimeKeys);
+  const valueIn = readLooseObjectNumber(sources, endOfDayReadingInKeys);
+  const valueOut = readLooseObjectNumber(sources, endOfDayReadingOutKeys);
+  const genericValue =
+    readLooseObjectNumber(sources, endOfDayReadingGenericValueKeys) ??
+    readFirstValuePrefixedNumber(sources);
+  if (valueIn === null && valueOut === null && genericValue === null) return null;
+  return {
+    deviceId: deviceIdText,
+    readingTime: readingTime ?? "",
+    in: valueIn ?? genericValue,
+    out: valueOut ?? genericValue
+  };
+};
+const collectEndOfDayReadingRangeCandidates = (payload) => {
+  const candidates = [];
+  const seen = new Set();
+  const visit = (node, depth = 0) => {
+    if (!node || typeof node !== "object" || depth > 6 || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      node.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    const startReading = readLooseObjectValue(node, endOfDayReadingStartKeys);
+    const endReading = readLooseObjectValue(node, endOfDayReadingEndKeys);
+    if (
+      startReading && typeof startReading === "object" && !Array.isArray(startReading) &&
+      endReading && typeof endReading === "object" && !Array.isArray(endReading)
+    ) {
+      candidates.push({ container: node, startReading, endReading });
+    }
+    Object.values(node).forEach((value) => {
+      if (value && typeof value === "object") visit(value, depth + 1);
+    });
+  };
+  visit(payload);
+  return candidates;
+};
+const normalizeEndOfDayReadingRangePayload = (payload, expectedDeviceId) => {
+  const candidates = collectEndOfDayReadingRangeCandidates(payload);
+  if (!candidates.length) return null;
+  const targetId = String(expectedDeviceId ?? "").trim();
+  const scored = candidates
+    .map((candidate, index) => {
+      const before = normalizeEndOfDayReadingObject(
+        candidate.startReading,
+        candidate.container,
+        expectedDeviceId
+      );
+      const after = normalizeEndOfDayReadingObject(
+        candidate.endReading,
+        candidate.container,
+        expectedDeviceId
+      );
+      if (!before && !after) return null;
+      const deviceIdText = String(before?.deviceId || after?.deviceId || "").trim();
+      const deviceScore = targetId && deviceIdText === targetId ? 100 : deviceIdText ? 5 : 0;
+      const valueScore = (before ? 20 : 0) + (after ? 20 : 0);
+      return {
+        score: deviceScore + valueScore - index,
+        deviceId: deviceIdText || targetId,
+        before,
+        after
+      };
+    })
+    .filter(Boolean);
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0];
+};
 const addDaysToDateString = (dateStr, days) => {
   const date = parseDateInput(dateStr);
   if (!date) return "";
@@ -2071,6 +2163,15 @@ const buildEndOfDayReadingSearches = (deviceId, date) => {
     variants.push(`?${params.toString()}`);
   });
   return Array.from(new Set(variants));
+};
+const buildEndOfDayReadingRangeSearches = (deviceId, startDate, endDate) => {
+  const variants = [];
+  const params = new URLSearchParams();
+  params.set("device_id", String(deviceId));
+  params.set("start_date", startDate);
+  params.set("end_date", endDate);
+  variants.push(`?${params.toString()}`);
+  return variants;
 };
 const normalizeReadingTimeText = (value) => {
   if (typeof value === "string" && value.trim()) return value.trim();
@@ -2112,13 +2213,60 @@ const fetchEndOfDayReading = async (deviceId, dateStr) => {
   }
   return null;
 };
+const fetchEndOfDayReadingRange = async (deviceId, startDateStr, endDateStr) => {
+  const id = Number(deviceId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const startDate = String(startDateStr || "").trim();
+  const endDate = String(endDateStr || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return null;
+  }
+  for (const search of buildEndOfDayReadingRangeSearches(id, startDate, endDate)) {
+    for (const base of endOfDayReadingApiCandidates) {
+      try {
+        const res = await fetch(`${base}${search}`, {
+          method: "GET",
+          credentials: "same-origin"
+        });
+        if (!res.ok) continue;
+        const data = await res.json().catch(() => null);
+        if (!data || data.found === false) continue;
+        const normalized = normalizeEndOfDayReadingRangePayload(data, id);
+        if (normalized?.before || normalized?.after) {
+          const normalizePair = (pair) =>
+            pair
+              ? {
+                  deviceId: pair.deviceId || String(id),
+                  readingTime: normalizeReadingTimeText(pair.readingTime),
+                  in: Number.isFinite(Number(pair.in)) ? Number(pair.in) : null,
+                  out: Number.isFinite(Number(pair.out)) ? Number(pair.out) : null
+                }
+              : null;
+          return {
+            deviceId: normalized.deviceId || String(id),
+            before: normalizePair(normalized.before),
+            after: normalizePair(normalized.after)
+          };
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+  }
+  const [before, after] = await Promise.all([
+    fetchEndOfDayReading(id, startDate),
+    fetchEndOfDayReading(id, endDate)
+  ]);
+  if (!before && !after) return null;
+  return { deviceId: String(id), before, after };
+};
 const directionFromField = (field) =>
   String(field || "").toLowerCase() === "energy_out" ? "out" : "in";
-const resolveReadingBoundaryDates = (periodStart, periodEnd, autoConfig = null) => {
+const resolveReadingBoundaryDates = (periodStart, periodEnd) => {
   const start = normalizeDateValue(periodStart);
   const end = normalizeDateValue(periodEnd);
   return {
-    beforeDate: autoConfig ? addDaysToDateString(start, -1) : start,
+    beforeDate: start,
     afterDate: end
   };
 };
@@ -2136,23 +2284,23 @@ const isOpeningSnapshotTrustworthy = (snap) => {
   );
   return daysLate <= 1;
 };
-// Capture each meter's cumulative IN/OUT via the end-of-day-reading API.
-// Manual bills use periodStart/periodEnd. Auto bills read meter totalizers
-// cutoff-to-cutoff: BEFORE = day before periodStart, AFTER = periodEnd.
-const captureMeterReadingsForBill = async (meters, periodStart, periodEnd, autoConfig = null) => {
+// Capture each meter's cumulative IN/OUT via the range end-of-day-reading API.
+// BEFORE = start_reading of periodStart, AFTER = end_reading of periodEnd.
+const captureMeterReadingsForBill = async (meters, periodStart, periodEnd) => {
   const result = {};
   if (!Array.isArray(meters) || !meters.length) return result;
-  const { beforeDate, afterDate } = resolveReadingBoundaryDates(periodStart, periodEnd, autoConfig);
+  const { beforeDate, afterDate } = resolveReadingBoundaryDates(periodStart, periodEnd);
   const roundOrNull = (v) => (Number.isFinite(Number(v)) ? roundTo(Number(v), 1) : null);
   await Promise.all(
     meters.map(async (meter) => {
       const key = getMeterKey(meter);
       if (!key) return;
-      const deviceId = Number(meter?.id ?? meter?.device_id ?? meter?.deviceId ?? meter?.apiId);
-      const [beforePair, afterPair] = await Promise.all([
-        fetchEndOfDayReading(deviceId, beforeDate),
-        fetchEndOfDayReading(deviceId, afterDate)
-      ]);
+      const deviceId = parseLoosePositiveMeterInt(
+        meter?.id ?? meter?.device_id ?? meter?.deviceId ?? meter?.apiId
+      );
+      const rangePair = await fetchEndOfDayReadingRange(deviceId, beforeDate, afterDate);
+      const beforePair = rangePair?.before || null;
+      const afterPair = rangePair?.after || null;
       const beforeTime = normalizeReadingTimeText(beforePair?.readingTime) || beforeDate;
       const afterTime = normalizeReadingTimeText(afterPair?.readingTime) || afterDate;
       const before = {
@@ -2756,54 +2904,22 @@ const buildReceiptHtml = ({
       <span class="legend-item sun"><span class="legend-swatch"></span>วันอาทิตย์</span>
     </div>
   `;
-  const alignReadingToColumnTotal = (reading, columnTotal) => {
-    if (!reading || typeof reading !== "object") return { before: null, after: null };
-    const total = Number(columnTotal);
-    const before = Number.isFinite(Number(reading.before)) ? Number(reading.before) : null;
-    const after = Number.isFinite(Number(reading.after)) ? Number(reading.after) : null;
-    if (!Number.isFinite(total) || (before === null && after === null)) return reading;
-    const roundedTotal = roundTo(total, 1);
-    if (before !== null && after !== null) {
-      const rawDiff = roundTo(after - before, 1);
-      if (Math.abs(rawDiff - roundedTotal) <= 0.05) return reading;
-    }
-    if (before !== null) {
-      return {
-        ...reading,
-        before,
-        after: roundTo(before + roundedTotal, 1)
-      };
-    }
-    if (after !== null) {
-      return {
-        ...reading,
-        before: roundTo(after - roundedTotal, 1),
-        after
-      };
-    }
-    return reading;
-  };
   const meterReadingRows = (() => {
     const readings = bill?.meterReadings;
     if (!readings || typeof readings !== "object" || !Object.keys(readings).length) return [];
     // หนึ่งแถวต่อ basic column ที่เปิด "แสดง kWh" ตามที่ user ตั้งไว้
     // ชื่อแถวมาจากช่อง "ชื่อคอลัมน์"; ชื่อว่างยังต้องมีแถวตาม show-kWh
     return formulaColumnDefs
-      .map((col, columnIndex) => ({ col, columnIndex }))
-      .filter(({ col }) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
-      .map(({ col, columnIndex }) => ({
+      .filter((col) => col.type === "basic" && col.showKwh !== false && col.term?.meterKey)
+      .map((col) => ({
         term: col.term,
-        label: col.rawName,
-        columnTotal: draftColumnTotals[columnIndex]
+        label: col.rawName
       }))
       .map((rowDef) => {
         const meter = meterPool.find((m) => getMeterKey(m) === rowDef.term.meterKey) || null;
-        const rawReading = meter ? getMeterReadingForRender(bill, meter, rowDef.term.field) : null;
-        const reading = rawReading
-          ? alignReadingToColumnTotal(rawReading, rowDef.columnTotal)
-          : { before: null, after: null };
+        const reading = meter ? getMeterReadingForRender(bill, meter, rowDef.term.field) : null;
         const label = rowDef.label;
-        return { label, reading };
+        return { label, reading: reading || { before: null, after: null } };
       });
   })();
   const fmtReading = (val) =>
