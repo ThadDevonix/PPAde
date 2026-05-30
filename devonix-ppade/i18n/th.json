@@ -328,6 +328,7 @@
 
   "receipt.preview.title": "ตัวอย่างรายงานบิล",
   "receipt.download_pdf": "ดาวน์โหลด PDF",
+  "receipt.download_excel": "ดาวน์โหลด Excel",
 
   "meter.create.title": "เพิ่มมิเตอร์",
   "meter.create.type_label": "ประเภทอุปกรณ์",

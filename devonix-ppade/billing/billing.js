@@ -14,6 +14,9 @@ const receiptPreviewMonth = document.getElementById("receipt-preview-month");
 const receiptPreviewDownload = document.getElementById(
   "receipt-preview-download"
 );
+const receiptPreviewDownloadExcel = document.getElementById(
+  "receipt-preview-download-excel"
+);
 const scheduleHistoryModal = document.getElementById("schedule-history-modal");
 const scheduleHistoryClose = document.getElementById("schedule-history-close");
 const scheduleHistoryRows = document.getElementById("schedule-history-rows");
@@ -3186,6 +3189,205 @@ const openReceiptPrint = () => {
     },
     { once: true }
   );
+};
+const sanitizeDownloadFileName = (value) => {
+  const cleaned = String(value || "")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || "Billing Report";
+};
+const getExcelNodeText = (node) => {
+  if (!node) return "";
+  const clone = node.cloneNode(true);
+  clone.querySelectorAll("svg").forEach((svg) => svg.remove());
+  clone.querySelectorAll(".weekday-badge").forEach((badge) => {
+    badge.replaceWith(` ${badge.textContent || ""}`);
+  });
+  return String(clone.textContent || "").replace(/\s+/g, " ").trim();
+};
+const getExcelCellAttributes = (cell) => {
+  const attrs = [];
+  ["colspan", "rowspan"].forEach((name) => {
+    const value = cell.getAttribute(name);
+    if (value) attrs.push(`${name}="${escapeHtml(value)}"`);
+  });
+  return attrs.length ? ` ${attrs.join(" ")}` : "";
+};
+const tableToExcelHtml = (table, className = "excel-table", title = "") => {
+  if (!table) return "";
+  const sourceRows = Array.from(table.rows || []);
+  const maxColumns = Math.max(
+    1,
+    ...sourceRows.map((row) =>
+      Array.from(row.cells || []).reduce(
+        (sum, cell) => sum + (Number(cell.getAttribute("colspan")) || 1),
+        0
+      )
+    )
+  );
+  const titleRow = title
+    ? `<tr class="excel-section-row"><th colspan="${maxColumns}">${escapeHtml(title)}</th></tr>`
+    : "";
+  const rows = sourceRows
+    .map((row) => {
+      const cells = Array.from(row.cells || [])
+        .map((cell) => {
+          const tag = cell.tagName?.toLowerCase() === "th" ? "th" : "td";
+          const text = getExcelNodeText(cell);
+          const attrs = getExcelCellAttributes(cell);
+          return `<${tag}${attrs}>${escapeHtml(text)}</${tag}>`;
+        })
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+  return rows ? `<table class="${className} excel-box">${titleRow}${rows}</table>` : "";
+};
+const buildExcelKeyValueTable = (title, rows) => {
+  const safeRows = (Array.isArray(rows) ? rows : []).filter((row) => row?.[0] || row?.[1]);
+  if (!safeRows.length) return "";
+  return `
+    <table class="excel-table excel-key-value excel-box">
+      ${title ? `<tr class="excel-section-row"><th colspan="2">${escapeHtml(title)}</th></tr>` : ""}
+      ${safeRows
+    .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
+    .join("")}
+    </table>
+  `;
+};
+const buildExcelSummaryTable = (summaryEl) => {
+  if (!summaryEl) return "";
+  const rows = Array.from(summaryEl.querySelectorAll(".row"))
+    .map((row) => {
+      const label =
+        getExcelNodeText(row.querySelector(".summary-label")) ||
+        getExcelNodeText(row.querySelector(".summary-expression"));
+      const calc = getExcelNodeText(row.querySelector(".summary-calc"));
+      const amount = getExcelNodeText(row.querySelector(".summary-amount"));
+      const className = row.classList.contains("total") ? " class=\"excel-total-row\"" : "";
+      return `<tr${className}><td>${escapeHtml(label)}</td><td>${escapeHtml(calc)}</td><td>${escapeHtml(amount)}</td></tr>`;
+    })
+    .join("");
+  if (!rows) return "";
+  return `
+    <table class="excel-table excel-summary excel-box">
+      <tr class="excel-section-row"><th colspan="3">สรุปยอด</th></tr>
+      <tr><th>รายการ</th><th>คำนวณ</th><th>จำนวนเงิน</th></tr>
+      ${rows}
+    </table>
+  `;
+};
+const buildReceiptExcelBodyHtml = () => {
+  const source = document.createElement("div");
+  source.innerHTML = currentReceiptHtml;
+  const papers = Array.from(source.querySelectorAll(".receipt-paper"));
+  const firstPaper = papers[0] || source;
+  const title = getExcelNodeText(firstPaper.querySelector(".receipt-title h2")) || "Billing Report";
+  const billCode = getExcelNodeText(firstPaper.querySelector(".receipt-bill-code"));
+  const issueDate = getExcelNodeText(firstPaper.querySelector(".receipt-date")).replace(/^Date:\s*/i, "");
+  const metaRows = Array.from(firstPaper.querySelectorAll(".receipt-meta .meta-line")).map((line, index) => {
+    const fallbackLabels = ["ชื่อ/สถานที่", "ช่วงวันที่", "อัตรา"];
+    const label = getExcelNodeText(line.querySelector(".meta-label")) || fallbackLabels[index] || "ข้อมูล";
+    const value = getExcelNodeText(line.querySelector(".meta-value")) || getExcelNodeText(line);
+    return [label, value];
+  });
+  const parts = [
+    `<table class="excel-title-table excel-box">
+      <tr><th colspan="12" class="excel-title">${escapeHtml(title)}</th></tr>
+      <tr><th>เลขที่บิล</th><td colspan="11">${escapeHtml(billCode)}</td></tr>
+      <tr><th>วันที่ออก</th><td colspan="11">${escapeHtml(issueDate)}</td></tr>
+    </table>`,
+    buildExcelKeyValueTable("ข้อมูลบิล", metaRows)
+  ];
+
+  (papers.length ? papers : [source]).forEach((paper, index) => {
+    const usageTable = paper.querySelector(".receipt-usage-table");
+    if (usageTable) {
+      parts.push(tableToExcelHtml(
+        usageTable,
+        "excel-table excel-usage",
+        papers.length > 1 ? `รายการใช้ไฟ หน้า ${index + 1}` : "รายการใช้ไฟ"
+      ));
+    }
+    const paymentRows = Array.from(paper.querySelectorAll(".payment-info .payment-line")).map((line) => {
+      const text = getExcelNodeText(line);
+      const [label, ...rest] = text.split(":");
+      return [label?.trim() || "ข้อมูล", rest.join(":").trim() || text];
+    });
+    if (paymentRows.length) {
+      parts.push(buildExcelKeyValueTable("ช่องทางการชำระ", paymentRows));
+    }
+    const readingTable = paper.querySelector(".meter-readings-history");
+    if (readingTable) {
+      parts.push(tableToExcelHtml(readingTable, "excel-table excel-readings", "ประวัติการอ่านหน่วย"));
+    }
+    const summary = paper.querySelector(".receipt-summary");
+    if (summary) {
+      parts.push(buildExcelSummaryTable(summary));
+    }
+  });
+  return parts.filter(Boolean).join("\n");
+};
+const buildReceiptExcelWorkbookHtml = () => {
+  const title = currentReceiptTitle || "Billing Report";
+  return `\uFEFF<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="UTF-8" />
+    <title>${escapeHtml(title)}</title>
+    <!--[if gte mso 9]>
+    <xml>
+      <x:ExcelWorkbook>
+        <x:ExcelWorksheets>
+          <x:ExcelWorksheet>
+            <x:Name>Billing Report</x:Name>
+            <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+          </x:ExcelWorksheet>
+        </x:ExcelWorksheets>
+      </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <style>
+      body { font-family: Arial, Tahoma, sans-serif; color: #0f2f5f; }
+      table { border-collapse: collapse; margin-bottom: 12px; width: 100%; }
+      th, td { border: 1px solid #d9e2f1; padding: 6px 8px; vertical-align: middle; }
+      th { background: #eef3fb; font-weight: 700; }
+      .excel-box { border: 2px solid #1A56DB; margin-bottom: 16px; }
+      .excel-title { font-size: 18pt; background: #1A56DB; color: #ffffff; text-align: center; }
+      .excel-section-row th { background: #dbeafe; color: #0f2f5f; border: 2px solid #1A56DB; text-align: left; }
+      .excel-title-table th, .excel-title-table td,
+      .excel-key-value th, .excel-key-value td,
+      .excel-usage th, .excel-usage td,
+      .excel-readings th, .excel-readings td,
+      .excel-summary th, .excel-summary td { border: 1px solid #9db7dc; }
+      .excel-key-value th { width: 180px; text-align: left; }
+      .num-cell, .reading-col, .summary-amount, .summary-calc, .excel-summary td:nth-child(2), .excel-summary td:nth-child(3) { mso-number-format: "0.0"; text-align: right; }
+      .total-row td { background: #f3f6fb; font-weight: 700; }
+      .excel-total-row td { background: #eef3fb; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    ${buildReceiptExcelBodyHtml()}
+  </body>
+</html>`;
+};
+const downloadReceiptExcel = () => {
+  if (receiptPreviewContent?.innerHTML) {
+    currentReceiptHtml = receiptPreviewContent.innerHTML;
+  }
+  if (!currentReceiptHtml) return;
+  const blob = new Blob([buildReceiptExcelWorkbookHtml()], {
+    type: "application/vnd.ms-excel;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${sanitizeDownloadFileName(currentReceiptTitle)}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 const closeReceiptPreview = () => {
   receiptPreviewModal?.classList.add("hidden");
@@ -6370,6 +6572,9 @@ scheduleHistoryModal?.addEventListener("click", (e) => {
 });
 receiptPreviewDownload?.addEventListener("click", () => {
   openReceiptPrint();
+});
+receiptPreviewDownloadExcel?.addEventListener("click", () => {
+  downloadReceiptExcel();
 });
 window.addEventListener("resize", () => {
   if (isReceiptPreviewOpen) sizeReceiptSheet();

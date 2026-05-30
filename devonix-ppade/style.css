@@ -4335,15 +4335,15 @@ input[readonly] { background: var(--slate-50) !important; color: var(--slate-500
 .field label, .filters label, label { color: var(--slate-600) !important; }
 
 /* Buttons (default) — neutral slate */
-button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):not(.toggle-btn):not(.bill-flow-btn):not(.calc-mode-btn):not(.period-btn):not(.password-toggle):not(.audit-page-btn):not(.download-pdf-btn),
-.small-btn:not(.btn-danger):not(.nav-logout):not(.audit-page-btn):not(.download-pdf-btn) {
+button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):not(.toggle-btn):not(.bill-flow-btn):not(.calc-mode-btn):not(.period-btn):not(.password-toggle):not(.audit-page-btn):not(.download-pdf-btn):not(.download-excel-btn),
+.small-btn:not(.btn-danger):not(.nav-logout):not(.audit-page-btn):not(.download-pdf-btn):not(.download-excel-btn) {
   background: #ffffff !important;
   border: 1px solid var(--slate-200) !important;
   color: var(--slate-700) !important;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02) !important;
 }
-button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):not(.audit-page-btn):not(.download-pdf-btn):hover,
-.small-btn:not(.btn-danger):not(.nav-logout):not(.audit-page-btn):not(.download-pdf-btn):hover {
+button:not(.primary):not(.btn-danger):not(.inline-delete):not(.users-delete-btn):not(.meter-remove):not(.audit-page-btn):not(.download-pdf-btn):not(.download-excel-btn):hover,
+.small-btn:not(.btn-danger):not(.nav-logout):not(.audit-page-btn):not(.download-pdf-btn):not(.download-excel-btn):hover {
   background: var(--slate-50) !important;
   border-color: var(--slate-300) !important;
   color: var(--slate-800) !important;
@@ -4388,6 +4388,27 @@ button.primary.download-pdf-btn:hover {
   color: #ffffff !important;
 }
 button.download-pdf-btn svg {
+  flex-shrink: 0;
+}
+button.download-excel-btn,
+button.primary.download-excel-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px !important;
+  font-weight: 600;
+  font-size: 14px;
+  background: #0F8A5F !important;
+  border-color: #0F8A5F !important;
+  color: #ffffff !important;
+}
+button.download-excel-btn:hover,
+button.primary.download-excel-btn:hover {
+  background: #0B6F4C !important;
+  border-color: #0B6F4C !important;
+  color: #ffffff !important;
+}
+button.download-excel-btn svg {
   flex-shrink: 0;
 }
 

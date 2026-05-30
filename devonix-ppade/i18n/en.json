@@ -328,6 +328,7 @@
 
   "receipt.preview.title": "Bill Preview",
   "receipt.download_pdf": "Download PDF",
+  "receipt.download_excel": "Download Excel",
 
   "meter.create.title": "Add Meter",
   "meter.create.type_label": "Device type",
