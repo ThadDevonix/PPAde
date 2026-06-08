@@ -285,11 +285,10 @@
 
   "bill.modal.title.manual": "สร้างใบแจ้งค่าไฟ",
   "bill.modal.title.auto": "ตั้งค่าออกบิลอัตโนมัติ",
-  "bill.auto_preview_text": "ระบบจะสร้างบิลตามรอบอัตโนมัติ",
   "bill.label.start_date": "วันที่เริ่ม",
   "bill.label.end_date": "ถึงวันที่",
   "bill.label.rate": "อัตรา (฿/kWh)",
-  "bill.label.rate_type": "ประเภทอัตรา",
+  "bill.label.rate_type": "อัตราต่อคอลัมน์",
   "bill.label.calc_mode": "รูปแบบคำนวณหน่วย",
   "bill.calc.single": "ออกบิลค่าเดี่ยว",
   "bill.calc.formula": "ออกบิลแบบคำนวณ",
@@ -317,7 +316,6 @@
   "bill.history.empty.auto": "ยังไม่มีบิลอัตโนมัติ",
   "bill.queue.title": "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้",
   "bill.queue.title_with_count": "รายการรอบบิลอัตโนมัติที่ตั้งค่าไว้ ({count} รอบ)",
-  "bill.auto.cutoff_summary": "บิลจะสรุปที่วันที่ {day} ของเดือนนั้นๆ แบบอัตโนมัติ",
   "bill.button.new_bill": "สร้างบิลใหม่",
   "bill.button.config_auto": "ตั้งค่าอัตโนมัติ",
   "bill.button.view_auto": "ดูรายการอัตโนมัติ",
@@ -381,8 +379,8 @@
           "html": "<p>กรอกข้อมูลในส่วนแรก:</p><ul class=\"guide-list\"><li><strong>วันที่เริ่ม</strong> — วันแรกของรอบ (เช่น 1/05/2569)</li><li><strong>ถึงวันที่</strong> — วันสุดท้าย (เช่น 31/05/2569)</li></ul><div class=\"guide-warn\"><strong>ข้อจำกัด</strong><p>ช่วงวันที่ออกบิลได้สูงสุด 60 วัน หากเกินระบบจะแจ้งเตือน</p></div>"
         },
         {
-          "title": "ขั้นตอนที่ 3 — อัตราและประเภท",
-          "html": "<ul class=\"guide-list\"><li><strong>อัตรา (฿/kWh)</strong> — ราคาต่อหน่วย (รับทศนิยม 3 ตำแหน่ง)</li><li><strong>ประเภทอัตรา</strong> — เลือก \"Flat rate\" (อัตราเดียว) หรือ \"TOU\" (Time of Use)</li></ul>"
+          "title": "ขั้นตอนที่ 3 — อัตราต่อคอลัมน์",
+          "html": "<ul class=\"guide-list\"><li><strong>อัตรา ฿/kWh</strong> — กรอกในแต่ละคอลัมน์ที่ต้องการนับยอด</li><li>คอลัมน์ที่ไม่ติ๊กนับยอดจะแสดงข้อมูลได้ แต่ไม่ถูกรวมในยอดชำระ</li></ul>"
         },
         {
           "title": "ขั้นตอนที่ 4 — รูปแบบคำนวณหน่วย",

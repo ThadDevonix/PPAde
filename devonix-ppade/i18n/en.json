@@ -285,11 +285,10 @@
 
   "bill.modal.title.manual": "Create Electricity Bill",
   "bill.modal.title.auto": "Configure Auto Billing",
-  "bill.auto_preview_text": "The system will generate bills according to the schedule",
   "bill.label.start_date": "Start date",
   "bill.label.end_date": "End date",
   "bill.label.rate": "Rate (฿/kWh)",
-  "bill.label.rate_type": "Rate type",
+  "bill.label.rate_type": "Column rate",
   "bill.label.calc_mode": "Calculation mode",
   "bill.calc.single": "Single value",
   "bill.calc.formula": "Formula",
@@ -317,7 +316,6 @@
   "bill.history.empty.auto": "No auto bills yet",
   "bill.queue.title": "Configured Auto Bill Schedules",
   "bill.queue.title_with_count": "Configured Auto Bill Schedules ({count})",
-  "bill.auto.cutoff_summary": "Bills will close on day {day} of each month automatically",
   "bill.button.new_bill": "+ New Bill",
   "bill.button.config_auto": "Configure Auto",
   "bill.button.view_auto": "View Auto Schedules",
@@ -381,8 +379,8 @@
           "html": "<p>Fill in the first section:</p><ul class=\"guide-list\"><li><strong>Start date</strong> — first day of the period (e.g. 1 May 2026)</li><li><strong>End date</strong> — last day (e.g. 31 May 2026)</li></ul><div class=\"guide-warn\"><strong>Limit</strong><p>Bills can span at most 60 days. Longer ranges are rejected with a warning.</p></div>"
         },
         {
-          "title": "Step 3 — Rate and type",
-          "html": "<ul class=\"guide-list\"><li><strong>Rate (฿/kWh)</strong> — price per unit (3 decimal places)</li><li><strong>Rate type</strong> — \"Flat rate\" (single rate) or \"TOU\" (Time of Use)</li></ul>"
+          "title": "Step 3 — Column rate",
+          "html": "<ul class=\"guide-list\"><li><strong>Rate ฿/kWh</strong> — enter it on each column that should count toward payment</li><li>Columns not checked for payment can still display data, but are excluded from the payable total</li></ul>"
         },
         {
           "title": "Step 4 — Calculation mode",

@@ -82,8 +82,6 @@ const columnsSelectedCount = document.getElementById("columns-selected-count");
 const billCutoff = document.getElementById("bill-cutoff");
 const billCutoffField = document.getElementById("bill-cutoff-field");
 const billDateRangeField = document.getElementById("bill-date-range-field");
-const billAutoPreviewField = document.getElementById("bill-auto-preview-field");
-const billAutoPreview = document.getElementById("bill-auto-preview");
 const metersBtn = document.getElementById("mode-meters");
 const billingBtn = document.getElementById("mode-billing");
 const metersPanel = document.getElementById("meters-panel");
@@ -5306,12 +5304,9 @@ const renderAutoQueue = () => {
     if (billUpcomingPanel) billUpcomingPanel.innerHTML = "";
     return;
   }
-  const rateTypeLabels = { flat: "Flat rate", tou: "TOU" };
   billQueueRows.innerHTML = autoSchedules
     .map((autoConfig) => {
       const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
-      const rateTypeLabel =
-        rateTypeLabels[autoConfig.rateType] || autoConfig.rateType || "-";
       const rateText = hasColumnRateOverrides(sanitizeFormulaColumnDrafts(autoConfig?.formulaColumns))
         ? "ตามคอลัมน์"
         : `฿${formatNumber(autoConfig.defaultRate, rateDecimalPlaces)}/kWh`;
@@ -5364,7 +5359,7 @@ const renderAutoQueue = () => {
       return `
         <tr>
           <td>${cutoffDay}</td>
-          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ${escapeHtml(rateText)} • ${escapeHtml(rateTypeLabel)}${
+          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ${escapeHtml(rateText)}${
         updatedByLabel ? ` • ผู้ตั้งค่า: ${escapeHtml(updatedByLabel)}` : ""
       }</td>
           <td>${statusHtml}</td>
@@ -5536,16 +5531,6 @@ const updateBillHistoryTitle = () => {
       : tAudit("bill.history.title.manual", "ประวัติการสร้างบิลแบบกำหนดวัน");
 };
 
-const updateAutoPreviewText = () => {
-  if (!billAutoPreview) return;
-  const selectedCutoffDay =
-    Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay;
-  billAutoPreview.textContent = tAudit(
-    "bill.auto.cutoff_summary",
-    "บิลจะสรุปที่วันที่ {day} ของเดือนนั้นๆ แบบอัตโนมัติ",
-    { day: selectedCutoffDay }
-  );
-};
 const getAutoModalDraft = (cutoffDay) => {
   const formulaColumns = getFormulaColumnDraftsFromInputs();
   return normalizeAutoScheduleEntry(
@@ -5585,7 +5570,6 @@ const resetAutoModalForCreateOnly = (preferredCutoffDay) => {
   });
   if (formulaResultName) formulaResultName.value = "";
   updateScheduleInfo(nextCutoffDay);
-  updateAutoPreviewText();
   updateAutoDeleteButtonState(nextCutoffDay);
   if (isModalOpen) updateFormulaResultPreview();
   return nextCutoffDay;
@@ -5614,7 +5598,6 @@ const applyAutoScheduleToModal = (cutoffDay) => {
   populateFormulaInputs(formulaTerms, active.calcLabel || defaultCalcLabel);
   setFormulaColumnDrafts(active.formulaColumns || []);
   ensureFormulaColumnDraftBox();
-  updateAutoPreviewText();
   updateAutoDeleteButtonState(normalizedDay);
   if (isModalOpen) updateFormulaResultPreview();
   return active;
@@ -5649,7 +5632,6 @@ const setBillMode = (mode) => {
   }
   updateBillHistoryTitle();
   billDateRangeField?.classList.toggle("hidden", isAuto);
-  billAutoPreviewField?.classList.toggle("hidden", !isAuto);
   billCutoffField?.classList.toggle("hidden", !isAuto);
   billQueuePanel?.classList.toggle("hidden", !isAuto);
   billHistoryPanel?.classList.toggle("hidden", isAuto);
@@ -5663,7 +5645,6 @@ const setBillMode = (mode) => {
       Number(billCutoff?.value) || schedule.cutoffDay || defaultSchedule.cutoffDay;
     applyAutoScheduleToModal(selectedCutoffDay);
   } else {
-    updateAutoPreviewText();
     if (isModalOpen) updateFormulaResultPreview();
   }
   updateAutoDeleteButtonState(
@@ -6216,7 +6197,6 @@ const deleteAutoSchedule = (cutoffDay, options = {}) => {
   billingSettingsSyncSignature = "";
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);
-  updateAutoPreviewText();
   renderAutoQueue();
   updateSummary();
   if (isModalOpen && billMode === "auto") {
@@ -6602,7 +6582,6 @@ billCutoff?.addEventListener("change", () => {
             : getAvailableAutoCutoffDay(schedule.cutoffDay));
       if (billCutoff) billCutoff.value = String(fallbackDay);
       updateScheduleInfo(fallbackDay);
-      updateAutoPreviewText();
       updateAutoDeleteButtonState(fallbackDay);
       alert(`มีรอบอัตโนมัติวันที่ ${cutoffDay} อยู่แล้ว กรุณาเลือกวันอื่น`);
       return;
@@ -6610,7 +6589,6 @@ billCutoff?.addEventListener("change", () => {
     applyAutoScheduleToModal(cutoffDay);
     return;
   }
-  updateAutoPreviewText();
   if (isModalOpen) updateFormulaResultPreview();
 });
 billFlowManualBtn?.addEventListener("click", () => {
@@ -6770,7 +6748,6 @@ billScheduleRemove?.addEventListener("click", () => {
   };
   saveSchedule();
   updateScheduleInfo(schedule.cutoffDay);
-  updateAutoPreviewText();
   renderAutoQueue();
   updateSummary();
 });
@@ -7092,7 +7069,6 @@ window.refreshAuditFeed = refreshAndRenderAuditFeed;
 document.addEventListener("i18n:changed", () => {
   try { setBillMode(billMode); } catch { /* ignore */ }
   try { updateBillHistoryTitle(); } catch { /* ignore */ }
-  try { updateAutoPreviewText(); } catch { /* ignore */ }
   try { renderAutoQueue(); } catch { /* ignore */ }
   try { renderHistory(); } catch { /* ignore */ }
   try {

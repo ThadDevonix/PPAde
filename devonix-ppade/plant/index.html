@@ -280,9 +280,6 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="field hidden" id="bill-auto-preview-field">
-            <p class="muted small" id="bill-auto-preview" data-i18n="bill.auto_preview_text">ระบบจะสร้างบิลตามรอบอัตโนมัติ</p>
-          </div>
           <div class="field grid-2" id="bill-date-range-field">
             <div>
               <label for="bill-start" data-i18n="bill.label.start_date">วันที่เริ่ม</label>
@@ -294,13 +291,7 @@
             </div>
           </div>
           <input type="hidden" id="bill-rate" value="">
-          <div class="field">
-            <label for="bill-type" data-i18n="bill.label.rate_type">ประเภทอัตรา</label>
-            <select id="bill-type">
-              <option value="flat">Flat rate</option>
-              <option value="tou">TOU</option>
-            </select>
-          </div>
+          <input type="hidden" id="bill-type" value="flat">
           <div class="field">
             <label data-i18n="bill.label.calc_mode">รูปแบบคำนวณหน่วย</label>
             <div class="calc-mode-actions">
