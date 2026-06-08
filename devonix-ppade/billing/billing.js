@@ -1466,6 +1466,10 @@ const inferCalcInputMode = (formula, meterPool = meterProfiles) => {
   const terms = normalizeCalcFormula(formula, meterPool, false);
   return terms.length <= 1 ? "single" : "formula";
 };
+const inferCalcInputModeForSchedule = (formula, formulaColumns, meterPool = meterProfiles) =>
+  sanitizeFormulaColumnDrafts(formulaColumns).length
+    ? "formula"
+    : inferCalcInputMode(formula, meterPool);
 const getSingleModeCalcLabel = () => {
   const fieldKey = formulaFieldLabelMap[formulaValueLeft?.value]
     ? formulaValueLeft.value
@@ -5592,7 +5596,11 @@ const applyAutoScheduleToModal = (cutoffDay) => {
     active.calcMethod,
     getSelectedMetersForFormula()
   );
-  setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
+  setCalcInputMode(inferCalcInputModeForSchedule(
+    formulaTerms,
+    active.formulaColumns,
+    meterProfiles
+  ), {
     skipPreview: true
   });
   populateFormulaInputs(formulaTerms, active.calcLabel || defaultCalcLabel);
@@ -6322,7 +6330,11 @@ const openModal = (mode = billMode, options = {}) => {
       activeAutoSchedule.calcMethod,
       getSelectedMetersForFormula()
     );
-    setCalcInputMode(inferCalcInputMode(formulaTerms, meterProfiles), {
+    setCalcInputMode(inferCalcInputModeForSchedule(
+      formulaTerms,
+      activeAutoSchedule.formulaColumns,
+      meterProfiles
+    ), {
       skipPreview: true
     });
     populateFormulaInputs(formulaTerms, activeAutoSchedule.calcLabel || defaultCalcLabel);
