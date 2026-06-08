@@ -293,18 +293,13 @@
               <input type="date" id="bill-end">
             </div>
           </div>
-          <div class="field grid-2">
-            <div>
-              <label for="bill-rate" data-i18n="bill.label.rate">อัตรา (฿/kWh)</label>
-              <input type="number" id="bill-rate" step="0.001">
-            </div>
-            <div>
-              <label for="bill-type" data-i18n="bill.label.rate_type">ประเภทอัตรา</label>
-              <select id="bill-type">
-                <option value="flat">Flat rate</option>
-                <option value="tou">TOU</option>
-              </select>
-            </div>
+          <input type="hidden" id="bill-rate" value="">
+          <div class="field">
+            <label for="bill-type" data-i18n="bill.label.rate_type">ประเภทอัตรา</label>
+            <select id="bill-type">
+              <option value="flat">Flat rate</option>
+              <option value="tou">TOU</option>
+            </select>
           </div>
           <div class="field">
             <label data-i18n="bill.label.calc_mode">รูปแบบคำนวณหน่วย</label>

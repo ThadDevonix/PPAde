@@ -149,6 +149,45 @@ const detailColumnDefs = [
   { key: "energy_out", label: "energy_out (kWh)" },
   { key: "bill_units", label: "หน่วยคิดบิล (kWh)" }
 ];
+const normalizeOptionalColumnRate = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? roundTo(parsed, rateDecimalPlaces)
+    : null;
+};
+const formatColumnRateInputValue = (value) => {
+  const normalized = normalizeOptionalColumnRate(value);
+  return normalized === null ? "" : String(normalized);
+};
+const getColumnRate = (column, fallbackRate) => {
+  const columnRate = normalizeOptionalColumnRate(column?.rate);
+  return columnRate === null ? parseNumber(fallbackRate) : columnRate;
+};
+const getDefaultRateFromFormulaColumns = (columns, fallbackRate = defaultSchedule.defaultRate) => {
+  const safeColumns = sanitizeFormulaColumnDrafts(columns);
+  const firstColumnRate = safeColumns
+    .map((column) => normalizeOptionalColumnRate(column?.rate))
+    .find((rate) => rate !== null);
+  return firstColumnRate === null || firstColumnRate === undefined
+    ? roundTo(parseNumber(fallbackRate), rateDecimalPlaces)
+    : firstColumnRate;
+};
+const getMissingIncludedColumnRateLabels = (columns) =>
+  sanitizeFormulaColumnDrafts(columns)
+    .map((column, index) => ({
+      column,
+      label: column.name || `คอลัมน์ ${index + 1}`
+    }))
+    .filter(
+      ({ column }) =>
+        column.include !== false && normalizeOptionalColumnRate(column?.rate) === null
+    )
+    .map(({ label }) => label);
+const hasColumnRateOverrides = (columns) =>
+  Array.isArray(columns) &&
+  columns.some((column) => normalizeOptionalColumnRate(column?.rate) !== null);
 const normalizeFormulaFieldKey = (field) => {
   const rawField = String(field || "").trim().toLowerCase();
   if (formulaFieldLabelMap[rawField]) return rawField;
@@ -163,6 +202,9 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
       const name = String(draft?.name || "").trim();
       const include = draft?.include !== false;
       const showKwh = draft?.showKwh !== false;
+      const rate = normalizeOptionalColumnRate(
+        draft?.rate ?? draft?.columnRate ?? draft?.rateOverride
+      );
       if (type === "calc") {
         const operator = formulaOperators.includes(draft?.operator) ? draft.operator : "-";
         return {
@@ -170,6 +212,7 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
           name,
           include,
           showKwh,
+          rate,
           leftMeterKey: String(draft?.leftMeterKey || "").trim(),
           leftField: normalizeFormulaFieldKey(draft?.leftField),
           operator,
@@ -182,6 +225,7 @@ const sanitizeFormulaColumnDrafts = (drafts) => {
         name,
         include,
         showKwh,
+        rate,
         meterKey: String(draft?.meterKey || "").trim(),
         field: normalizeFormulaFieldKey(draft?.field)
       };
@@ -262,6 +306,15 @@ const renderFormulaColumnDraftBoxes = () => {
       nameInput.placeholder = "ชื่อคอลัมน์";
       nameInput.value = String(draft?.name || "");
 
+      const rateInput = document.createElement("input");
+      rateInput.type = "number";
+      rateInput.step = "0.001";
+      rateInput.min = "0";
+      rateInput.className = "formula-column-input formula-column-rate-input";
+      rateInput.placeholder = "อัตรา ฿/kWh";
+      rateInput.value = formatColumnRateInputValue(draft?.rate);
+      rateInput.title = "อัตราของคอลัมน์นี้";
+
       const meterSelect = document.createElement("select");
       meterSelect.className =
         "formula-column-input formula-column-meter-select formula-column-meter-basic-select";
@@ -310,7 +363,15 @@ const renderFormulaColumnDraftBoxes = () => {
       `;
       showKwhSelect.value = draft?.showKwh === false ? "no" : "yes";
 
-      item.append(includeLabel, orderBadge, nameInput, meterSelect, fieldSelect, showKwhSelect);
+      item.append(
+        includeLabel,
+        orderBadge,
+        nameInput,
+        meterSelect,
+        fieldSelect,
+        rateInput,
+        showKwhSelect
+      );
     } else {
       const preferredLeftMeterKey = String(draft?.leftMeterKey || draft?.meterKey || "").trim();
       const preferredRightMeterKey = String(draft?.rightMeterKey || draft?.meterKey || "").trim();
@@ -341,6 +402,15 @@ const renderFormulaColumnDraftBoxes = () => {
       nameInput.className = "formula-column-input formula-column-name-input";
       nameInput.placeholder = "ชื่อคอลัมน์";
       nameInput.value = String(draft?.name || "");
+
+      const rateInput = document.createElement("input");
+      rateInput.type = "number";
+      rateInput.step = "0.001";
+      rateInput.min = "0";
+      rateInput.className = "formula-column-input formula-column-rate-input";
+      rateInput.placeholder = "อัตรา ฿/kWh";
+      rateInput.value = formatColumnRateInputValue(draft?.rate);
+      rateInput.title = "อัตราของคอลัมน์นี้";
 
       const leftMeterSelect = document.createElement("select");
       leftMeterSelect.className =
@@ -430,6 +500,7 @@ const renderFormulaColumnDraftBoxes = () => {
         includeLabel,
         orderBadge,
         nameInput,
+        rateInput,
         leftMeterSelect,
         leftFieldSelect,
         operatorSelect,
@@ -455,6 +526,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
           name: String(item.querySelector(".formula-column-name-input")?.value || ""),
           include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
           showKwh,
+          rate: item.querySelector(".formula-column-rate-input")?.value || "",
           meterKey: String(item.querySelector(".formula-column-meter-basic-select")?.value || ""),
           field: String(item.querySelector(".formula-column-field-basic-select")?.value || "")
         };
@@ -464,6 +536,7 @@ const syncFormulaColumnDraftValuesFromDom = () => {
         name: String(item.querySelector(".formula-column-name-input")?.value || ""),
         include: item.querySelector(".formula-column-include-checkbox")?.checked !== false,
         showKwh: false,
+        rate: item.querySelector(".formula-column-rate-input")?.value || "",
         leftMeterKey: String(item.querySelector(".formula-column-meter-left-select")?.value || ""),
         leftField: String(item.querySelector(".formula-column-field-left-select")?.value || ""),
         operator: String(item.querySelector(".formula-column-operator-select")?.value || "-"),
@@ -510,6 +583,7 @@ const addFormulaColumnDraftBox = () => {
     name: "",
     include: true,
     showKwh: false,
+    rate: null,
     meterKey: getMeterKey(firstMeter),
     field: fieldKeys.length
       ? resolvePreferredFormulaField(fieldKeys, [defaultFormulaField])
@@ -538,6 +612,7 @@ const addFormulaCalcColumnDraftBox = () => {
     name: "",
     include: true,
     showKwh: false,
+    rate: null,
     leftMeterKey: getMeterKey(firstMeter),
     leftField: leftFieldKeys.length
       ? resolvePreferredFormulaField(leftFieldKeys, [defaultFormulaField])
@@ -2487,6 +2562,12 @@ const getBillFormulaColumnsForDisplay = (bill) => {
   const autoConfig = getAutoScheduleByCutoff(bill.cutoffDay);
   return sanitizeFormulaColumnDrafts(autoConfig?.formulaColumns);
 };
+const getRateDisplayLabel = (rate, columns = []) =>
+  hasColumnRateOverrides(columns)
+    ? "ตามคอลัมน์"
+    : formatNumber(rate, rateDecimalPlaces);
+const getBillRateDisplayLabel = (bill) =>
+  getRateDisplayLabel(bill?.rate, getBillFormulaColumnsForDisplay(bill));
 const getBillReadingMetersToRepair = (bill) => {
   if (!bill || typeof bill !== "object") return [];
   const meterPool = getBillMeterPoolForDisplay(bill);
@@ -2654,6 +2735,7 @@ const buildReceiptHtml = ({
         title: expression,
         include: draft.include !== false,
         showKwh: draft.showKwh !== false,
+        rate: draft.rate,
         operator: draft.operator,
         leftTerm,
         rightTerm
@@ -2669,6 +2751,7 @@ const buildReceiptHtml = ({
       title: fallbackTitle,
       include: draft.include !== false,
       showKwh: draft.showKwh !== false,
+      rate: draft.rate,
       term
     };
   });
@@ -2734,7 +2817,12 @@ const buildReceiptHtml = ({
   const companyMetaHtml = [
     buildMetaLineHtml("ชื่อ/สถานที่", plantName),
     buildMetaLineIconHtml(calendarIconSvg, periodLabel),
-    buildMetaLineHtml("อัตรา", `${formatNumber(rate, rateDecimalPlaces)} บาท/kWh`)
+    buildMetaLineHtml(
+      "อัตรา",
+      hasColumnRateOverrides(formulaColumnDefs)
+        ? `ตามคอลัมน์ (เริ่มต้น ${formatNumber(rate, rateDecimalPlaces)} บาท/kWh)`
+        : `${formatNumber(rate, rateDecimalPlaces)} บาท/kWh`
+    )
   ].join("");
   const requestedRowsPerPage = Math.max(1, rowsPerPage - 1);
   const dataRowsPerPage =
@@ -2809,7 +2897,8 @@ const buildReceiptHtml = ({
     ? formulaColumnDefs.map((column, index) => ({
       label: column.header || `คอลัมน์ ${index + 1}`,
       total: draftColumnTotals[index],
-      included: column.include !== false
+      included: column.include !== false,
+      rate: column.rate
     }))
     : showFormulaColumns
       ? [
@@ -2820,10 +2909,12 @@ const buildReceiptHtml = ({
       : [{ label: usageHeaderText, total: totalKwh, included: true }];
   const summaryColumnItems = summaryColumns.map((column) => {
     const total = parseNumber(column.total);
-    const amount = roundTo(total * rate, 2);
+    const columnRate = getColumnRate(column, rate);
+    const amount = roundTo(total * columnRate, 2);
     return {
       ...column,
       total,
+      rate: columnRate,
       amount
     };
   });
@@ -2840,7 +2931,7 @@ const buildReceiptHtml = ({
         <span class="summary-expression">
           <span class="summary-label">${escapeHtml(column.label)}</span>
           <span class="summary-calc">${formatNumber(column.total, 1)} × ${formatNumber(
-        rate,
+        column.rate,
         rateDecimalPlaces
       )}</span>
         </span>
@@ -5169,7 +5260,7 @@ const renderScheduleHistoryModal = (cutoffDay) => {
       <tr data-id="${bill.id}">
         <td>ใบที่ ${bill.billNo}</td>
         <td><span title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span></td>
-        <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
+        <td>${escapeHtml(getBillRateDisplayLabel(bill))}</td>
         <td>${formatNumber(totals.totalKwh, 1)}</td>
         <td>${formatCurrency(totals.amount)}</td>
         <td>
@@ -5221,6 +5312,9 @@ const renderAutoQueue = () => {
       const cutoffDay = Number(autoConfig?.cutoffDay) || defaultSchedule.cutoffDay;
       const rateTypeLabel =
         rateTypeLabels[autoConfig.rateType] || autoConfig.rateType || "-";
+      const rateText = hasColumnRateOverrides(sanitizeFormulaColumnDrafts(autoConfig?.formulaColumns))
+        ? "ตามคอลัมน์"
+        : `฿${formatNumber(autoConfig.defaultRate, rateDecimalPlaces)}/kWh`;
       const updatedByLabel = readText(
         autoConfig?.updatedByName,
         autoConfig?.updatedByEmail,
@@ -5270,7 +5364,7 @@ const renderAutoQueue = () => {
       return `
         <tr>
           <td>${cutoffDay}</td>
-          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ฿${formatNumber(autoConfig.defaultRate, rateDecimalPlaces)}/kWh • ${escapeHtml(rateTypeLabel)}${
+          <td>ตัดรอบวันที่ ${cutoffDay} • อัตรา ${escapeHtml(rateText)} • ${escapeHtml(rateTypeLabel)}${
         updatedByLabel ? ` • ผู้ตั้งค่า: ${escapeHtml(updatedByLabel)}` : ""
       }</td>
           <td>${statusHtml}</td>
@@ -5452,16 +5546,17 @@ const updateAutoPreviewText = () => {
     { day: selectedCutoffDay }
   );
 };
-const getAutoModalDraft = (cutoffDay) =>
-  normalizeAutoScheduleEntry(
+const getAutoModalDraft = (cutoffDay) => {
+  const formulaColumns = getFormulaColumnDraftsFromInputs();
+  return normalizeAutoScheduleEntry(
     {
       cutoffDay,
-      defaultRate: billRateInput?.value || schedule.defaultRate,
+      defaultRate: getDefaultRateFromFormulaColumns(formulaColumns, schedule.defaultRate),
       rateType: billType?.value || schedule.rateType,
       calcMethod: inferCalcMethodFromFormula(formulaTerms),
       calcFormula: getFormulaFromInputs(),
       calcLabel: getFormulaResultName(),
-      formulaColumns: getFormulaColumnDraftsFromInputs(),
+      formulaColumns,
       detailColumns: getSelectedDetailColumns(),
       bankName: billBankInput?.value || schedule.bankName,
       accountName: billAccountNameInput?.value || schedule.accountName,
@@ -5469,6 +5564,7 @@ const getAutoModalDraft = (cutoffDay) =>
     },
     schedule
   );
+};
 const resetAutoModalForCreateOnly = (preferredCutoffDay) => {
   const fallbackCutoffDay =
     Number(preferredCutoffDay) || Number(schedule?.cutoffDay) || defaultSchedule.cutoffDay;
@@ -5681,6 +5777,7 @@ const calculateFormulaColumnBillTotals = ({
       return {
         type: "calc",
         include: column.include !== false,
+        rate: column.rate,
         operator: column.operator,
         leftTerm: buildFormulaColumnTerm(column.leftMeterKey, column.leftField, safeMeters),
         rightTerm: buildFormulaColumnTerm(column.rightMeterKey, column.rightField, safeMeters)
@@ -5689,6 +5786,7 @@ const calculateFormulaColumnBillTotals = ({
     return {
       type: "basic",
       include: column.include !== false,
+      rate: column.rate,
       term: buildFormulaColumnTerm(column.meterKey, column.field, safeMeters)
     };
   });
@@ -5711,7 +5809,8 @@ const calculateFormulaColumnBillTotals = ({
   );
   const amount = roundTo(
     columnTotals.reduce(
-      (sum, total) => sum + roundTo(parseNumber(total) * billRate, 2),
+      (sum, total, index) =>
+        sum + roundTo(parseNumber(total) * getColumnRate(includedColumnDefs[index], billRate), 2),
       0
     ),
     2
@@ -5996,7 +6095,7 @@ const renderHistory = () => {
             <span class="period-range" title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span>
             <div class="period-meta" title="${escapeHtml(creatorLabel)}">โดย ${escapeHtml(creatorLabel)}</div>
           </td>
-          <td>${formatNumber(bill.rate, rateDecimalPlaces)}</td>
+          <td>${escapeHtml(getBillRateDisplayLabel(bill))}</td>
           <td>${formatNumber(displayTotals.totalKwh, 1)}</td>
           <td>${formatCurrency(displayTotals.amount)}</td>
           <td>
@@ -6265,11 +6364,15 @@ const handleConfirm = async () => {
     alert("ยังไม่มีมิเตอร์ให้ใช้คำนวณ");
     return;
   }
-  const rateVal =
-    parseFloat(billRateInput.value || `${schedule.defaultRate}`) ||
-    schedule.defaultRate;
   const rateTypeVal = billType?.value || schedule.rateType;
   const formulaColumns = getFormulaColumnDraftsFromInputs();
+  const missingRateLabels = getMissingIncludedColumnRateLabels(formulaColumns);
+  if (missingRateLabels.length) {
+    alert(`กรุณากรอกอัตรา (฿/kWh) ในคอลัมน์ที่เลือกนับยอด: ${missingRateLabels.join(", ")}`);
+    return;
+  }
+  const rateVal = getDefaultRateFromFormulaColumns(formulaColumns, schedule.defaultRate);
+  if (billRateInput) billRateInput.value = String(rateVal);
   const calcFormula = getFormulaFromInputs();
   if (!calcFormula.length && !formulaColumns.length) {
     alert("กรุณากำหนดสูตรคำนวณอย่างน้อย 1 พจน์ หรือเพิ่มคอลัมน์คำนวณ");
@@ -6448,11 +6551,14 @@ const handleConfirm = async () => {
   renderHistory();
   updateSummary();
   closeModal();
+  const amountLine = hasColumnRateOverrides(getBillFormulaColumnsForDisplay(bill))
+    ? `ยอดรวม ${formatCurrency(bill.amount)} (คิดตามอัตราแต่ละคอลัมน์)`
+    : `พลังงานรวม ${formatNumber(bill.totalKwh, 1)} kWh x ฿${formatNumber(
+      bill.rate,
+      rateDecimalPlaces
+    )} = ${formatCurrency(bill.amount)}`;
   alert(
-    `สร้างบิลใบที่ ${bill.billNo}\nช่วง ${bill.periodStart} - ${bill.periodEnd}\nพลังงานรวม ${formatNumber(
-      bill.totalKwh,
-      1
-    )} kWh x ฿${formatNumber(bill.rate, rateDecimalPlaces)} = ${formatCurrency(bill.amount)}`
+    `สร้างบิลใบที่ ${bill.billNo}\nช่วง ${bill.periodStart} - ${bill.periodEnd}\n${amountLine}`
   );
 };
 

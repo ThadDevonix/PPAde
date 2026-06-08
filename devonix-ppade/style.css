@@ -1816,6 +1816,9 @@ tbody tr.selected {
 .formula-column-item .formula-column-field-select {
   width: 120px;
 }
+.formula-column-item .formula-column-rate-input {
+  width: 112px;
+}
 .formula-column-item .formula-column-operator-select {
   width: 72px;
   text-align: center;
