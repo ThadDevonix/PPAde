@@ -17,6 +17,7 @@
             "name": "A",
             "include": false,
             "showKwh": true,
+            "rate": null,
             "meterKey": "8",
             "field": "energy_in"
           },
@@ -25,6 +26,7 @@
             "name": "B",
             "include": false,
             "showKwh": true,
+            "rate": null,
             "meterKey": "9",
             "field": "energy_in"
           },
@@ -33,6 +35,7 @@
             "name": "C",
             "include": false,
             "showKwh": true,
+            "rate": null,
             "meterKey": "9",
             "field": "energy_out"
           },
@@ -41,6 +44,7 @@
             "name": "Solar",
             "include": true,
             "showKwh": false,
+            "rate": null,
             "leftMeterKey": "8",
             "leftField": "energy_in",
             "operator": "-",
@@ -70,6 +74,7 @@
                 "name": "A",
                 "include": false,
                 "showKwh": true,
+                "rate": null,
                 "meterKey": "8",
                 "field": "energy_in"
               },
@@ -78,6 +83,7 @@
                 "name": "B",
                 "include": false,
                 "showKwh": true,
+                "rate": null,
                 "meterKey": "9",
                 "field": "energy_in"
               },
@@ -86,6 +92,7 @@
                 "name": "C",
                 "include": false,
                 "showKwh": true,
+                "rate": null,
                 "meterKey": "9",
                 "field": "energy_out"
               },
@@ -94,6 +101,7 @@
                 "name": "Solar",
                 "include": true,
                 "showKwh": false,
+                "rate": null,
                 "leftMeterKey": "8",
                 "leftField": "energy_in",
                 "operator": "-",
@@ -3078,6 +3086,1032 @@
         ]
       },
       "history": [
+        {
+          "id": "1783403801683-38",
+          "billNo": 38,
+          "createdAt": 1783403801683,
+          "plantName": "โรงเรียนเชียงใหม่คริสเตียน",
+          "plantApiId": 1,
+          "plantSiteCode": "CNX_PPA",
+          "createdBy": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "createdById": "1",
+          "createdByName": "System Administrator",
+          "createdByEmail": "admin@vbox.local",
+          "createdByRole": "superadmin",
+          "periodStart": "2026-05-26",
+          "periodEnd": "2026-06-25",
+          "rate": 5,
+          "rateType": "flat",
+          "totalKwh": 10820.8,
+          "amount": 54104,
+          "auto": true,
+          "calcMethod": "energy_out",
+          "calcFormula": [
+            {
+              "operator": "+",
+              "meterKey": "8",
+              "meterName": "Legacy Solar Inverter (Auto-Migrated)",
+              "field": "energy_out"
+            }
+          ],
+          "calcLabel": "ผลคำนวณ",
+          "formulaColumns": [
+            {
+              "type": "basic",
+              "name": "A",
+              "include": false,
+              "showKwh": true,
+              "rate": null,
+              "meterKey": "8",
+              "field": "energy_in"
+            },
+            {
+              "type": "basic",
+              "name": "B",
+              "include": false,
+              "showKwh": true,
+              "rate": null,
+              "meterKey": "9",
+              "field": "energy_in"
+            },
+            {
+              "type": "basic",
+              "name": "C",
+              "include": false,
+              "showKwh": true,
+              "rate": null,
+              "meterKey": "9",
+              "field": "energy_out"
+            },
+            {
+              "type": "calc",
+              "name": "Solar",
+              "include": true,
+              "showKwh": false,
+              "rate": null,
+              "leftMeterKey": "8",
+              "leftField": "energy_in",
+              "operator": "-",
+              "rightMeterKey": "9",
+              "rightField": "energy_out"
+            }
+          ],
+          "cutoffDay": 25,
+          "detailColumns": [
+            "energy_in",
+            "energy_out",
+            "bill_units"
+          ],
+          "source": "api",
+          "bankName": "",
+          "accountName": "",
+          "accountNumber": "",
+          "meters": [
+            {
+              "id": 8,
+              "apiId": 8,
+              "deviceId": 8,
+              "device_id": 8,
+              "siteId": 1,
+              "site_id": 1,
+              "siteCode": "CNX_PPA",
+              "siteName": "โรงเรียนเชียงใหม่คริสเตียน",
+              "name": "Legacy Solar Inverter (Auto-Migrated)",
+              "sn": "IN @W_10009425#5:43205 / @W_10009425#5:43206 | OUT @W_10009425#4:43209 / @W_10009425#4:43210",
+              "status": "online",
+              "deviceType": "SOLAR_PANEL",
+              "modbusIn1": "@W_10009425#5:43205",
+              "modbusIn2": "@W_10009425#5:43206",
+              "modbusOut1": "@W_10009425#4:43209",
+              "modbusOut2": "@W_10009425#4:43210"
+            },
+            {
+              "id": 9,
+              "apiId": 9,
+              "deviceId": 9,
+              "device_id": 9,
+              "siteId": 1,
+              "site_id": 1,
+              "siteCode": "CNX_PPA",
+              "siteName": "โรงเรียนเชียงใหม่คริสเตียน",
+              "name": "Legacy MDB Meter (Auto-Migrated)",
+              "sn": "IN @W_10009425#6:43205 / @W_10009425#6:43206 | OUT @W_10009425#6:43209 / @W_10009425#6:43210",
+              "status": "online",
+              "deviceType": "METER",
+              "modbusIn1": "@W_10009425#6:43205",
+              "modbusIn2": "@W_10009425#6:43206",
+              "modbusOut1": "@W_10009425#6:43209",
+              "modbusOut2": "@W_10009425#6:43210"
+            }
+          ],
+          "daily": [
+            {
+              "date": "2026-05-26",
+              "energy_in": 1839,
+              "energy_out": 0,
+              "solar_in": 1839,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 497.5,
+                  "energy_out": 0,
+                  "solar_in": 497.5,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1341.5,
+                  "energy_out": 0,
+                  "solar_in": 1341.5,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-05-27",
+              "energy_in": 2053.7,
+              "energy_out": 0.2,
+              "solar_in": 2053.7,
+              "self_use": 0.2,
+              "mdb_in": 0.2,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 799.1,
+                  "energy_out": 0,
+                  "solar_in": 799.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1254.6,
+                  "energy_out": 0.2,
+                  "solar_in": 1254.6,
+                  "self_use": 0.2,
+                  "mdb_in": 0.2,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-05-28",
+              "energy_in": 1934,
+              "energy_out": 1,
+              "solar_in": 1934,
+              "self_use": 1,
+              "mdb_in": 1,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 937.1,
+                  "energy_out": 0,
+                  "solar_in": 937.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 996.9,
+                  "energy_out": 1,
+                  "solar_in": 996.9,
+                  "self_use": 1,
+                  "mdb_in": 1,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-05-29",
+              "energy_in": 1861.2,
+              "energy_out": 0,
+              "solar_in": 1861.2,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 818.2,
+                  "energy_out": 0,
+                  "solar_in": 818.2,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1043,
+                  "energy_out": 0,
+                  "solar_in": 1043,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-05-30",
+              "energy_in": 849,
+              "energy_out": 406.9,
+              "solar_in": 849,
+              "self_use": 406.9,
+              "mdb_in": 406.9,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 685.7,
+                  "energy_out": 0,
+                  "solar_in": 685.7,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 163.3,
+                  "energy_out": 406.9,
+                  "solar_in": 163.3,
+                  "self_use": 406.9,
+                  "mdb_in": 406.9,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-05-31",
+              "energy_in": 820.5,
+              "energy_out": 568.6,
+              "solar_in": 820.5,
+              "self_use": 568.6,
+              "mdb_in": 568.6,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 684.9,
+                  "energy_out": 0,
+                  "solar_in": 684.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 135.6,
+                  "energy_out": 568.6,
+                  "solar_in": 135.6,
+                  "self_use": 568.6,
+                  "mdb_in": 568.6,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-01",
+              "energy_in": 1018.5,
+              "energy_out": 769.4,
+              "solar_in": 1018.5,
+              "self_use": 769.4,
+              "mdb_in": 769.4,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 903.1,
+                  "energy_out": 0,
+                  "solar_in": 903.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 115.4,
+                  "energy_out": 769.4,
+                  "solar_in": 115.4,
+                  "self_use": 769.4,
+                  "mdb_in": 769.4,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-02",
+              "energy_in": 2164.7,
+              "energy_out": 0.8,
+              "solar_in": 2164.7,
+              "self_use": 0.8,
+              "mdb_in": 0.8,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 966.7,
+                  "energy_out": 0,
+                  "solar_in": 966.7,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1198,
+                  "energy_out": 0.8,
+                  "solar_in": 1198,
+                  "self_use": 0.8,
+                  "mdb_in": 0.8,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-03",
+              "energy_in": 443.6,
+              "energy_out": 211.3,
+              "solar_in": 443.6,
+              "self_use": 211.3,
+              "mdb_in": 211.3,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 316.5,
+                  "energy_out": 0,
+                  "solar_in": 316.5,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 127.1,
+                  "energy_out": 211.3,
+                  "solar_in": 127.1,
+                  "self_use": 211.3,
+                  "mdb_in": 211.3,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-04",
+              "energy_in": 2138.3,
+              "energy_out": 2,
+              "solar_in": 2138.3,
+              "self_use": 2,
+              "mdb_in": 2,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 954.3,
+                  "energy_out": 0,
+                  "solar_in": 954.3,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1184,
+                  "energy_out": 2,
+                  "solar_in": 1184,
+                  "self_use": 2,
+                  "mdb_in": 2,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-05",
+              "energy_in": 1943,
+              "energy_out": 0.2,
+              "solar_in": 1943,
+              "self_use": 0.2,
+              "mdb_in": 0.2,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 648,
+                  "energy_out": 0,
+                  "solar_in": 648,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1295,
+                  "energy_out": 0.2,
+                  "solar_in": 1295,
+                  "self_use": 0.2,
+                  "mdb_in": 0.2,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-06",
+              "energy_in": 356.4,
+              "energy_out": 52,
+              "solar_in": 356.4,
+              "self_use": 52,
+              "mdb_in": 52,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 180,
+                  "energy_out": 0,
+                  "solar_in": 180,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 176.4,
+                  "energy_out": 52,
+                  "solar_in": 176.4,
+                  "self_use": 52,
+                  "mdb_in": 52,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-07",
+              "energy_in": 667.8,
+              "energy_out": 437.1,
+              "solar_in": 667.8,
+              "self_use": 437.1,
+              "mdb_in": 437.1,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 542.1,
+                  "energy_out": 0,
+                  "solar_in": 542.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 125.7,
+                  "energy_out": 437.1,
+                  "solar_in": 125.7,
+                  "self_use": 437.1,
+                  "mdb_in": 437.1,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-08",
+              "energy_in": 1796,
+              "energy_out": 0,
+              "solar_in": 1796,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 191.7,
+                  "energy_out": 0,
+                  "solar_in": 191.7,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1604.3,
+                  "energy_out": 0,
+                  "solar_in": 1604.3,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-09",
+              "energy_in": 1791,
+              "energy_out": 0,
+              "solar_in": 1791,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 257.8,
+                  "energy_out": 0,
+                  "solar_in": 257.8,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1533.2,
+                  "energy_out": 0,
+                  "solar_in": 1533.2,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-10",
+              "energy_in": 1788.1,
+              "energy_out": 0,
+              "solar_in": 1788.1,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 255.7,
+                  "energy_out": 0,
+                  "solar_in": 255.7,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1532.4,
+                  "energy_out": 0,
+                  "solar_in": 1532.4,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-11",
+              "energy_in": 1714.8,
+              "energy_out": 0,
+              "solar_in": 1714.8,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 208.9,
+                  "energy_out": 0,
+                  "solar_in": 208.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1505.9,
+                  "energy_out": 0,
+                  "solar_in": 1505.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-12",
+              "energy_in": 1801.3,
+              "energy_out": 0,
+              "solar_in": 1801.3,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 255.2,
+                  "energy_out": 0,
+                  "solar_in": 255.2,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1546.1,
+                  "energy_out": 0,
+                  "solar_in": 1546.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-13",
+              "energy_in": 369.4,
+              "energy_out": 67.4,
+              "solar_in": 369.4,
+              "self_use": 67.4,
+              "mdb_in": 67.4,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 217.6,
+                  "energy_out": 0,
+                  "solar_in": 217.6,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 151.8,
+                  "energy_out": 67.4,
+                  "solar_in": 151.8,
+                  "self_use": 67.4,
+                  "mdb_in": 67.4,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-14",
+              "energy_in": 343.4,
+              "energy_out": 132.4,
+              "solar_in": 343.4,
+              "self_use": 132.4,
+              "mdb_in": 132.4,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 222.8,
+                  "energy_out": 0,
+                  "solar_in": 222.8,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 120.6,
+                  "energy_out": 132.4,
+                  "solar_in": 120.6,
+                  "self_use": 132.4,
+                  "mdb_in": 132.4,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-15",
+              "energy_in": 1925.8,
+              "energy_out": 0,
+              "solar_in": 1925.8,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 258,
+                  "energy_out": 0,
+                  "solar_in": 258,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1667.8,
+                  "energy_out": 0,
+                  "solar_in": 1667.8,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-16",
+              "energy_in": 1938.8,
+              "energy_out": 0,
+              "solar_in": 1938.8,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 288.5,
+                  "energy_out": 0,
+                  "solar_in": 288.5,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1650.3,
+                  "energy_out": 0,
+                  "solar_in": 1650.3,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-17",
+              "energy_in": 1793.8,
+              "energy_out": 0,
+              "solar_in": 1793.8,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 239.9,
+                  "energy_out": 0,
+                  "solar_in": 239.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1553.9,
+                  "energy_out": 0,
+                  "solar_in": 1553.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-18",
+              "energy_in": 1881.7,
+              "energy_out": 0,
+              "solar_in": 1881.7,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 612,
+                  "energy_out": 0,
+                  "solar_in": 612,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1269.7,
+                  "energy_out": 0,
+                  "solar_in": 1269.7,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-19",
+              "energy_in": 1820.6,
+              "energy_out": 0,
+              "solar_in": 1820.6,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 218.1,
+                  "energy_out": 0,
+                  "solar_in": 218.1,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1602.5,
+                  "energy_out": 0,
+                  "solar_in": 1602.5,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-20",
+              "energy_in": 426.3,
+              "energy_out": 96.3,
+              "solar_in": 426.3,
+              "self_use": 96.3,
+              "mdb_in": 96.3,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 265.4,
+                  "energy_out": 0,
+                  "solar_in": 265.4,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 160.9,
+                  "energy_out": 96.3,
+                  "solar_in": 160.9,
+                  "self_use": 96.3,
+                  "mdb_in": 96.3,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-21",
+              "energy_in": 343.7,
+              "energy_out": 144.1,
+              "solar_in": 343.7,
+              "self_use": 144.1,
+              "mdb_in": 144.1,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 220,
+                  "energy_out": 0,
+                  "solar_in": 220,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 123.7,
+                  "energy_out": 144.1,
+                  "solar_in": 123.7,
+                  "self_use": 144.1,
+                  "mdb_in": 144.1,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-22",
+              "energy_in": 1705.2,
+              "energy_out": 0,
+              "solar_in": 1705.2,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 239.6,
+                  "energy_out": 0,
+                  "solar_in": 239.6,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1465.6,
+                  "energy_out": 0,
+                  "solar_in": 1465.6,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-23",
+              "energy_in": 1755.4,
+              "energy_out": 0,
+              "solar_in": 1755.4,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 341.6,
+                  "energy_out": 0,
+                  "solar_in": 341.6,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1413.8,
+                  "energy_out": 0,
+                  "solar_in": 1413.8,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-24",
+              "energy_in": 1803,
+              "energy_out": 0,
+              "solar_in": 1803,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 222.6,
+                  "energy_out": 0,
+                  "solar_in": 222.6,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1580.4,
+                  "energy_out": 0,
+                  "solar_in": 1580.4,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            },
+            {
+              "date": "2026-06-25",
+              "energy_in": 1791.8,
+              "energy_out": 0,
+              "solar_in": 1791.8,
+              "self_use": 0,
+              "mdb_in": 0,
+              "mdb_out": 0,
+              "by_meter": {
+                "8": {
+                  "energy_in": 261.9,
+                  "energy_out": 0,
+                  "solar_in": 261.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                },
+                "9": {
+                  "energy_in": 1529.9,
+                  "energy_out": 0,
+                  "solar_in": 1529.9,
+                  "self_use": 0,
+                  "mdb_in": 0,
+                  "mdb_out": 0
+                }
+              },
+              "bill_units": 0
+            }
+          ],
+          "meterReadings": {
+            "8": {
+              "in": {
+                "before": 361150.8,
+                "after": 374861.4,
+                "beforeTime": "2026-05-26T00:02:01+07:00",
+                "afterTime": "2026-06-25T23:55:05+07:00"
+              },
+              "out": {
+                "before": 0,
+                "after": 0,
+                "beforeTime": "2026-05-26T00:02:01+07:00",
+                "afterTime": "2026-06-25T23:55:05+07:00"
+              },
+              "capturedAt": 1783403801669
+            },
+            "9": {
+              "in": {
+                "before": 228838.1,
+                "after": 260006.3,
+                "beforeTime": "2026-05-26T00:02:01+07:00",
+                "afterTime": "2026-06-25T23:55:05+07:00"
+              },
+              "out": {
+                "before": 137065.5,
+                "after": 139955.1,
+                "beforeTime": "2026-05-26T00:02:01+07:00",
+                "afterTime": "2026-06-25T23:55:05+07:00"
+              },
+              "capturedAt": 1783403801683
+            }
+          }
+        },
         {
           "id": "1779775551120-37",
           "billNo": 37,
@@ -29454,6 +30488,59 @@
       ],
       "auditLog": [
         {
+          "id": "log_mra8ksc3_pk76jw",
+          "at": "2026-07-07T05:56:41.714Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "bill_created",
+          "target": {
+            "type": "bill",
+            "id": "1783403801683-38",
+            "billNo": 38,
+            "periodStart": "2026-05-26",
+            "periodEnd": "2026-06-25",
+            "auto": true,
+            "totalKwh": 10820.8,
+            "amount": 54104,
+            "rate": 5,
+            "rateType": "flat",
+            "cutoffDay": 25
+          }
+        },
+        {
+          "id": "log_mra8ksc3_i4xsy1",
+          "at": "2026-07-07T05:56:41.714Z",
+          "actor": {
+            "id": "1",
+            "name": "System Administrator",
+            "email": "admin@vbox.local",
+            "role": "superadmin"
+          },
+          "plant": {
+            "siteId": 1,
+            "siteCode": "CNX_PPA",
+            "siteName": "โรงเรียนเชียงใหม่คริสเตียน"
+          },
+          "action": "schedule_updated",
+          "target": {
+            "type": "schedule",
+            "cutoffDay": 25,
+            "defaultRate": 5,
+            "rateType": "flat",
+            "calcMethod": "energy_out",
+            "calcLabel": "ผลคำนวณ"
+          }
+        },
+        {
           "id": "log_mpm9vqkn_ipvnp9",
           "at": "2026-05-26T06:47:01.703Z",
           "actor": {
@@ -31212,8 +32299,8 @@
           }
         }
       ],
-      "billSequence": 37,
-      "updatedAt": "2026-05-30T06:13:01.163Z"
+      "billSequence": 38,
+      "updatedAt": "2026-07-07T05:56:41.727Z"
     }
   }
 }
