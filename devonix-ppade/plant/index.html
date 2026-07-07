@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../style.css?v=20260512g">
+  <link rel="stylesheet" href="../style.css?v=20260707a">
 </head>
 <body class="plant-page">
   <nav class="nav">
@@ -43,7 +43,8 @@
           </svg>
         </button>
         <div class="mode-toggle">
-          <button class="toggle-btn active" id="mode-meters" type="button" data-i18n="plant.mode.meters">Meters</button>
+          <button class="toggle-btn active" id="mode-dashboard" type="button" data-i18n="plant.mode.dashboard">Dashboard</button>
+          <button class="toggle-btn" id="mode-meters" type="button" data-i18n="plant.mode.meters">Meters</button>
           <button class="toggle-btn" id="mode-billing" type="button" data-i18n="plant.mode.billing">Billing</button>
           <button class="toggle-btn" id="mode-audit" type="button" data-i18n="plant.mode.audit">History Edit</button>
         </div>
@@ -57,7 +58,61 @@
       </div>
     </section>
 
-    <section class="panel" id="meters-panel">
+    <section class="panel" id="dashboard-panel">
+      <div class="panel-head">
+        <h3 data-i18n="dashboard.panel.title">Dashboard</h3>
+        <div class="panel-actions">
+          <button class="ghost small-btn icon-btn" id="dashboard-refresh" type="button" data-i18n-aria-label="common.refresh" data-i18n-title="common.refresh" aria-label="รีเฟรช" title="รีเฟรช">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M20 4v4h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="dashboard-grid">
+        <article class="dashboard-card tone-meters">
+          <span class="dashboard-label" data-i18n="dashboard.metric.meters">Meters</span>
+          <strong id="dashboard-meter-count">--</strong>
+          <small id="dashboard-meter-status" data-i18n="common.loading">กำลังโหลด...</small>
+        </article>
+        <article class="dashboard-card tone-total">
+          <span class="dashboard-label" data-i18n="dashboard.metric.total_bills">บิลทั้งหมด</span>
+          <strong id="dashboard-total-bills">--</strong>
+          <small id="dashboard-total-bills-meta">--</small>
+        </article>
+        <article class="dashboard-card tone-manual">
+          <span class="dashboard-label" data-i18n="dashboard.metric.manual_bills">Manual Bills</span>
+          <strong id="dashboard-manual-bills">--</strong>
+          <small id="dashboard-manual-bills-meta">--</small>
+        </article>
+        <article class="dashboard-card tone-auto">
+          <span class="dashboard-label" data-i18n="dashboard.metric.auto_bills">Auto Bills</span>
+          <strong id="dashboard-auto-bills">--</strong>
+          <small id="dashboard-auto-bills-meta">--</small>
+        </article>
+      </div>
+      <div class="dashboard-detail-grid">
+        <section class="dashboard-detail dashboard-chart-detail">
+          <div class="summary-header">
+            <h4 data-i18n="dashboard.section.bill_chart">แนวโน้มยอดบิลล่าสุด</h4>
+          </div>
+          <div id="dashboard-bill-chart" class="dashboard-bill-chart">
+            <p class="empty" data-i18n="common.loading">กำลังโหลด...</p>
+          </div>
+        </section>
+        <section class="dashboard-detail dashboard-billing-split-detail">
+          <div class="summary-header">
+            <h4 data-i18n="dashboard.section.billing_split">ยอดรวมทั้งสิ้น</h4>
+          </div>
+          <div id="dashboard-billing-split" class="dashboard-billing-split">
+            <p class="empty" data-i18n="common.loading">กำลังโหลด...</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="meters-panel">
       <div class="panel-head">
         <h3 data-i18n="meters.panel.title">มิเตอร์ / Meters</h3>
         <div class="panel-actions">
@@ -70,7 +125,7 @@
             <tr>
               <th style="width: 80px;" data-i18n="meters.col.status">Status</th>
               <th data-i18n="meters.col.meter">Meter</th>
-              <th style="width: 220px;" data-i18n="meters.col.address">Address</th>
+              <th style="width: 260px;" class="meter-col-kwh-flow"><span class="tone-import">Import</span> / <span class="tone-export">Export</span></th>
               <th style="width: 110px;" data-i18n="meters.col.action">จัดการ</th>
             </tr>
           </thead>
@@ -489,8 +544,8 @@
   <script src="../assets/i18n.js" defer></script>
   <script src="../assets/nav-auth.js" defer></script>
   <script src="../assets/bill-guide.js" defer></script>
-  <script src="./plant.js?v=20260401c" defer></script>
-  <script src="../billing/billing.js?v=20260512g" defer></script>
-  <script src="../meters/meters.js?v=20260401c" defer></script>
+  <script src="./plant.js?v=20260707a" defer></script>
+  <script src="../billing/billing.js?v=20260707a" defer></script>
+  <script src="../meters/meters.js?v=20260707a" defer></script>
 </body>
 </html>

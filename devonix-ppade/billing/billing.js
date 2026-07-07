@@ -6698,11 +6698,13 @@ const initBilling = async () => {
   renderAutoQueue();
   renderHistory();
   updateSummary();
+  if (typeof window.renderPlantDashboard === "function") window.renderPlantDashboard();
   runAutoIfDue()
     .then(() => {
       renderAutoQueue();
       renderHistory();
       updateSummary();
+      if (typeof window.renderPlantDashboard === "function") window.renderPlantDashboard();
     })
     .catch((err) => console.error("[billing] runAutoIfDue failed:", err));
 };
@@ -7083,6 +7085,7 @@ document.addEventListener("i18n:changed", () => {
   try { updateBillHistoryTitle(); } catch { /* ignore */ }
   try { renderAutoQueue(); } catch { /* ignore */ }
   try { renderHistory(); } catch { /* ignore */ }
+  try { if (typeof window.renderPlantDashboard === "function") window.renderPlantDashboard(); } catch { /* ignore */ }
   try {
     if (activeScheduleHistoryCutoffDay !== null && !scheduleHistoryModal?.classList.contains("hidden")) {
       renderScheduleHistoryModal(activeScheduleHistoryCutoffDay);

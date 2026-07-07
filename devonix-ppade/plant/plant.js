@@ -209,7 +209,9 @@ const ensurePlantAccess = async () => {
 window.ensurePlantAccess = ensurePlantAccess;
 
 
-// toggle meters/billing/audit
+// toggle dashboard/meters/billing/audit
+const dashboardBtn = document.getElementById("mode-dashboard");
+const dashboardPanel = document.getElementById("dashboard-panel");
 const auditBtn = document.getElementById("mode-audit");
 const auditPanel = document.getElementById("audit-panel");
 
@@ -220,14 +222,17 @@ const setMode = (mode) => {
   else if (mode === false || mode === undefined) activeMode = "meters";
   else activeMode = String(mode);
 
+  const isDashboard = activeMode === "dashboard";
   const isMeters = activeMode === "meters";
   const isBilling = activeMode === "billing";
   const isAudit = activeMode === "audit";
 
+  if (dashboardPanel) dashboardPanel.classList.toggle("hidden", !isDashboard);
   if (metersPanel) metersPanel.classList.toggle("hidden", !isMeters);
   if (billingPanel) billingPanel.classList.toggle("hidden", !isBilling);
   if (auditPanel) auditPanel.classList.toggle("hidden", !isAudit);
 
+  if (dashboardBtn) dashboardBtn.classList.toggle("active", isDashboard);
   if (metersBtn) metersBtn.classList.toggle("active", isMeters);
   if (billingBtn) billingBtn.classList.toggle("active", isBilling);
   if (auditBtn) auditBtn.classList.toggle("active", isAudit);
@@ -240,8 +245,12 @@ const setMode = (mode) => {
     if (typeof window.renderAuditFeed === "function") window.renderAuditFeed();
     if (typeof window.refreshAuditFeed === "function") window.refreshAuditFeed();
   }
+  if (isDashboard && typeof window.refreshPlantDashboard === "function") {
+    window.refreshPlantDashboard();
+  }
 };
 
+document.getElementById("mode-dashboard")?.addEventListener("click", () => setMode("dashboard"));
 document.getElementById("mode-meters")?.addEventListener("click", () => setMode("meters"));
 document.getElementById("mode-billing")?.addEventListener("click", () => setMode("billing"));
 document.getElementById("mode-audit")?.addEventListener("click", () => setMode("audit"));

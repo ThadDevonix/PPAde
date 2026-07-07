@@ -70,6 +70,7 @@ const meterLivePollIntervalMs = 20 * 1000;
 const meterLiveDeviceFallbackCap = 8;
 let meterLivePollTimer = null;
 let meterLiveInFlight = false;
+let plantMeterLiveReadings = new Map();
 
 const getMeterLiveKey = (meter) => {
   const meterId = getMeterPersistId(meter);
@@ -368,7 +369,9 @@ const refreshMeterLiveReadings = async () => {
       const mergedRows = rows.concat(...scopedRowsList);
       nextLiveMap = buildMeterLiveMap(plantMeters, mergedRows);
     }
+    plantMeterLiveReadings = nextLiveMap;
     renderPlantMeters();
+    renderPlantDashboard();
   } catch (error) {
     console.warn("Failed to load live meter values", error);
   } finally {
@@ -392,38 +395,204 @@ const stopMeterLivePolling = () => {
   meterLivePollTimer = null;
 };
 
-const formatMeterSerialText = (meter) => {
-  if (!meter || typeof meter !== "object") return "-";
-  const pickPrimaryToken = (value) => {
-    const raw = readText(value);
-    if (!raw) return "";
-    const cleaned = raw.replace(/^\s*IN\s*/i, "").trim();
-    const tokens = cleaned
-      .split(/[|/,\s]+/)
-      .map((token) => token.trim())
-      .filter(Boolean)
-      .filter((token) => !/^(IN|OUT)$/i.test(token));
-    return tokens[0] || raw;
-  };
-  const primary = pickPrimaryToken(
-    readText(
-      meter.modbusIn1,
-      meter.modbus_in_1,
-      meter.modbus_address_in,
-      meter.modbusAddressIn
-    )
+const dashboardEls = {
+  meterCount: document.getElementById("dashboard-meter-count"),
+  meterStatus: document.getElementById("dashboard-meter-status"),
+  totalBills: document.getElementById("dashboard-total-bills"),
+  totalBillsMeta: document.getElementById("dashboard-total-bills-meta"),
+  manualBills: document.getElementById("dashboard-manual-bills"),
+  manualBillsMeta: document.getElementById("dashboard-manual-bills-meta"),
+  autoBills: document.getElementById("dashboard-auto-bills"),
+  autoBillsMeta: document.getElementById("dashboard-auto-bills-meta"),
+  billChart: document.getElementById("dashboard-bill-chart"),
+  billingSplit: document.getElementById("dashboard-billing-split"),
+  refresh: document.getElementById("dashboard-refresh")
+};
+const formatDashboardNumber = (value, digits = 2) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits
+  }).format(number);
+};
+const formatDashboardMoney = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "THB",
+    maximumFractionDigits: 2
+  }).format(number);
+};
+const formatDashboardDate = (value) => {
+  const text = readText(value);
+  if (!text) return "--";
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit"
+  }).format(date);
+};
+const setDashboardText = (el, value) => {
+  if (el) el.textContent = value;
+};
+const renderDashboardBillingSplit = ({ manualAmount = 0, autoAmount = 0, manualCount = 0, autoCount = 0 }) => {
+  if (!dashboardEls.billingSplit) return;
+  const totalAmount = manualAmount + autoAmount;
+  const manualPercent = totalAmount > 0 ? Math.round((manualAmount / totalAmount) * 100) : 0;
+  const autoPercent = totalAmount > 0 ? Math.round((autoAmount / totalAmount) * 100) : 0;
+  dashboardEls.billingSplit.innerHTML = `
+    <div class="dashboard-split-card">
+      <div class="dashboard-split-total">
+        <span>${escapeHtml(tMeters("dashboard.split.total", "ยอดรวมทั้งสิ้น"))}</span>
+        <strong>${escapeHtml(formatDashboardMoney(totalAmount))}</strong>
+      </div>
+      <div class="dashboard-split-grid">
+        <div class="dashboard-split-side tone-manual">
+          <span>${escapeHtml(tMeters("dashboard.split.manual", "Manual"))}</span>
+          <strong>${escapeHtml(formatDashboardMoney(manualAmount))}</strong>
+          <small>${escapeHtml(tMeters("dashboard.split.count", "{count} bills", { count: manualCount }))}</small>
+          <div class="dashboard-split-bar"><span style="width: ${manualPercent}%"></span></div>
+        </div>
+        <div class="dashboard-split-side tone-auto">
+          <span>${escapeHtml(tMeters("dashboard.split.auto", "Auto"))}</span>
+          <strong>${escapeHtml(formatDashboardMoney(autoAmount))}</strong>
+          <small>${escapeHtml(tMeters("dashboard.split.count", "{count} bills", { count: autoCount }))}</small>
+          <div class="dashboard-split-bar"><span style="width: ${autoPercent}%"></span></div>
+        </div>
+      </div>
+    </div>`;
+};
+const buildDashboardBillingStateQuery = () => {
+  const params = new URLSearchParams();
+  const siteId = getPlantSiteIdForWrite();
+  if (Number.isFinite(siteId) && siteId > 0) params.set("site_id", String(siteId));
+  const siteCode = readText(plant?.siteCode, plant?.site_code);
+  const siteName = readText(plant?.name, plant?.siteName, plant?.site_name);
+  if (siteCode) params.set("site_code", siteCode);
+  if (siteName) params.set("site_name", siteName);
+  return params.toString();
+};
+const fetchDashboardBillingState = async () => {
+  const query = buildDashboardBillingStateQuery();
+  if (!query) return null;
+  const response = await fetch(`/api/billing-state?${query}`, {
+    method: "GET",
+    credentials: "same-origin"
+  }).catch(() => null);
+  if (!response || !response.ok) return null;
+  const payload = await response.json().catch(() => ({}));
+  return payload && typeof payload === "object" ? payload.data || payload : null;
+};
+const renderDashboardMeters = () => {
+  const totalMeters = plantMeters.length;
+  const onlineMeters = plantMeters.filter((meter) => meter?.status !== "offline").length;
+  setDashboardText(dashboardEls.meterCount, formatDashboardNumber(totalMeters, 0));
+  setDashboardText(
+    dashboardEls.meterStatus,
+    tMeters("dashboard.meta.meter_status", "{online}/{total} online", {
+      online: onlineMeters,
+      total: totalMeters
+    })
   );
-  if (primary) return primary;
-  return pickPrimaryToken(readText(meter.sn, meter.serial, meter.modbus_address_out, meter.modbusAddressOut)) || "-";
 };
-const shortenSerialText = (value, maxLength = 26) => {
-  const text = String(value || "");
-  if (!text) return "-";
-  if (text.length <= maxLength) return text;
-  if (maxLength <= 3) return text.slice(0, maxLength);
-  const sideLength = Math.max(2, Math.floor((maxLength - 3) / 2));
-  return `${text.slice(0, sideLength)}...${text.slice(-sideLength)}`;
+const formatMeterKwhValue = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${formatDashboardNumber(number)} kWh` : "--";
 };
+const renderMeterKwhFlow = (reading) => `
+  <div class="meter-kwh-flow">
+    <span class="tone-import"><em>${escapeHtml(tMeters("meters.kwh.import", "Import"))}</em><b>${escapeHtml(formatMeterKwhValue(reading?.energyIn))}</b></span>
+    <span class="tone-export"><em>${escapeHtml(tMeters("meters.kwh.export", "Export"))}</em><b>${escapeHtml(formatMeterKwhValue(reading?.energyOut))}</b></span>
+  </div>`;
+const renderDashboardBilling = async () => {
+  const state = await fetchDashboardBillingState().catch(() => null);
+  const bills = Array.isArray(state?.history) ? state.history : [];
+  const sortedBills = bills
+    .slice()
+    .sort((a, b) => String(b?.createdAt || b?.periodEnd || "").localeCompare(String(a?.createdAt || a?.periodEnd || "")));
+  const totalAmount = bills.reduce((sum, bill) => sum + (Number(bill?.amount) || 0), 0);
+  const totalKwh = bills.reduce((sum, bill) => sum + (Number(bill?.totalKwh) || 0), 0);
+  const autoBills = bills.filter((bill) => Boolean(bill?.auto));
+  const manualBills = bills.filter((bill) => !bill?.auto);
+  const manualAmount = manualBills.reduce((sum, bill) => sum + (Number(bill?.amount) || 0), 0);
+  const autoAmount = autoBills.reduce((sum, bill) => sum + (Number(bill?.amount) || 0), 0);
+  renderDashboardBillingSplit({
+    manualAmount,
+    autoAmount,
+    manualCount: manualBills.length,
+    autoCount: autoBills.length
+  });
+  setDashboardText(dashboardEls.totalBills, formatDashboardNumber(bills.length, 0));
+  setDashboardText(
+    dashboardEls.totalBillsMeta,
+    bills.length
+      ? tMeters("dashboard.meta.total_bills", "{amount} • {kwh} kWh", {
+          amount: formatDashboardMoney(totalAmount),
+          kwh: formatDashboardNumber(totalKwh)
+        })
+      : tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")
+  );
+  setDashboardText(dashboardEls.manualBills, formatDashboardNumber(manualBills.length, 0));
+  setDashboardText(
+    dashboardEls.manualBillsMeta,
+    manualBills.length
+      ? tMeters("dashboard.meta.manual_bills", "{amount}", {
+          amount: formatDashboardMoney(manualAmount)
+        })
+      : tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")
+  );
+  setDashboardText(dashboardEls.autoBills, formatDashboardNumber(autoBills.length, 0));
+  setDashboardText(
+    dashboardEls.autoBillsMeta,
+    autoBills.length
+      ? tMeters("dashboard.meta.auto_bills", "{amount}", {
+          amount: formatDashboardMoney(autoAmount)
+        })
+      : tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")
+  );
+  if (dashboardEls.billChart) {
+    const chartBills = sortedBills.slice(0, 5).reverse();
+    const maxAmount = Math.max(
+      ...chartBills.map((bill) => Number(bill?.amount)).filter((amount) => Number.isFinite(amount)),
+      0
+    );
+    dashboardEls.billChart.innerHTML = chartBills.length
+      ? chartBills
+          .map((bill) => {
+            const amount = Number(bill?.amount) || 0;
+            const percent = maxAmount > 0 ? Math.max(6, Math.round((amount / maxAmount) * 100)) : 6;
+            const date = formatDashboardDate(bill?.periodEnd || bill?.createdAt || bill?.periodStart);
+            const tone = amount > 0 ? "paid" : "empty";
+            return `
+              <div class="dashboard-chart-bar tone-${tone}" title="${escapeHtml(`${date} ${formatDashboardMoney(amount)}`)}">
+                <div class="dashboard-chart-head">
+                  <small>${escapeHtml(date)}</small>
+                  <b>${escapeHtml(formatDashboardMoney(amount))}</b>
+                </div>
+                <div class="dashboard-chart-track">
+                  <span style="width: ${percent}%"></span>
+                </div>
+              </div>`;
+          })
+          .join("")
+      : `<p class="empty">${tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")}</p>`;
+  }
+};
+const renderPlantDashboard = () => {
+  renderDashboardMeters();
+  renderDashboardBilling();
+};
+const refreshPlantDashboard = async () => {
+  renderPlantDashboard();
+  if (!meterLiveInFlight) await refreshMeterLiveReadings();
+};
+dashboardEls.refresh?.addEventListener("click", refreshPlantDashboard);
+window.refreshPlantDashboard = refreshPlantDashboard;
+window.renderPlantDashboard = renderPlantDashboard;
+
 const splitAddressPair = (value) => {
   const text = readText(value);
   if (!text) return ["", ""];
@@ -512,13 +681,12 @@ const renderPlantMeters = () => {
   deviceRowsEl.innerHTML = plantMeters
     .map(
       (meter, idx) => {
-        const serialFull = formatMeterSerialText(meter);
-        const serialShort = shortenSerialText(serialFull);
+        const reading = plantMeterLiveReadings.get(getMeterLiveKey(meter));
         return `
       <tr data-idx="${idx}">
         <td><span class="status-dot" title="${escapeHtml(meter.status)}"></span></td>
         <td>${escapeHtml(meter.name)}</td>
-        <td title="${escapeHtml(serialFull)}">${escapeHtml(serialShort)}</td>
+        <td>${renderMeterKwhFlow(reading)}</td>
         <td>
           <div class="history-actions meter-row-actions">
             <button
@@ -611,6 +779,7 @@ const applyPlantMeters = (meters, { persistPlant = true, persistHomePlants = tru
     syncPlantToHomeStorage();
   }
   renderPlantMeters();
+  renderPlantDashboard();
 };
 
 const resetMeterCreateForm = () => {
@@ -1034,7 +1203,7 @@ const bootstrapPlantPage = async () => {
   if (nameEl) {
     nameEl.textContent = plant?.name || "Plant";
   }
-  setMode(false);
+  setMode("dashboard");
   applyPlantMeters(plantMeters, { persistPlant: false });
   // Run independent fetches in parallel — role lookup, devices, and billing
   // init don't depend on one another for their initial load.
@@ -1050,4 +1219,5 @@ bootstrapPlantPage();
 
 document.addEventListener("i18n:changed", () => {
   try { renderPlantMeters(); } catch { /* ignore */ }
+  try { renderPlantDashboard(); } catch { /* ignore */ }
 });
