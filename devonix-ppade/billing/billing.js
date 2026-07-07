@@ -5261,8 +5261,15 @@ const renderScheduleHistoryModal = (cutoffDay) => {
       : bill.periodEnd || bill.periodStart || "";
     const periodRangeText = formatThaiPeriodRange(bill.periodStart, bill.periodEnd);
     const periodIsoTitle = `${bill.periodStart || "?"} – ${bill.periodEnd || "?"}`;
+    const excluded = Boolean(bill.excluded);
+    const eyeTitle = excluded
+      ? tAudit("bill.action.include", "เปิดยอดเดือนนี้")
+      : tAudit("bill.action.exclude", "ปิดยอดเดือนนี้");
+    const eyeSvg = excluded
+      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.5 5.2A10.5 10.5 0 0 1 12 5c5 0 9.3 3.4 10.5 7-.4 1.1-1 2.1-1.8 3M6.3 6.3C4.3 7.6 2.8 9.4 1.5 12 2.7 15.6 7 19 12 19c1.5 0 3-.3 4.3-.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1.5 12C2.7 8.4 7 5 12 5s9.3 3.4 10.5 7C21.3 15.6 17 19 12 19S2.7 15.6 1.5 12z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>`;
     return `
-      <tr data-id="${bill.id}">
+      <tr data-id="${bill.id}" class="${excluded ? "bill-row-excluded" : ""}">
         <td>ใบที่ ${bill.billNo}</td>
         <td><span title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span></td>
         <td>${escapeHtml(getBillRateDisplayLabel(bill))}</td>
@@ -5270,6 +5277,7 @@ const renderScheduleHistoryModal = (cutoffDay) => {
         <td>${formatCurrency(totals.amount)}</td>
         <td>
           <div class="history-actions">
+            <button class="icon-btn bill-exclude-toggle${excluded ? " is-excluded" : ""}" data-action="schedule-history-toggle-exclude" data-id="${bill.id}" type="button" title="${escapeHtml(eyeTitle)}" aria-label="${escapeHtml(eyeTitle)}">${eyeSvg}</button>
             <button class="ghost small-btn" data-action="schedule-history-preview" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.preview", "ดูตัวอย่าง")}</button>
           </div>
         </td>
@@ -5284,6 +5292,12 @@ const renderScheduleHistoryModal = (cutoffDay) => {
       const issueDate = parseDateInput(btn.getAttribute("data-date") || "");
       if (!issueDate) return;
       await openReceiptPreview({ bill, issueDate });
+    });
+  });
+  scheduleHistoryRows.querySelectorAll("button[data-action='schedule-history-toggle-exclude']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (id) toggleBillExcluded(id);
     });
   });
 };
@@ -6075,13 +6089,22 @@ const renderHistory = () => {
         ? formatDate(manualIssueDate)
         : bill.periodEnd || bill.periodStart || "";
       const issueDateStr = manualIssueDateStr;
-      const actionButtons = `<button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.download", "ดาวน์โหลด")}</button>
+      const excluded = Boolean(bill.excluded);
+      const eyeTitle = excluded
+        ? tAudit("bill.action.include", "เปิดยอดเดือนนี้")
+        : tAudit("bill.action.exclude", "ปิดยอดเดือนนี้");
+      const eyeSvg = excluded
+        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.5 5.2A10.5 10.5 0 0 1 12 5c5 0 9.3 3.4 10.5 7-.4 1.1-1 2.1-1.8 3M6.3 6.3C4.3 7.6 2.8 9.4 1.5 12 2.7 15.6 7 19 12 19c1.5 0 3-.3 4.3-.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M1.5 12C2.7 8.4 7 5 12 5s9.3 3.4 10.5 7C21.3 15.6 17 19 12 19S2.7 15.6 1.5 12z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>`;
+      const eyeButton = `<button class="icon-btn bill-exclude-toggle${excluded ? " is-excluded" : ""}" data-action="toggle-exclude" data-id="${bill.id}" type="button" title="${escapeHtml(eyeTitle)}" aria-label="${escapeHtml(eyeTitle)}">${eyeSvg}</button>`;
+      const actionButtons = `${eyeButton}
+           <button class="small-btn" data-action="download" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.download", "ดาวน์โหลด")}</button>
            <button class="ghost small-btn" data-action="sample" data-id="${bill.id}" data-date="${issueDateStr}" type="button">${tAudit("bill.action.preview", "ดูตัวอย่าง")}</button>
            <button class="small-btn btn-danger" data-action="delete" data-id="${bill.id}" type="button">${tAudit("bill.action.delete", "ลบ")}</button>`;
       const periodRangeText = formatThaiPeriodRange(bill.periodStart, bill.periodEnd);
       const periodIsoTitle = `${bill.periodStart || "?"} – ${bill.periodEnd || "?"}`;
       return `
-        <tr data-id="${bill.id}">
+        <tr data-id="${bill.id}" class="${excluded ? "bill-row-excluded" : ""}">
           <td>ใบที่ ${bill.billNo}</td>
           <td class="period-cell">
             <span class="period-range" title="${escapeHtml(periodIsoTitle)}">${escapeHtml(periodRangeText)}</span>
@@ -6135,6 +6158,14 @@ const renderHistory = () => {
       });
     }
   );
+  billHistoryRows.querySelectorAll("button[data-action='toggle-exclude']").forEach(
+    (btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        if (id) toggleBillExcluded(id);
+      });
+    }
+  );
 };
 
 const updateSummary = () => {
@@ -6166,6 +6197,16 @@ const deleteBill = (id) => {
   renderAutoQueue();
   renderHistory();
   updateSummary();
+};
+const toggleBillExcluded = (id) => {
+  const bill = history.find((b) => b.id === id);
+  if (!bill) return;
+  bill.excluded = !bill.excluded;
+  saveHistory();
+  renderHistory();
+  if (activeScheduleHistoryCutoffDay !== null) {
+    renderScheduleHistoryModal(activeScheduleHistoryCutoffDay);
+  }
 };
 const openAutoScheduleEditor = (cutoffDay) => {
   if (!ensureAutoBillingPermission()) return;

@@ -4110,7 +4110,8 @@
               },
               "capturedAt": 1783403801683
             }
-          }
+          },
+          "excluded": true
         },
         {
           "id": "1779775551120-37",
@@ -5104,7 +5105,8 @@
               },
               "capturedAt": 1780121581074
             }
-          }
+          },
+          "excluded": true
         },
         {
           "id": "1779714105844-36",
@@ -24981,7 +24983,8 @@
               "bill_units": 0
             }
           ],
-          "meterReadings": {}
+          "meterReadings": {},
+          "excluded": true
         },
         {
           "id": "1778406011809-15",
@@ -32300,7 +32303,7 @@
         }
       ],
       "billSequence": 38,
-      "updatedAt": "2026-07-07T05:56:41.727Z"
+      "updatedAt": "2026-07-07T09:03:02.304Z"
     }
   }
 }

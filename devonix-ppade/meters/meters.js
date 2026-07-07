@@ -511,13 +511,14 @@ const renderDashboardBilling = async () => {
   const localSnapshot = typeof window.getBillingHistorySnapshot === "function"
     ? window.getBillingHistorySnapshot()
     : null;
-  let bills;
+  let rawBills;
   if (Array.isArray(localSnapshot)) {
-    bills = localSnapshot;
+    rawBills = localSnapshot;
   } else {
     const state = await fetchDashboardBillingState().catch(() => null);
-    bills = Array.isArray(state?.history) ? state.history : [];
+    rawBills = Array.isArray(state?.history) ? state.history : [];
   }
+  const bills = rawBills.filter((bill) => !bill?.excluded);
   const sortedBills = bills
     .slice()
     .sort((a, b) => String(b?.createdAt || b?.periodEnd || "").localeCompare(String(a?.createdAt || a?.periodEnd || "")));

@@ -597,6 +597,37 @@ tbody tr.selected {
   align-items: center;
   gap: 6px;
 }
+.bill-exclude-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid #d5deee;
+  background: #ffffff;
+  color: #556680;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.bill-exclude-toggle:hover {
+  background: #eef3fb;
+  color: #10233f;
+}
+.bill-exclude-toggle.is-excluded {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.history-table tr.bill-row-excluded td {
+  color: #9aa3b2;
+  background: #f7f8fa;
+}
+.history-table tr.bill-row-excluded td:not(:last-child) {
+  text-decoration: line-through;
+  text-decoration-color: #c9d0dc;
+}
 .queue-status {
   display: inline-flex;
   align-items: center;
