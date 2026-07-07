@@ -33,6 +33,8 @@
   "dashboard.meta.manual_bills": "{amount}",
   "dashboard.meta.auto_bills": "{amount}",
   "dashboard.section.bill_chart": "Latest Bill Trend",
+  "dashboard.chart.view.list": "Show as list",
+  "dashboard.chart.view.graph": "Show as graph",
   "dashboard.section.billing_split": "Grand Total",
   "dashboard.split.total": "Grand total",
   "dashboard.split.manual": "Manual",

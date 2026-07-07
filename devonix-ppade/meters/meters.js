@@ -408,6 +408,30 @@ const dashboardEls = {
   billingSplit: document.getElementById("dashboard-billing-split"),
   refresh: document.getElementById("dashboard-refresh")
 };
+const billChartViewToggle = document.getElementById("bill-chart-view-toggle");
+let billChartView = "list";
+const billChartIcons = {
+  list: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+  graph: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+};
+const updateBillChartToggleUi = () => {
+  if (!billChartViewToggle) return;
+  const nextView = billChartView === "list" ? "graph" : "list";
+  const title = tMeters(
+    nextView === "graph" ? "dashboard.chart.view.graph" : "dashboard.chart.view.list",
+    nextView === "graph" ? "แสดงเป็นกราฟ" : "แสดงเป็นรายการ"
+  );
+  billChartViewToggle.innerHTML = billChartIcons[nextView];
+  billChartViewToggle.setAttribute("title", title);
+  billChartViewToggle.setAttribute("aria-label", title);
+  billChartViewToggle.dataset.view = billChartView;
+};
+billChartViewToggle?.addEventListener("click", () => {
+  billChartView = billChartView === "list" ? "graph" : "list";
+  updateBillChartToggleUi();
+  renderDashboardBilling();
+});
+updateBillChartToggleUi();
 const formatDashboardNumber = (value, digits = 2) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return "--";
@@ -568,26 +592,167 @@ const renderDashboardBilling = async () => {
       ...chartBills.map((bill) => Number(bill?.amount)).filter((amount) => Number.isFinite(amount)),
       0
     );
-    dashboardEls.billChart.innerHTML = chartBills.length
-      ? chartBills
-          .map((bill) => {
-            const amount = Number(bill?.amount) || 0;
-            const percent = maxAmount > 0 ? Math.max(6, Math.round((amount / maxAmount) * 100)) : 6;
-            const date = formatDashboardDate(bill?.periodEnd || bill?.createdAt || bill?.periodStart);
-            const tone = amount > 0 ? "paid" : "empty";
-            return `
-              <div class="dashboard-chart-bar tone-${tone}" title="${escapeHtml(`${date} ${formatDashboardMoney(amount)}`)}">
-                <div class="dashboard-chart-head">
-                  <small>${escapeHtml(date)}</small>
-                  <b>${escapeHtml(formatDashboardMoney(amount))}</b>
-                </div>
-                <div class="dashboard-chart-track">
-                  <span style="width: ${percent}%"></span>
-                </div>
-              </div>`;
-          })
-          .join("")
-      : `<p class="empty">${tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")}</p>`;
+    dashboardEls.billChart.classList.toggle("is-graph", billChartView === "graph");
+    if (!chartBills.length) {
+      dashboardEls.billChart.innerHTML = `<p class="empty">${tMeters("dashboard.meta.no_bills", "ยังไม่มีบิล")}</p>`;
+    } else if (billChartView === "graph") {
+      const width = 500;
+      const height = 220;
+      const padTop = 10;
+      const padBottom = 32;
+      const padLeft = 30;
+      const padRight = 8;
+      const formatCompactDate = (value) => {
+        const text = readText(value);
+        if (!text) return { line1: "--", line2: "" };
+        const d = new Date(text);
+        if (Number.isNaN(d.getTime())) return { line1: text, line2: "" };
+        const line1 = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit" }).format(d);
+        const line2 = new Intl.DateTimeFormat(undefined, { year: "numeric" }).format(d);
+        return { line1, line2 };
+      };
+      const innerHeight = height - padTop - padBottom;
+      const innerWidth = width - padLeft - padRight;
+      const stepX = chartBills.length > 1 ? innerWidth / (chartBills.length - 1) : 0;
+      const yBase = padTop + innerHeight;
+      const niceNumber = (range, round) => {
+        if (!Number.isFinite(range) || range <= 0) return 1;
+        const exp = Math.floor(Math.log10(range));
+        const fraction = range / Math.pow(10, exp);
+        let nf;
+        if (round) {
+          if (fraction < 1.5) nf = 1;
+          else if (fraction < 3) nf = 2;
+          else if (fraction < 7) nf = 5;
+          else nf = 10;
+        } else {
+          if (fraction <= 1) nf = 1;
+          else if (fraction <= 2) nf = 2;
+          else if (fraction <= 5) nf = 5;
+          else nf = 10;
+        }
+        return nf * Math.pow(10, exp);
+      };
+      const formatAxisValue = (v) => {
+        const abs = Math.abs(v);
+        if (abs >= 1_000_000) {
+          const val = v / 1_000_000;
+          return `${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}M`;
+        }
+        if (abs >= 1000) {
+          const val = v / 1000;
+          return `${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}K`;
+        }
+        return String(Math.round(v));
+      };
+      const tickCount = 4;
+      const rawMax = maxAmount > 0 ? maxAmount : 1;
+      const tickSpacing = niceNumber(niceNumber(rawMax, false) / tickCount, true);
+      const niceMax = Math.max(tickSpacing, Math.ceil(rawMax / tickSpacing) * tickSpacing);
+      const yFor = (amount) => yBase - (amount / niceMax) * innerHeight;
+      const points = chartBills.map((bill, i) => {
+        const source = bill?.periodEnd || bill?.createdAt || bill?.periodStart;
+        return {
+          x: padLeft + (chartBills.length > 1 ? stepX * i : innerWidth / 2),
+          y: yFor(Number(bill?.amount) || 0),
+          amount: Number(bill?.amount) || 0,
+          date: formatDashboardDate(source),
+          dateShort: formatCompactDate(source)
+        };
+      });
+      const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const areaPath = points.length
+        ? `${linePath} L${points[points.length - 1].x.toFixed(1)},${yBase.toFixed(1)} L${points[0].x.toFixed(1)},${yBase.toFixed(1)} Z`
+        : "";
+      const yTicks = [];
+      for (let v = 0; v <= niceMax + 1e-6; v += tickSpacing) {
+        yTicks.push({ value: v, y: yBase - (v / niceMax) * innerHeight });
+      }
+      const gridLines = yTicks.map((tick) => `<line x1="${padLeft}" x2="${(width - padRight).toFixed(1)}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" class="dashboard-graph-grid"/>`).join("");
+      const yAxisLabels = yTicks.map((tick) => `<text x="${(padLeft - 6).toFixed(1)}" y="${(tick.y + 3).toFixed(1)}" class="dashboard-graph-axis-label" text-anchor="end">${escapeHtml(formatAxisValue(tick.value))}</text>`).join("");
+      const axes = `
+        <line x1="${padLeft}" x2="${padLeft}" y1="${padTop.toFixed(1)}" y2="${yBase.toFixed(1)}" class="dashboard-graph-axis"/>
+        <line x1="${padLeft}" x2="${(width - padRight).toFixed(1)}" y1="${yBase.toFixed(1)}" y2="${yBase.toFixed(1)}" class="dashboard-graph-axis"/>
+      `;
+      const dots = points.map((p, i) => {
+        const tone = p.amount > 0 ? "paid" : "empty";
+        return `<g class="dashboard-graph-point" data-index="${i}" data-date="${escapeHtml(p.date)}" data-amount="${escapeHtml(formatDashboardMoney(p.amount))}" data-x="${p.x.toFixed(1)}" data-y="${p.y.toFixed(1)}">
+          <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="14" class="dashboard-graph-hit"/>
+          <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" class="dashboard-graph-dot tone-${tone}"/>
+        </g>`;
+      }).join("");
+      const dateLabels = points.map((p, i) => {
+        const anchor = i === 0 ? "start" : i === points.length - 1 ? "end" : "middle";
+        return `<text x="${p.x.toFixed(1)}" y="${(yBase + 12).toFixed(1)}" class="dashboard-graph-date-label" text-anchor="${anchor}">${escapeHtml(p.dateShort.line1)}<tspan x="${p.x.toFixed(1)}" dy="10" class="dashboard-graph-year-label">${escapeHtml(p.dateShort.line2)}</tspan></text>`;
+      }).join("");
+      dashboardEls.billChart.innerHTML = `
+        <div class="dashboard-graph-wrap">
+          <svg class="dashboard-graph-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bill trend">
+            <defs>
+              <linearGradient id="dashboard-graph-area" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#0f8f47" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            ${gridLines}
+            ${axes}
+            ${yAxisLabels}
+            ${areaPath ? `<path d="${areaPath}" fill="url(#dashboard-graph-area)"/>` : ""}
+            <path d="${linePath}" class="dashboard-graph-line" fill="none"/>
+            ${dots}
+            ${dateLabels}
+          </svg>
+          <div class="dashboard-graph-tooltip" hidden><b class="tt-amount"></b><small class="tt-date"></small></div>
+        </div>`;
+      const wrap = dashboardEls.billChart.querySelector(".dashboard-graph-wrap");
+      const tooltip = wrap?.querySelector(".dashboard-graph-tooltip");
+      const svg = wrap?.querySelector(".dashboard-graph-svg");
+      if (wrap && tooltip && svg) {
+        const showTooltip = (group) => {
+          const date = group.getAttribute("data-date") || "";
+          const amount = group.getAttribute("data-amount") || "";
+          const px = Number(group.getAttribute("data-x"));
+          const py = Number(group.getAttribute("data-y"));
+          const svgRect = svg.getBoundingClientRect();
+          const wrapRect = wrap.getBoundingClientRect();
+          const scaleX = svgRect.width / width;
+          const scaleY = svgRect.height / height;
+          const cssX = (svgRect.left - wrapRect.left) + px * scaleX;
+          const cssY = (svgRect.top - wrapRect.top) + py * scaleY;
+          tooltip.querySelector(".tt-amount").textContent = amount;
+          tooltip.querySelector(".tt-date").textContent = date;
+          tooltip.hidden = false;
+          tooltip.style.left = `${cssX}px`;
+          tooltip.style.top = `${cssY - 12}px`;
+        };
+        const hideTooltip = () => { tooltip.hidden = true; };
+        wrap.querySelectorAll(".dashboard-graph-point").forEach((g) => {
+          g.addEventListener("mouseenter", () => showTooltip(g));
+          g.addEventListener("mouseleave", hideTooltip);
+          g.addEventListener("focus", () => showTooltip(g));
+          g.addEventListener("blur", hideTooltip);
+        });
+      }
+    } else {
+      dashboardEls.billChart.innerHTML = chartBills
+        .map((bill) => {
+          const amount = Number(bill?.amount) || 0;
+          const percent = maxAmount > 0 ? Math.max(6, Math.round((amount / maxAmount) * 100)) : 6;
+          const date = formatDashboardDate(bill?.periodEnd || bill?.createdAt || bill?.periodStart);
+          const tone = amount > 0 ? "paid" : "empty";
+          return `
+            <div class="dashboard-chart-bar tone-${tone}" title="${escapeHtml(`${date} ${formatDashboardMoney(amount)}`)}">
+              <div class="dashboard-chart-head">
+                <small>${escapeHtml(date)}</small>
+                <b>${escapeHtml(formatDashboardMoney(amount))}</b>
+              </div>
+              <div class="dashboard-chart-track">
+                <span style="width: ${percent}%"></span>
+              </div>
+            </div>`;
+        })
+        .join("");
+    }
   }
 };
 const renderPlantDashboard = () => {

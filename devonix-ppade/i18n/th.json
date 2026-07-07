@@ -33,6 +33,8 @@
   "dashboard.meta.manual_bills": "{amount}",
   "dashboard.meta.auto_bills": "{amount}",
   "dashboard.section.bill_chart": "แนวโน้มยอดบิลล่าสุด",
+  "dashboard.chart.view.list": "แสดงเป็นรายการ",
+  "dashboard.chart.view.graph": "แสดงเป็นกราฟ",
   "dashboard.section.billing_split": "ยอดรวมทั้งสิ้น",
   "dashboard.split.total": "ยอดรวมทั้งสิ้น",
   "dashboard.split.manual": "Manual",
