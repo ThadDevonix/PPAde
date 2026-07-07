@@ -5070,6 +5070,9 @@ const saveHistory = () => {
     // ignore storage access errors
   }
   queueBillingStateSave();
+  try {
+    document.dispatchEvent(new CustomEvent("billing:history-changed"));
+  } catch { /* ignore */ }
 };
 const getAutoPeriodForRunDate = (runDate, cutoffDay) => {
   const year = runDate.getFullYear();
@@ -6698,6 +6701,9 @@ const initBilling = async () => {
   renderAutoQueue();
   renderHistory();
   updateSummary();
+  try {
+    document.dispatchEvent(new CustomEvent("billing:history-changed"));
+  } catch { /* ignore */ }
   if (typeof window.renderPlantDashboard === "function") window.renderPlantDashboard();
   runAutoIfDue()
     .then(() => {
@@ -7078,6 +7084,10 @@ auditDateClear?.addEventListener("click", () => {
 
 window.renderAuditFeed = renderAuditFeed;
 window.refreshAuditFeed = refreshAndRenderAuditFeed;
+window.getBillingHistorySnapshot = () => {
+  if (!billingStateReady) return null;
+  return Array.isArray(history) ? history.slice() : [];
+};
 
 // Re-render dynamic strings when language changes
 document.addEventListener("i18n:changed", () => {

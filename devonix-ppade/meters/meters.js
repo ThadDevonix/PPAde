@@ -508,8 +508,16 @@ const renderMeterKwhFlow = (reading) => `
     <span class="tone-export"><em>${escapeHtml(tMeters("meters.kwh.export", "Export"))}</em><b>${escapeHtml(formatMeterKwhValue(reading?.energyOut))}</b></span>
   </div>`;
 const renderDashboardBilling = async () => {
-  const state = await fetchDashboardBillingState().catch(() => null);
-  const bills = Array.isArray(state?.history) ? state.history : [];
+  const localSnapshot = typeof window.getBillingHistorySnapshot === "function"
+    ? window.getBillingHistorySnapshot()
+    : null;
+  let bills;
+  if (Array.isArray(localSnapshot)) {
+    bills = localSnapshot;
+  } else {
+    const state = await fetchDashboardBillingState().catch(() => null);
+    bills = Array.isArray(state?.history) ? state.history : [];
+  }
   const sortedBills = bills
     .slice()
     .sort((a, b) => String(b?.createdAt || b?.periodEnd || "").localeCompare(String(a?.createdAt || a?.periodEnd || "")));
@@ -592,6 +600,9 @@ const refreshPlantDashboard = async () => {
 dashboardEls.refresh?.addEventListener("click", refreshPlantDashboard);
 window.refreshPlantDashboard = refreshPlantDashboard;
 window.renderPlantDashboard = renderPlantDashboard;
+document.addEventListener("billing:history-changed", () => {
+  try { renderDashboardBilling(); } catch { /* ignore */ }
+});
 
 const splitAddressPair = (value) => {
   const text = readText(value);
