@@ -87,30 +87,19 @@ const billingBtn = document.getElementById("mode-billing");
 const metersPanel = document.getElementById("meters-panel");
 const billingPanel = document.getElementById("billing-panel");
 
+// Use the page origin so LAN clients keep the session and upstream authentication proxy.
 const deviceEnergyApiCandidates = [
-  "/api/device-energy",
-  "http://localhost:3000/api/device-energy",
-  "http://127.0.0.1:3000/api/device-energy",
-  "https://meter.devonix.co.th/api/device-energy"
+  "/api/device-energy"
 ];
 const endOfDayReadingApiCandidates = [
-  "/api/devices/end-of-day-reading",
-  "http://localhost:3000/api/devices/end-of-day-reading",
-  "http://127.0.0.1:3000/api/devices/end-of-day-reading",
-  "https://meter.devonix.co.th/api/devices/end-of-day-reading"
+  "/api/devices/end-of-day-reading"
 ];
 const billingApiCandidates = [
-  "/api/billing",
-  "http://localhost:3000/api/billing",
-  "http://127.0.0.1:3000/api/billing",
-  "https://meter.devonix.co.th/api/billing"
+  "/api/billing"
 ];
 const billingStateApiPath = "/api/billing-state";
 const devicesApiCandidates = [
-  "/api/devices",
-  "http://localhost:3000/api/devices",
-  "http://127.0.0.1:3000/api/devices",
-  "https://meter.devonix.co.th/api/devices"
+  "/api/devices"
 ];
 const calcMethodLabels = {
   energy_in: "energy_in",

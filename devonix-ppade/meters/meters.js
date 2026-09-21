@@ -60,11 +60,9 @@ const syncPlantToHomeStorage = () => {
 
 let plantMeters = normalizeLocalMeters(plant.devices);
 let isSavingMeterCreate = false;
+// Use the page origin so LAN clients keep the session and upstream authentication proxy.
 const meterLiveEnergyApiCandidates = [
-  "/api/energy",
-  "http://localhost:3000/api/energy",
-  "http://127.0.0.1:3000/api/energy",
-  "https://meter.devonix.co.th/api/energy"
+  "/api/energy"
 ];
 const meterLivePollIntervalMs = 20 * 1000;
 const meterLiveDeviceFallbackCap = 8;
